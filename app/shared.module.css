@@ -1,0 +1,15 @@
+.page { max-width: 560px; margin: 0 auto; padding: 72px 20px 40px; }
+.mark {
+  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.22em;
+  text-transform: uppercase; color: var(--azul-700); margin: 0 0 28px;
+}
+.icon {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 1.35rem; margin-bottom: 20px;
+}
+.iconOk { background: var(--bom-fundo); color: var(--bom); }
+.iconWarn { background: var(--erro-fundo); color: var(--erro); }
+.title { font-size: 1.55rem; line-height: 1.2; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.015em; }
+.body { color: var(--tinta-2); margin: 0 0 14px; }
+.body strong { color: var(--tinta); }
+.back { display: inline-block; margin-top: 20px; font-weight: 600; }

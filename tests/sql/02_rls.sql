@@ -134,6 +134,16 @@ begin
   raise notice 'PASS: the newsletter list is not readable by clients';
 end $$;
 
+-- ---- 7b. and anonymous visitors cannot read it either ---------------
+select tests_logout();
+do $$
+declare v_n int;
+begin
+  select count(*) into v_n from newsletter_subscribers;
+  if v_n <> 0 then raise exception 'FAIL: anon read % newsletter rows', v_n; end if;
+  raise notice 'PASS: the newsletter list is not readable by anonymous visitors';
+end $$;
+
 -- ---- 8. but anyone may subscribe (the waitlist must work logged-out) --
 select tests_logout();
 insert into newsletter_subscribers (email, status, source)

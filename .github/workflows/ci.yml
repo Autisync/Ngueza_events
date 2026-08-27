@@ -54,6 +54,35 @@ jobs:
       - name: Database assertions
         run: ./scripts/db-test.sh
 
+      - name: Seed the test database for integration tests
+        run: WITH_SEED=1 ./scripts/db-reset.sh
+        env:
+          PGDATABASE: ngueza_test
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Types match the schema
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npx vitest run --project unit
+
+      # The waitlist acceptance criteria, against a real database and a
+      # real outbox — double opt-in, idempotent confirmation, one-click
+      # unsubscribe, and no enumeration of the list.
+      - name: Integration tests
+        run: npx vitest run --project integration
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ngueza_test
+
+      - name: Production build
+        run: npm run build
+
       - name: spec/schema.sql is in sync with the migrations
         run: |
           ./scripts/schema-dump.sh

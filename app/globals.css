@@ -1,0 +1,62 @@
+/* ---------------------------------------------------------------------
+   NGUEZA design tokens.
+
+   Blue and white, variations of blue permitted — a fixed constraint from
+   the client, not a preference. The only non-blue hues are semantic state.
+
+   System fonts on purpose: most visitors arrive on mobile data they pay
+   for by the megabyte (§41, §42). A webfont is 40–80KB before a single
+   pixel of content renders.
+   --------------------------------------------------------------------- */
+
+:root {
+  --azul-900: #062b4d;
+  --azul-800: #093a66;
+  --azul-700: #0b4f8f;
+  --azul-600: #1266b5;
+  --azul-500: #1877d2;
+  --azul-300: #7fb5e8;
+  --azul-100: #e3eef9;
+  --azul-050: #f2f7fc;
+
+  --branco: #ffffff;
+  --tinta: #0c1b2a;
+  --tinta-2: #3e5468;
+  --tinta-3: #6b8199;
+  --linha: #d6e2ee;
+
+  --bom: #1b6b4e;
+  --bom-fundo: #dff0e8;
+  --erro: #b3402b;
+  --erro-fundo: #f8e7e2;
+
+  --sombra: 0 1px 2px rgba(12, 27, 42, 0.06), 0 12px 32px -20px rgba(9, 58, 102, 0.4);
+  --raio: 6px;
+  --fonte: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--fonte);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--tinta);
+  background: var(--branco);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--azul-500); }
+
+:focus-visible {
+  outline: 3px solid var(--azul-500);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

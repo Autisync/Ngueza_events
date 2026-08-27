@@ -36,3 +36,6 @@ Thumbs.db
 # history. Move these into the repo only as a explicit decision.
 # ---------------------------------------------------------------
 docs/source/*.pdf
+
+# local mail outbox (dev/CI stand-in for Resend)
+.outbox/

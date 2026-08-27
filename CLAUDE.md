@@ -56,6 +56,12 @@ an incomplete slice.
 **Webhooks are replayed.** Every external webhook is idempotent, keyed on the
 provider's own event id under a unique constraint.
 
+**A write that reads is a read.** `INSERT ... RETURNING` and `ON CONFLICT`
+both require a SELECT policy, because both have to look at a row. Where a
+role has no SELECT policy — `anon` on `newsletter_subscribers`, for instance —
+they fail with a misleading *"new row violates row-level security policy"*.
+Catch the constraint violation instead of reading back.
+
 ---
 
 ## Two supplier types — this shapes most booking code
