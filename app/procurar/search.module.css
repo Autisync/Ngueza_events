@@ -1,0 +1,52 @@
+.bar { background: var(--azul-800); padding: 18px 0 22px; }
+.wrap { max-width: 940px; margin: 0 auto; padding: 0 18px; }
+.mark {
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--azul-300); margin: 0 0 14px; text-decoration: none; display: inline-block;
+}
+.form { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .form { grid-template-columns: 1.4fr 1fr 0.8fr auto; align-items: end; } }
+.f { display: block; }
+.lab { display: block; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em;
+       text-transform: uppercase; color: var(--azul-300); margin-bottom: 5px; }
+.ctl { width: 100%; padding: 11px 12px; font: inherit; font-size: 0.98rem;
+       border: 1px solid transparent; border-radius: var(--raio);
+       background: var(--branco); color: var(--tinta); }
+.go { padding: 11px 22px; font: inherit; font-size: 0.98rem; font-weight: 700;
+      background: var(--azul-500); color: var(--branco); border: 0;
+      border-radius: var(--raio); cursor: pointer; white-space: nowrap; }
+.go:hover { background: var(--azul-600); }
+
+.head { padding: 24px 0 4px; }
+.count { font-size: 0.92rem; color: var(--tinta-2); margin: 0; }
+.count strong { color: var(--tinta); }
+
+.grid { display: grid; gap: 14px; padding: 16px 0 32px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 940px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+
+.card { display: flex; flex-direction: column; border: 1px solid var(--linha);
+        border-radius: var(--raio); overflow: hidden; background: var(--branco);
+        text-decoration: none; color: inherit; }
+.card:hover { border-color: var(--azul-300); box-shadow: var(--sombra); }
+.thumb { aspect-ratio: 3 / 2; background: var(--azul-100); display: grid; place-items: center;
+         color: var(--azul-700); font-size: 0.8rem; font-weight: 600; }
+/* Until slice 05 lands photographs, a full 3:2 placeholder turns the list
+   into a column of empty boxes. Keep the space honest and small. */
+.thumbEmpty { aspect-ratio: auto; height: 62px; color: var(--azul-300); font-weight: 500; }
+.body { padding: 14px 15px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.name { font-size: 1.02rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.meta { font-size: 0.85rem; color: var(--tinta-3); margin: 0; }
+.price { margin: 6px 0 0; font-weight: 700; color: var(--azul-700); }
+.priceQuiet { font-weight: 600; color: var(--tinta-3); }
+.cap { display: inline-block; font-size: 0.78rem; color: var(--tinta-2);
+       background: var(--azul-050); border: 1px solid var(--linha);
+       border-radius: 999px; padding: 2px 9px; }
+
+.empty { border: 1px dashed var(--linha); border-radius: var(--raio);
+         padding: 32px 22px; text-align: center; margin: 20px 0 32px; }
+.empty h2 { font-size: 1.1rem; margin: 0 0 8px; }
+.empty p { color: var(--tinta-2); margin: 0 0 4px; font-size: 0.95rem; }
+.more { display: inline-block; margin: 0 0 40px; padding: 11px 20px; font-weight: 700;
+        border: 1px solid var(--azul-500); color: var(--azul-700);
+        border-radius: var(--raio); text-decoration: none; }

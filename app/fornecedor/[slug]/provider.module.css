@@ -1,0 +1,51 @@
+.wrap { max-width: 780px; margin: 0 auto; padding: 0 18px; }
+.top { background: var(--azul-800); color: var(--branco); padding: 16px 0 30px; }
+.mark { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--azul-300); text-decoration: none; }
+.crumb { font-size: 0.85rem; color: var(--azul-300); margin: 18px 0 8px; }
+.name { font-size: clamp(1.6rem, 5.5vw, 2.1rem); font-weight: 700; margin: 0;
+        letter-spacing: -0.02em; line-height: 1.15; }
+.seals { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.seal { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600;
+        padding: 5px 11px; border-radius: 999px;
+        background: rgba(255,255,255,0.15); color: var(--branco); }
+.sealStrong { background: var(--branco); color: var(--azul-800); }
+.sealQuiet { background: transparent; border: 1px solid rgba(255,255,255,0.35); color: #cfe3f6; }
+
+.sec { padding: 28px 0 0; }
+.h { font-size: 1.05rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
+.p { color: var(--tinta-2); margin: 0 0 12px; }
+
+.svc { border: 1px solid var(--linha); border-radius: var(--raio); overflow: hidden; }
+/* Stacked on a phone: a range like "3 500 000 Kz – 6 200 000 Kz" cannot
+   share a narrow line with the service name without overflowing. */
+.svcRow { display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+          padding: 14px 16px; border-bottom: 1px solid var(--linha); }
+@media (min-width: 560px) {
+  .svcRow { flex-direction: row; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .svcPrice, .svcPriceQuiet { white-space: nowrap; }
+}
+.svcRow:last-child { border-bottom: 0; }
+.svcName { font-weight: 600; margin: 0; }
+.svcMeta { font-size: 0.84rem; color: var(--tinta-3); margin: 3px 0 0; }
+.svcPrice { font-weight: 700; color: var(--azul-700); }
+.svcPriceQuiet { font-weight: 600; color: var(--tinta-3); }
+
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.day { aspect-ratio: 1; display: grid; place-items: center; border-radius: 4px;
+       font-size: 0.76rem; font-variant-numeric: tabular-nums; }
+.free { background: var(--bom-fundo); color: var(--bom); font-weight: 600; }
+.busy { background: var(--erro-fundo); color: var(--erro); text-decoration: line-through; }
+.legend { display: flex; gap: 14px; font-size: 0.8rem; color: var(--tinta-3); margin: 10px 0 0; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+
+.contact { display: grid; gap: 9px; }
+.btn { display: block; text-align: center; padding: 13px 18px; font-weight: 700;
+       border-radius: var(--raio); text-decoration: none; }
+.btnMain { background: var(--azul-700); color: var(--branco); }
+.btnAlt { background: var(--branco); color: var(--azul-700); border: 1px solid var(--azul-500); }
+
+.empty { border: 1px dashed var(--linha); border-radius: var(--raio); padding: 18px;
+         color: var(--tinta-3); font-size: 0.9rem; }
+.foot { margin: 40px 0; padding-top: 20px; border-top: 1px solid var(--linha);
+        color: var(--tinta-3); font-size: 0.82rem; }
