@@ -12,13 +12,40 @@ A place, a date, a capacity, a price, and a truthful answer about availability.
 
 ## Status
 
-Schema and safety rails. No application code yet — that starts at slice 02.
+The wedge works end to end for an anonymous visitor: search by zone, date and
+capacity, open a supplier, see prices and a truthful calendar, make contact.
 
 | | |
 |---|---|
 | Launch scope | Venues, Luanda, six categories |
-| Stack | Next.js · Supabase (Postgres) · Cloudflare · Vercel |
-| Verified | 11 migrations apply from empty; 18 database assertions pass |
+| Stack | Next.js 16 · Postgres (Supabase-shaped) · Cloudflare · Vercel |
+| Verified | 14 migrations from empty · 53 tests · 19 database assertions |
+
+### Done
+
+| Slice | |
+|---|---|
+| 00 | Repo, CI gates, design tokens, money library |
+| 00.5 | Waitlist with double opt-in and a consent trail |
+| 01 | Schema, RLS, the double-booking constraint, seed |
+| 06 | Public supplier page — own URL, schema.org, calendar |
+| 07 | Search — trees, date availability, keyset pagination |
+| 09 | Booking domain layer (screens wait on auth) |
+| 13 | Event tracking, sessions, robots and sitemap |
+
+### Blocked, and on what
+
+Everything remaining needs an account somebody has to create:
+
+| Slice | Blocked on |
+|---|---|
+| 02 auth, and 03/04/08/11/12/14 behind it | **A Supabase project** — URL, anon key, service role key |
+| 05 media | **A Cloudflare account** — Images and R2 |
+| 15 legal pages | **A lawyer**. Terms, privacy and cancellation policy are not drafts to generate |
+| 16 payments | Legal opinion first (§28), then a provider |
+
+Per §45 every one of these is opened in NGUEZA's name, with NGUEZA's email
+and card. Engineers receive access; engineers do not own accounts.
 
 ---
 
@@ -49,6 +76,9 @@ Postgres. Deployed environments get the real `auth` schema from Supabase.
 ## Layout
 
 ```
+app/                   Next.js routes
+lib/                   domain layer — money, db, search, booking, newsletter
+proxy.ts               issues the pseudonymous session cookie
 supabase/migrations/   the schema — source of truth for the whole system
 spec/schema.sql        generated, flattened, read-only (npm run schema:dump)
 spec/states.md         the booking state machine
