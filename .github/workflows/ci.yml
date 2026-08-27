@@ -80,7 +80,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ngueza_test
 
-      - name: Production build
+      # Deliberately WITHOUT DATABASE_URL. A page that queries the database
+      # at build time freezes its content at deploy — the sitemap did
+      # exactly that, so a supplier verified an hour after a release stayed
+      # invisible to Google until the next one. Keep this step database-free
+      # so that mistake cannot come back.
+      - name: Production build (must not need a database)
         run: npm run build
 
       - name: spec/schema.sql is in sync with the migrations

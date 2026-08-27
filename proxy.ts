@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 /**
  * A pseudonymous session id, so events can be correlated within one visit.
  *
+ * Lives in proxy.ts: Next 16 deprecated the `middleware` file convention.
+ *
  * Several phase-two decisions depend on this and on nothing else: the
  * leakage ratio (§32) needs contact reveals per session, and the gate for
  * building comparison needs "viewed three suppliers in one category in one
@@ -17,7 +19,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const COOKIE = 'ngz_sid'
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const response = NextResponse.next()
 
   if (!request.cookies.get(COOKIE)) {

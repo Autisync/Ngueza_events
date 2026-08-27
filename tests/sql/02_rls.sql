@@ -150,6 +150,23 @@ insert into newsletter_subscribers (email, status, source)
   values ('anonimo@x.ao', 'pending', 'waitlist');
 do $$ begin raise notice 'PASS: anonymous visitors can join the waitlist'; end $$;
 
+-- ---- 8b. the verification guard holds even with no session ----------
+-- A direct database connection has no auth.uid(), so is_admin() is false
+-- and the trigger refuses. Verification cannot be granted by connecting
+-- to the database and issuing an UPDATE — it has to go through an
+-- authenticated administrator, which is what leaves an audit trail.
+reset role;
+do $$
+begin
+  update providers set verification_status = 'verified'
+   where id = 'cccccccc-0000-0000-0000-00000000000b';
+  raise exception 'FAIL: verification granted from a session-less connection';
+exception
+  when insufficient_privilege then
+    raise notice 'PASS: verification needs an authenticated administrator, not just database access';
+end $$;
+set role app_user;
+
 -- ---- 9. an admin sees everything ------------------------------------
 select tests_login_as('99999999-9999-9999-9999-999999999999');
 do $$
