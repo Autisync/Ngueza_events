@@ -22,6 +22,7 @@ export interface BookingRequest {
   endsAt: Date
   partySize?: number
   notes?: string
+  sessionId?: string | null
 }
 
 export type RequestOutcome =
@@ -83,7 +84,21 @@ export async function requestBooking(
           input.notes ?? null,
         ],
       )
-      return rows[0]!.id
+      const id = rows[0]!.id
+
+      // The denominator of the §32 leakage ratio. Written in the same
+      // transaction as the booking, so the two can never disagree.
+      await c.query(
+        `insert into events (name, session_id, profile_id, provider_id, props)
+         values ('booking_requested', $1, $2, $3, $4)`,
+        [
+          input.sessionId ?? null,
+          clientId,
+          input.providerId,
+          { party_size: input.partySize ?? null, has_resource: Boolean(input.resourceId) },
+        ],
+      )
+      return id
     })
     return { ok: true, bookingId }
   } catch (error) {

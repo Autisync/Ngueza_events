@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { formatPrice } from '@/lib/money'
 import { recordSearch, search, type Cursor } from '@/lib/search'
+import { isCrawler, sessionId } from '@/lib/session'
 import styles from './search.module.css'
 
 export const metadata: Metadata = {
@@ -66,7 +67,13 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
 
   // Zero-result searches are the supplier recruitment list, written by
   // clients (§48). Nothing here can be backfilled later.
-  await recordSearch({ query, resultCount: results.hits.length })
+  if (!(await isCrawler())) {
+    await recordSearch({
+      sessionId: await sessionId(),
+      query,
+      resultCount: results.hits.length,
+    })
+  }
 
   const next = new URLSearchParams(
     Object.entries(params).filter(([k, v]) => k !== 'depois' && v) as [string, string][],

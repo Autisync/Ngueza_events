@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { formatPrice } from '@/lib/money'
-import { availability, getProvider } from '@/lib/provider'
+import { availability, getProvider, recordProviderView } from '@/lib/provider'
+import { isCrawler, sessionId } from '@/lib/session'
+import { PhoneLink } from './PhoneLink'
 import styles from './provider.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -38,6 +40,12 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
   const { slug } = await params
   const provider = await getProvider(slug)
   if (!provider) notFound()
+
+  // Crawlers must reach this page (§50) but must not inflate a supplier's
+  // view count, which is a business signal rather than a traffic number.
+  if (!(await isCrawler())) {
+    await recordProviderView(provider.id, await sessionId())
+  }
 
   const today = new Date()
   const days = await availability(provider.id, today, 28)
@@ -180,14 +188,20 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
           <h2 className={styles.h}>Contactar</h2>
           <div className={styles.contact}>
             {provider.phone ? (
-              <a className={`${styles.btn} ${styles.btnMain}`} href={`tel:${provider.phone}`}>
+              <PhoneLink
+                providerId={provider.id}
+                phone={provider.phone}
+                className={`${styles.btn} ${styles.btnMain}`}
+              >
                 Ligar — {provider.phone}
-              </a>
+              </PhoneLink>
             ) : null}
             {provider.whatsapp ? (
+              // Through the server so the reveal is recorded even with
+              // JavaScript disabled.
               <a
                 className={`${styles.btn} ${styles.btnAlt}`}
-                href={`https://wa.me/${provider.whatsapp.replace(/\D/g, '')}`}
+                href={`/api/contacto/${provider.id}?canal=whatsapp&para=${encodeURIComponent(provider.whatsapp)}`}
                 rel="nofollow noopener"
               >
                 WhatsApp

@@ -160,6 +160,22 @@ export async function availability(
   })
 }
 
+/** Feeds the phase-two gate for comparison: "more than 25% of sessions
+ *  view three or more suppliers in one category". Unanswerable without a
+ *  session id, and impossible to backfill. */
+export async function recordProviderView(
+  providerId: string,
+  sessionId?: string | null,
+): Promise<void> {
+  await asVisitor((c) =>
+    c.query(`insert into events (name, session_id, provider_id) values ($1, $2, $3)`, [
+      'provider_viewed',
+      sessionId ?? null,
+      providerId,
+    ]),
+  )
+}
+
 /** Contact reveals are the §32 leakage numerator. In v1 contacts stay
  *  visible — hiding them during the cold start kills adoption — but every
  *  reveal is counted, because that ratio decides whether the transaction
