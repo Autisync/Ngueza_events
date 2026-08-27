@@ -1,0 +1,13 @@
+{
+  "name": "ngueza",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NGUEZA — plataforma de procura, reserva e gestão de serviços",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "db:reset": "./scripts/db-reset.sh",
+    "db:test": "./scripts/db-test.sh",
+    "schema:dump": "./scripts/schema-dump.sh",
+    "gates": "npm run db:test"
+  }
+}

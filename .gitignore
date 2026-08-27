@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+.pnp.*
+
+# build
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# env & secrets — never commit these
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+.supabase/
+
+# test artifacts
+coverage/
+playwright-report/
+test-results/
+lighthouse/
+
+# os
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------
+# Founding documents (§ confidencial até o termino).
+# Kept out of git deliberately. The repo is private today, but a
+# repo's visibility can change and forks/collaborators inherit
+# history. Move these into the repo only as a explicit decision.
+# ---------------------------------------------------------------
+docs/source/*.pdf

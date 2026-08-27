@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database:
+    name: schema, RLS and concurrency
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      TEST_DATABASE: ngueza_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Migrations apply cleanly from empty
+        run: ./scripts/db-reset.sh
+        env:
+          PGDATABASE: ngueza_ci
+
+      # The gate that matters: double-booking, tenant isolation, and the
+      # 50-way race. A failure here is a security or correctness bug, not
+      # a style opinion.
+      - name: Database assertions
+        run: ./scripts/db-test.sh
+
+      - name: spec/schema.sql is in sync with the migrations
+        run: |
+          ./scripts/schema-dump.sh
+          if ! git diff --quiet -- spec/schema.sql; then
+            echo "::error::spec/schema.sql is stale. Run: npm run schema:dump"
+            git diff -- spec/schema.sql | head -40
+            exit 1
+          fi
+
+  forbidden-patterns:
+    name: forbidden patterns
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The rules in CLAUDE.md that can be checked mechanically. Each of
+      # these is a shortcut that is cheap now and a rewrite later.
+      - name: No category or location enums
+        run: |
+          if grep -rniE "create type .*(category|location).* as enum" supabase/ ; then
+            echo "::error::Categories and locations are rows, never enums (§44)."; exit 1
+          fi
+
+      - name: No floating-point money
+        run: |
+          if grep -rniE "(price|amount|total)_(minor|cents)?[a-z_]* +(numeric|real|double|float|decimal)" supabase/migrations/ ; then
+            echo "::error::Money is bigint minor units. No floats, ever."; exit 1
+          fi
+
+      - name: No OFFSET pagination
+        run: |
+          if grep -rniE "\boffset +[0-9$:]" --include=*.ts --include=*.tsx --include=*.sql \
+               supabase/ scripts/ 2>/dev/null; then
+            echo "::error::Use keyset pagination, not OFFSET."; exit 1
+          fi
+
+      - name: Service role key never in client code
+        run: |
+          if grep -rn "SUPABASE_SERVICE_ROLE_KEY" --include=*.tsx --include=*.ts . \
+               2>/dev/null | grep -viE "(server|route|api|\.env)" ; then
+            echo "::error::The service role key must not reach the browser."; exit 1
+          fi
+
+      - name: Every table has row-level security
+        run: |
+          missing=0
+          for t in $(grep -rhoE "^create table ([a-z_]+)" supabase/migrations/ | awk '{print $3}'); do
+            if ! grep -q "alter table $t  *enable row level security" supabase/migrations/0011_rls.sql; then
+              echo "::error::table '$t' has no RLS"; missing=1
+            fi
+          done
+          exit $missing
