@@ -28,6 +28,14 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: 'auth',
+          environment: 'node',
+          include: ['tests/auth/**/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: 'media',
           environment: 'node',
           include: ['tests/media/**/*.test.ts'],

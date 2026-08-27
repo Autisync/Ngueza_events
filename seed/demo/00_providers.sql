@@ -8,32 +8,40 @@
 -- Prices are cêntimos: 2 000 000,00 Kz = 200000000.
 -- =====================================================================
 
--- 0015 ties profiles.id to auth.users. Locally that table is the test
--- shim; on a real Supabase project this demo seed is never applied, so
--- these rows never exist there.
-insert into auth.users (id, email) values
-  ('40000000-0000-0000-0000-000000000001','dono.horizonte@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000002','dono.palmeiras@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000003','dono.mirante@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000004','dono.baia@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000005','dono.kianda@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000006','dono.centro@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000090','ana.cliente@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000091','joao.cliente@exemplo.ao'),
-  ('40000000-0000-0000-0000-000000000099','admin@ngueza.com')
+-- Identities come from auth.users, exactly as they do in production: the
+-- 0016 trigger creates the profile, and the role travels in
+-- raw_app_meta_data because a user cannot write that field. Inserting
+-- into profiles directly would be a second provisioning path that could
+-- drift from the real one — and did, silently turning every supplier
+-- into a client.
+--
+-- On a real Supabase project this demo seed is never applied.
+insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data, raw_app_meta_data) values
+  ('40000000-0000-0000-0000-000000000001','dono.horizonte@exemplo.ao',now(),
+   '{"full_name":"Manuel Kiala"}',        '{"app_role":"provider"}'),
+  ('40000000-0000-0000-0000-000000000002','dono.palmeiras@exemplo.ao',now(),
+   '{"full_name":"Teresa Neto"}',         '{"app_role":"provider"}'),
+  ('40000000-0000-0000-0000-000000000003','dono.mirante@exemplo.ao',now(),
+   '{"full_name":"Adão Fernandes"}',      '{"app_role":"provider"}'),
+  ('40000000-0000-0000-0000-000000000004','dono.baia@exemplo.ao',now(),
+   '{"full_name":"Luísa Cabral"}',        '{"app_role":"provider"}'),
+  ('40000000-0000-0000-0000-000000000005','dono.kianda@exemplo.ao',now(),
+   '{"full_name":"Paulo Domingos"}',      '{"app_role":"provider"}'),
+  ('40000000-0000-0000-0000-000000000006','dono.centro@exemplo.ao',now(),
+   '{"full_name":"Sara Mendes"}',         '{"app_role":"provider"}'),
+  ('40000000-0000-0000-0000-000000000090','ana.cliente@exemplo.ao',now(),
+   '{"full_name":"Ana Paula"}',           '{"app_role":"client"}'),
+  ('40000000-0000-0000-0000-000000000091','joao.cliente@exemplo.ao',now(),
+   '{"full_name":"João Baptista"}',       '{"app_role":"client"}'),
+  ('40000000-0000-0000-0000-000000000099','admin@ngueza.com',now(),
+   '{"full_name":"Administração NGUEZA"}','{"app_role":"admin"}')
 on conflict (id) do nothing;
 
-insert into profiles (id, email, full_name, role, email_verified, phone_verified) values
-  ('40000000-0000-0000-0000-000000000001','dono.horizonte@exemplo.ao','Manuel Kiala','provider',true,true),
-  ('40000000-0000-0000-0000-000000000002','dono.palmeiras@exemplo.ao','Teresa Neto','provider',true,true),
-  ('40000000-0000-0000-0000-000000000003','dono.mirante@exemplo.ao','Adão Fernandes','provider',true,false),
-  ('40000000-0000-0000-0000-000000000004','dono.baia@exemplo.ao','Luísa Cabral','provider',true,true),
-  ('40000000-0000-0000-0000-000000000005','dono.kianda@exemplo.ao','Paulo Domingos','provider',true,true),
-  ('40000000-0000-0000-0000-000000000006','dono.centro@exemplo.ao','Sara Mendes','provider',true,true),
-  ('40000000-0000-0000-0000-000000000090','ana.cliente@exemplo.ao','Ana Paula','client',true,false),
-  ('40000000-0000-0000-0000-000000000091','joao.cliente@exemplo.ao','João Baptista','client',true,false),
-  ('40000000-0000-0000-0000-000000000099','admin@ngueza.com','Administração NGUEZA','admin',true,true)
-on conflict (id) do nothing;
+-- Only the fields the trigger cannot know.
+update profiles set phone_verified = true
+ where id in ('40000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000002',
+              '40000000-0000-0000-0000-000000000004','40000000-0000-0000-0000-000000000005',
+              '40000000-0000-0000-0000-000000000006','40000000-0000-0000-0000-000000000099');
 
 insert into providers (id, owner_id, supplier_type, slug, name, description,
                        category_id, location_id, address_line, phone, whatsapp,

@@ -25,6 +25,13 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f"
 done
 
+# The shim declares grants that depend on roles created in migration
+# 0012, so apply it a second time now that those roles exist. Every
+# statement in it is idempotent.
+if [ "${WITH_AUTH_SHIM:-1}" = "1" ]; then
+  psql -q -v ON_ERROR_STOP=1 -f "$ROOT/tests/bootstrap/00_auth_shim.sql"
+fi
+
 # Reference data — real Luanda locations, real categories, the platform
 # cancellation policy. Every environment needs these, production included.
 if [ "${WITH_REFERENCE:-1}" = "1" ]; then

@@ -15,12 +15,14 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:media": "vitest run --project media",
+    "test:auth": "vitest run --project auth",
     "db:reset": "./scripts/db-reset.sh",
     "db:test": "./scripts/db-test.sh",
     "schema:dump": "./scripts/schema-dump.sh",
     "gates": "npm run typecheck && npm run test:unit && npm run test:integration && npm run db:test"
   },
   "dependencies": {
+    "jose": "^6.2.10",
     "next": "^16.3.3",
     "pg": "^8.13.1",
     "react": "^19.2.0",

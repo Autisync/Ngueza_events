@@ -166,6 +166,26 @@ exception
 end $$;
 set role app_user;
 
+-- ---- 8c. a user cannot register themselves as an administrator ------
+-- The 0016 trigger reads the role from raw_APP_meta_data, which only the
+-- service role can write. raw_user_meta_data is whatever the person typed
+-- into the signup form, so trusting it would be an escalation.
+reset role;
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
+values ('77777777-7777-7777-7777-777777777777', 'esperto@x.ao',
+        '{"role":"admin","app_role":"admin","full_name":"Esperto"}', '{}');
+
+do $$
+declare v_role text;
+begin
+  select role into v_role from profiles where id = '77777777-7777-7777-7777-777777777777';
+  if v_role <> 'client' then
+    raise exception 'FAIL: signup metadata granted role %', v_role;
+  end if;
+  raise notice 'PASS: signup metadata cannot grant a role';
+end $$;
+set role app_user;
+
 -- ---- 9. an admin sees everything ------------------------------------
 select tests_login_as('99999999-9999-9999-9999-999999999999');
 do $$

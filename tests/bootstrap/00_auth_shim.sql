@@ -11,9 +11,14 @@
 
 create schema if not exists auth;
 
+-- Mirrors the columns 0016's triggers read. Not the whole GoTrue schema,
+-- only the parts this system depends on.
 create table if not exists auth.users (
-  id    uuid primary key,
-  email text
+  id                 uuid primary key,
+  email              text,
+  email_confirmed_at timestamptz,
+  raw_user_meta_data jsonb not null default '{}',
+  raw_app_meta_data  jsonb not null default '{}'
 );
 
 -- Mirrors Supabase: reads the subject from the request's JWT claims.
@@ -45,11 +50,32 @@ $$;
 -- the profile that points at it (0015). plpgsql defers name resolution,
 -- so this can reference `profiles` before the migrations create it.
 -- ---------------------------------------------------------------------
+-- The role goes in raw_app_meta_data, which is exactly how production
+-- assigns one: only the service role can write it, so a user cannot
+-- register themselves as an administrator. The 0016 trigger then creates
+-- the profile, so these fixtures exercise the real provisioning path
+-- rather than a parallel one that could drift from it.
 create or replace function tests_user(p_id uuid, p_email text, p_role text default 'client')
 returns uuid language plpgsql as $$
 begin
-  insert into auth.users (id, email) values (p_id, p_email) on conflict (id) do nothing;
-  insert into profiles (id, email, role) values (p_id, p_email, p_role)
-    on conflict (id) do nothing;
+  insert into auth.users (id, email, email_confirmed_at, raw_app_meta_data)
+  values (p_id, p_email, now(), jsonb_build_object('app_role', p_role))
+  on conflict (id) do nothing;
   return p_id;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Real Supabase already grants the service role access to the auth
+-- schema. Locally the shim owns it, so grant the same thing — otherwise
+-- tests that provision identities fail with "permission denied for
+-- schema auth", which looks like an RLS problem and is not one.
+--
+-- The roles come from migration 0012, so this runs after migrations.
+-- ---------------------------------------------------------------------
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant usage on schema auth to service_role;
+    grant select, insert, update, delete on auth.users to service_role;
+  end if;
 end $$;

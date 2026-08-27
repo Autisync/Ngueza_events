@@ -69,6 +69,32 @@ development and tests. Never apply them here.
 10 locations (Angola → Luanda → 8 municípios), and the platform default
 cancellation policy. No suppliers, no profiles, no bookings.
 
+## Deleting a user is a two-step, on purpose
+
+`profiles.id` references `auth.users` **ON DELETE RESTRICT** (0015), so the
+admin API cannot remove an identity that still has a profile:
+
+```json
+{"code":"23503","message":"update or delete on table \"users\" violates
+ foreign key constraint \"profiles_id_fkey\" on table \"profiles\""}
+```
+
+That is the §37 policy enforced rather than merely documented: an account
+is erased by clearing the profile, never by deleting the identity out from
+under bookings, payments and the audit trail (§38). Bookings reference
+`profiles` with RESTRICT too, so a profile with history cannot be removed
+either — which is the point.
+
+To remove a genuinely unused account:
+
+```sql
+delete from profiles where id = '<uuid>';   -- fails if they have history
+```
+
+then delete the identity through the admin API. For an account **with**
+history, erasure means setting `status = 'deleted'` and clearing the
+personal fields, leaving the row and its references intact.
+
 ## Rotate the credentials
 
 The database password and `service_role` key were shared over chat during
