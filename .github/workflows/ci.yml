@@ -137,11 +137,16 @@ jobs:
       # zero bytes once and it was committed unnoticed. Cheap to catch.
       - name: No tracked file is empty
         run: |
-          empty=$(git ls-files | while read -r f; do
-            [ -f "$f" ] && [ ! -s "$f" ] && echo "$f"
-          done)
+          # No pipeline into a loop: Actions runs `bash -e`, and an `&&`
+          # chain returning non-zero for every NON-empty file kills the
+          # subshell before it can report anything. `if` inside a plain
+          # for-loop cannot trip -e.
+          empty=""
+          for f in $(git ls-files); do
+            if [ -f "$f" ] && [ ! -s "$f" ]; then empty="$empty $f"; fi
+          done
           if [ -n "$empty" ]; then
-            echo "::error::empty tracked files: $empty"; exit 1
+            echo "::error::empty tracked files:$empty"; exit 1
           fi
           echo "no empty tracked files"
 
