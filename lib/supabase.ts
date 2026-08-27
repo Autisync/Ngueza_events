@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Reads the service role key.
+import 'server-only'
+
 /**
  * Supabase configuration.
  *

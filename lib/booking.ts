@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Writes bookings and runs the expiry job.
+import 'server-only'
+
 import { asSystem, asUser, isSlotTaken } from '@/lib/db'
 
 /**

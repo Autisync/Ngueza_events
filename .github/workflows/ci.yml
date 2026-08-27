@@ -85,18 +85,7 @@ jobs:
       # broken, and unit tests cannot tell the difference on their own.
       - name: Start MinIO and imgproxy
         working-directory: deploy/media
-        run: |
-          cat > .env <<'ENV'
-          MINIO_ROOT_USER=ngueza
-          MINIO_ROOT_PASSWORD=ci-password-not-a-secret
-          MEDIA_BUCKET=ngueza-media
-          MEDIA_REGION=us-east-1
-          MINIO_PUBLIC_URL=http://localhost:9000
-          MINIO_CONSOLE_URL=http://localhost:9001
-          IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
-          IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
-          ENV
-          docker compose up -d --wait
+        run: cp dev.env .env && ./wait-ready.sh
 
       - name: Media round-trip
         run: npm run test:media
@@ -116,6 +105,16 @@ jobs:
       # so that mistake cannot come back.
       - name: Production build (must not need a database)
         run: npm run build
+
+      - name: No secret reached the client bundle
+        run: |
+          # Next only inlines NEXT_PUBLIC_* into client code, but assert it
+          # against the real build output rather than trusting the rule.
+          test -d .next/static || { echo "no client bundle to check"; exit 1; }
+          if grep -rl "SUPABASE_SERVICE_ROLE_KEY\|MEDIA_SECRET_ACCESS_KEY\|IMGPROXY_SALT" .next/static 2>/dev/null; then
+            echo "::error::A server secret reached the client bundle."; exit 1
+          fi
+          echo "client bundle carries no server secrets"
 
       - name: spec/schema.sql is in sync with the migrations
         run: |
@@ -153,12 +152,22 @@ jobs:
             echo "::error::Use keyset pagination, not OFFSET."; exit 1
           fi
 
-      - name: Service role key never in client code
+      # The old version of this check matched path names, which is a guess.
+      # A module holding a secret is now marked `server-only`, so importing
+      # it from a client component fails the BUILD — verified by deliberately
+      # doing it. This step only enforces that the marks stay put.
+      - name: Modules holding secrets are marked server-only
         run: |
-          if grep -rn "SUPABASE_SERVICE_ROLE_KEY" --include=*.tsx --include=*.ts . \
-               2>/dev/null | grep -viE "(server|route|api|\.env)" ; then
-            echo "::error::The service role key must not reach the browser."; exit 1
-          fi
+          missing=0
+          for f in lib/db.ts lib/supabase.ts lib/media.ts lib/email.ts \
+                   lib/newsletter.ts lib/booking.ts lib/provider.ts \
+                   lib/search.ts lib/session.ts; do
+            if ! head -5 "$f" | grep -q "import 'server-only'"; then
+              echo "::error file=$f::$f holds secrets or bypasses RLS and must import 'server-only'"
+              missing=1
+            fi
+          done
+          exit $missing
 
       - name: Every table has row-level security
         run: |

@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Reads request cookies and headers.
+import 'server-only'
+
 import { cookies, headers } from 'next/headers'
 
 const COOKIE = 'ngz_sid'

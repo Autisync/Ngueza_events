@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Writes the consent trail as service_role.
+import 'server-only'
+
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { asSystem, asVisitor, isAlreadyExists } from '@/lib/db'

@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Holds the mail provider API key.
+import 'server-only'
+
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 

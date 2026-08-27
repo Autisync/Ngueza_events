@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "NGUEZA — plataforma de procura, reserva e gestão de serviços",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -23,6 +25,7 @@
     "pg": "^8.13.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "server-only": "^0.0.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {

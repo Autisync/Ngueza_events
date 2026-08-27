@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Holds the pooled connection and can adopt service_role.
+import 'server-only'
+
 import { Pool, type PoolClient } from 'pg'
 
 /**

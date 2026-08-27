@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Reads through the database pool.
+import 'server-only'
+
 import { asVisitor } from '@/lib/db'
 import type { Price } from '@/lib/money'
 

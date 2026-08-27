@@ -100,9 +100,17 @@ IMGPROXY_SALT=<hex>
 ## 7. Prove it works
 
 ```bash
-cd deploy/media && docker compose up -d
+cd deploy/media && cp dev.env .env && ./wait-ready.sh
 npm run test:media
 ```
+
+`dev.env` is committed and is for local use only — `docker-compose.yml`
+refuses to start without an explicit password and imgproxy keys, so a
+production stack cannot inherit those values by accident.
+
+`wait-ready.sh` rather than `docker compose up --wait`: `--wait` treats
+`minio-init` exiting 0 as a failure, because it cannot tell a finished job
+from a crashed service. That container is supposed to exit.
 
 Seven assertions: a presigned browser upload, downscale-and-convert,
 thumbnail from the same original, long cache headers, a tampered signature

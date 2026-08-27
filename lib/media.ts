@@ -1,3 +1,7 @@
+// Server-only. Importing this from a client component is a BUILD
+// ERROR, not a code-review question. Signs uploads with the object-storage secret.
+import 'server-only'
+
 import { createHash, createHmac, randomUUID } from 'node:crypto'
 
 /**
