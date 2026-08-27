@@ -133,6 +133,18 @@ jobs:
 
       # The rules in CLAUDE.md that can be checked mechanically. Each of
       # these is a shortcut that is cheap now and a rewrite later.
+      # A write-then-read in the same expression truncated README.md to
+      # zero bytes once and it was committed unnoticed. Cheap to catch.
+      - name: No tracked file is empty
+        run: |
+          empty=$(git ls-files | while read -r f; do
+            [ -f "$f" ] && [ ! -s "$f" ] && echo "$f"
+          done)
+          if [ -n "$empty" ]; then
+            echo "::error::empty tracked files: $empty"; exit 1
+          fi
+          echo "no empty tracked files"
+
       - name: No category or location enums
         run: |
           if grep -rniE "create type .*(category|location).* as enum" supabase/ ; then
