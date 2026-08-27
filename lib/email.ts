@@ -4,6 +4,7 @@ import 'server-only'
 
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { env } from '@/lib/env'
 
 /**
  * Two sending identities, deliberately separated.
@@ -28,8 +29,8 @@ export interface Mailer {
 
 function from(kind: MailKind): string {
   return kind === 'marketing'
-    ? process.env.EMAIL_FROM_MARKETING ?? 'novidades@ngueza.com'
-    : process.env.EMAIL_FROM_TRANSACTIONAL ?? 'reservas@ngueza.com'
+    ? env('EMAIL_FROM_MARKETING', 'novidades@ngueza.com')
+    : env('EMAIL_FROM_TRANSACTIONAL', 'reservas@ngueza.com')
 }
 
 class ResendMailer implements Mailer {
@@ -74,5 +75,7 @@ class OutboxMailer implements Mailer {
 
 export function mailer(): Mailer {
   const key = process.env.RESEND_API_KEY
-  return key ? new ResendMailer(key) : new OutboxMailer(process.env.MAIL_OUTBOX ?? '.outbox/mail.jsonl')
+  return key
+    ? new ResendMailer(key)
+    : new OutboxMailer(env('MAIL_OUTBOX', '.outbox/mail.jsonl'))
 }

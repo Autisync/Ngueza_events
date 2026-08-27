@@ -5,6 +5,7 @@ import 'server-only'
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { asSystem, asVisitor, isAlreadyExists } from '@/lib/db'
+import { siteUrl as site } from '@/lib/env'
 import { mailer } from '@/lib/email'
 
 /**
@@ -182,7 +183,7 @@ async function recordConsent(
 }
 
 function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  return site()
 }
 
 async function sendConfirmation(email: string, confirmToken: string): Promise<void> {

@@ -173,6 +173,19 @@ jobs:
       # A module holding a secret is now marked `server-only`, so importing
       # it from a client component fails the BUILD — verified by deliberately
       # doing it. This step only enforces that the marks stay put.
+      # `process.env.X ?? fallback` only falls back on null/undefined, never
+      # on ''. Every platform sets a declared-but-blank variable to '', so
+      # the fallback silently does not apply — which is how new URL('')
+      # took down a production build. Use env()/optionalEnv() from lib/env.
+      - name: No ?? fallback on an environment variable
+        run: |
+          if grep -rnE "process\.env\.[A-Z_]+ +\?\?" --include='*.ts' --include='*.tsx' \
+               app lib 2>/dev/null | grep -v '^lib/env.ts:'; then
+            echo "::error::Use env() or optionalEnv() from lib/env — '??' does not catch a blank value."
+            exit 1
+          fi
+          echo "no ?? fallbacks on environment variables"
+
       - name: Modules holding secrets are marked server-only
         run: |
           missing=0

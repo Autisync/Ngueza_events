@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next'
 import { asVisitor } from '@/lib/db'
+import { siteUrl } from '@/lib/env'
 
-const site = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+const site = siteUrl()
 
 /**
  * Generated per request, not at build.

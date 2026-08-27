@@ -3,6 +3,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
+import { optionalEnv, siteUrl } from '@/lib/env'
 import {
   clearSession, readTokens, requestPasswordReset, revoke,
   signIn, signUp, storeSession, updatePassword,
@@ -22,7 +23,12 @@ const credentials = z.object({
 })
 
 function site(h: Headers): string {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? `https://${h.get('host') ?? 'localhost:3000'}`
+  const configured = optionalEnv('NEXT_PUBLIC_SITE_URL')
+  if (configured) return siteUrl()
+  // No configured origin: trust the request's own host rather than
+  // emailing everyone a link to localhost.
+  const host = h.get('host')
+  return host ? `https://${host}` : siteUrl()
 }
 
 export async function doSignIn(formData: FormData): Promise<void> {

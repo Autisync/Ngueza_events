@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from 'next'
+import { siteUrl } from '@/lib/env'
 import './globals.css'
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
+  metadataBase: new URL(siteUrl()),
   title: {
     default: 'NGUEZA — encontre e reserve espaços para o seu evento',
     template: '%s · NGUEZA',

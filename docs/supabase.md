@@ -104,3 +104,24 @@ data. Rotate both:
 - **Settings → Database → Reset database password**
 - **Settings → API → JWT Settings → Generate new secret** (this rotates
   the anon and service_role keys; update every deployment afterwards)
+
+## Deploying to Vercel
+
+Set these in **Project → Settings → Environment Variables**:
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_SITE_URL` | The real origin, e.g. `https://ngueza.com`. **Leave it out rather than blank** — a declared-but-empty variable is `''`, not undefined. |
+| `NEXT_PUBLIC_SUPABASE_URL` | The project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | The anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only. Never expose to the browser. |
+| `DATABASE_URL` | The **pooler**, not `db.<ref>.supabase.co` — the direct host is IPv6-only. |
+| `CRON_SECRET` | For `POST /api/cron/expire` |
+| `MEDIA_*`, `IMGPROXY_*` | See `deploy/media/README.md` |
+
+If `NEXT_PUBLIC_SITE_URL` is missing, `siteUrl()` falls back to
+`VERCEL_PROJECT_PRODUCTION_URL` and then `VERCEL_URL`, so canonical URLs,
+sitemap entries and confirmation links still point somewhere real. Set it
+explicitly anyway: `VERCEL_URL` is the per-deployment preview host and
+changes on every push, which is not what you want in an email someone
+opens a week later.

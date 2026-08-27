@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { createHash, createHmac, randomUUID } from 'node:crypto'
+import { env } from '@/lib/env'
 
 /**
  * Media (§40).
@@ -227,8 +228,8 @@ export function mediaStore(): MediaStore {
   return new MinioImgproxyStore({
     s3Endpoint: required('MEDIA_S3_ENDPOINT'),
     publicEndpoint: required('MEDIA_S3_PUBLIC_ENDPOINT'),
-    bucket: process.env.MEDIA_BUCKET ?? 'ngueza-media',
-    region: process.env.MEDIA_REGION ?? 'us-east-1',
+    bucket: env('MEDIA_BUCKET', 'ngueza-media'),
+    region: env('MEDIA_REGION', 'us-east-1'),
     accessKeyId: required('MEDIA_ACCESS_KEY_ID'),
     secretAccessKey: required('MEDIA_SECRET_ACCESS_KEY'),
     imgproxyUrl: required('IMGPROXY_PUBLIC_URL'),
