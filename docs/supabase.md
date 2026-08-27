@@ -1,6 +1,6 @@
 # Supabase
 
-Project `fhwuvicltvyoqgatgwwp`, region `eu-west-1`. Schema deployed and
+Region `eu-west-1`. The project ref lives in `.env.local`, not here. Schema deployed and
 verified; `scripts/verify-remote.sh` proves it behaves like the tested one.
 
 ## Connect through the pooler, not the direct host
@@ -8,7 +8,7 @@ verified; `scripts/verify-remote.sh` proves it behaves like the tested one.
 `db.<ref>.supabase.co` resolves to **IPv6 only**:
 
 ```
-$ host db.fhwuvicltvyoqgatgwwp.supabase.co
+$ host db.<project-ref>.supabase.co
 ... has IPv6 address 2a05:d018:cb1:bb02:...      ← no A record
 ```
 
