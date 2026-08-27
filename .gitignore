@@ -42,3 +42,9 @@ docs/source/*.pdf
 
 # local media stack env (secrets)
 deploy/media/.env
+
+# local cron stack env
+deploy/cron/.env
+
+# local cron stack env
+deploy/cron/.env
