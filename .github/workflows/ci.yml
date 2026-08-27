@@ -87,11 +87,11 @@ jobs:
         working-directory: deploy/media
         run: cp dev.env .env && ./wait-ready.sh
 
+      # No env overrides: the suite defaults to the same values as
+      # deploy/media/dev.env, which is what the stack was started with.
+      # Overriding one and not the other is how this failed the first time.
       - name: Media round-trip
         run: npm run test:media
-        env:
-          MEDIA_ACCESS_KEY_ID: ngueza
-          MEDIA_SECRET_ACCESS_KEY: ci-password-not-a-secret
 
       - name: Stop the media stack
         if: always()
