@@ -56,6 +56,13 @@ an incomplete slice.
 **Webhooks are replayed.** Every external webhook is idempotent, keyed on the
 provider's own event id under a unique constraint.
 
+**An empty result is not the same as no constraint.** When logic as `anon`
+returns a suspiciously permissive answer, check whether RLS is hiding the
+rows that logic depends on. Availability computed as `not exists (select ...
+from bookings)` returns TRUE for every date, because a visitor sees no
+bookings at all. Expose the derived fact through a `SECURITY DEFINER`
+function that returns only what the public may know — see `resource_is_free`.
+
 **A write that reads is a read.** `INSERT ... RETURNING` and `ON CONFLICT`
 both require a SELECT policy, because both have to look at a row. Where a
 role has no SELECT policy — `anon` on `newsletter_subscribers`, for instance —
