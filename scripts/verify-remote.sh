@@ -37,14 +37,26 @@ begin
 end $$;
 
 -- ---- fixtures ---------------------------------------------------------
-insert into auth.users (id, email) values
-  ('00000000-dead-0000-0000-000000000001','verify.dono@ngueza.invalid'),
-  ('00000000-dead-0000-0000-000000000002','verify.ana@ngueza.invalid')
+-- Identities come from auth.users only: migration 0016's trigger creates
+-- the profile, and the role travels in raw_app_meta_data. Inserting into
+-- profiles as well would collide with the trigger's row — which is
+-- exactly how this script broke the first time 0016 was deployed.
+insert into auth.users (id, email, email_confirmed_at, raw_app_meta_data) values
+  ('00000000-dead-0000-0000-000000000001','verify.dono@ngueza.invalid',now(),
+   '{"app_role":"provider"}'),
+  ('00000000-dead-0000-0000-000000000002','verify.ana@ngueza.invalid',now(),
+   '{"app_role":"client"}')
 on conflict do nothing;
 
-insert into profiles (id, email, role) values
-  ('00000000-dead-0000-0000-000000000001','verify.dono@ngueza.invalid','provider'),
-  ('00000000-dead-0000-0000-000000000002','verify.ana@ngueza.invalid','client');
+do $$
+declare v_role text;
+begin
+  select role into v_role from profiles where id = '00000000-dead-0000-0000-000000000001';
+  if v_role is distinct from 'provider' then
+    raise exception 'FAIL: the provisioning trigger did not run (role=%)', v_role;
+  end if;
+  raise notice 'PASS: a profile is provisioned for every identity, with its role';
+end $$;
 
 insert into providers (id, owner_id, supplier_type, slug, name, category_id, location_id,
                        verification_status, is_published)
