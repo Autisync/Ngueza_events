@@ -55,7 +55,7 @@ jobs:
         run: ./scripts/db-test.sh
 
       - name: Seed the test database for integration tests
-        run: WITH_SEED=1 ./scripts/db-reset.sh
+        run: WITH_REFERENCE=1 WITH_DEMO=1 ./scripts/db-reset.sh
         env:
           PGDATABASE: ngueza_test
 
@@ -70,15 +70,44 @@ jobs:
         run: npm run typecheck
 
       - name: Unit tests
-        run: npx vitest run --project unit
+        run: npm run test:unit
 
       # The waitlist acceptance criteria, against a real database and a
       # real outbox — double opt-in, idempotent confirmation, one-click
       # unsubscribe, and no enumeration of the list.
       - name: Integration tests
-        run: npx vitest run --project integration
+        run: npm run test:integration
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ngueza_test
+
+      # The media stack, for real. imgproxy signing and SigV4 presigning
+      # are the kind of thing that is either exactly right or completely
+      # broken, and unit tests cannot tell the difference on their own.
+      - name: Start MinIO and imgproxy
+        working-directory: deploy/media
+        run: |
+          cat > .env <<'ENV'
+          MINIO_ROOT_USER=ngueza
+          MINIO_ROOT_PASSWORD=ci-password-not-a-secret
+          MEDIA_BUCKET=ngueza-media
+          MEDIA_REGION=us-east-1
+          MINIO_PUBLIC_URL=http://localhost:9000
+          MINIO_CONSOLE_URL=http://localhost:9001
+          IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+          IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+          ENV
+          docker compose up -d --wait
+
+      - name: Media round-trip
+        run: npm run test:media
+        env:
+          MEDIA_ACCESS_KEY_ID: ngueza
+          MEDIA_SECRET_ACCESS_KEY: ci-password-not-a-secret
+
+      - name: Stop the media stack
+        if: always()
+        working-directory: deploy/media
+        run: docker compose down -v
 
       # Deliberately WITHOUT DATABASE_URL. A page that queries the database
       # at build time freezes its content at deploy — the sitemap did

@@ -16,7 +16,7 @@ case "$PGDATABASE" in
 esac
 
 echo "→ building $PGDATABASE (migrations only, no seed)"
-WITH_SEED=0 "$ROOT/scripts/db-reset.sh" >/dev/null
+WITH_REFERENCE=0 WITH_DEMO=0 "$ROOT/scripts/db-reset.sh" >/dev/null
 
 fail=0
 for f in "$ROOT"/tests/sql/*.sql; do

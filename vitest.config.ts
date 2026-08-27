@@ -21,6 +21,14 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: 'media',
+          environment: 'node',
+          include: ['tests/media/**/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: 'integration',
           environment: 'node',
           include: ['tests/integration/**/*.test.ts'],

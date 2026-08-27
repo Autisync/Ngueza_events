@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# =====================================================================
+# Prove a deployed database behaves like the tested one.
+#
+# Everything runs inside a single transaction that is ROLLED BACK, so it
+# is safe against a live project: no rows, roles or sequences survive.
+# Run after any migration deploy.
+#
+#   set -a; source .env.local; set +a; ./scripts/verify-remote.sh
+# =====================================================================
+set -uo pipefail
+: "${DATABASE_URL:?DATABASE_URL must be set}"
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+
+-- ---- structure --------------------------------------------------------
+do $$
+declare v_missing text;
+begin
+  select string_agg(c.relname, ', ') into v_missing
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
+  if v_missing is not null then
+    raise exception 'FAIL: tables without RLS: %', v_missing;
+  end if;
+  raise notice 'PASS: row-level security is on for every table';
+end $$;
+
+do $$
+begin
+  if to_regclass('public.bookings') is null
+     or not exists (select 1 from pg_constraint where conname = 'bookings_no_double_booking') then
+    raise exception 'FAIL: the double-booking constraint is missing';
+  end if;
+  raise notice 'PASS: the double-booking constraint exists';
+end $$;
+
+-- ---- fixtures ---------------------------------------------------------
+insert into auth.users (id, email) values
+  ('00000000-dead-0000-0000-000000000001','verify.dono@ngueza.invalid'),
+  ('00000000-dead-0000-0000-000000000002','verify.ana@ngueza.invalid')
+on conflict do nothing;
+
+insert into profiles (id, email, role) values
+  ('00000000-dead-0000-0000-000000000001','verify.dono@ngueza.invalid','provider'),
+  ('00000000-dead-0000-0000-000000000002','verify.ana@ngueza.invalid','client');
+
+insert into providers (id, owner_id, supplier_type, slug, name, category_id, location_id,
+                       verification_status, is_published)
+select '00000000-dead-0000-0000-00000000000a','00000000-dead-0000-0000-000000000001','venue',
+       'verify-salao','Verify Salão', c.id, l.id, 'verified', true
+  from categories c, locations l
+ where c.slug = 'saloes-de-festas' and l.slug = 'talatona';
+
+insert into resources (id, provider_id, name, capacity)
+values ('00000000-dead-0000-0000-00000000000b','00000000-dead-0000-0000-00000000000a','Salão',100);
+
+insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+values ('00000000-dead-0000-0000-00000000000a','00000000-dead-0000-0000-000000000002',
+        '00000000-dead-0000-0000-00000000000b','confirmed',
+        '2030-01-10 10:00+01','2030-01-10 23:00+01');
+
+-- ---- the guarantee ----------------------------------------------------
+do $$
+begin
+  insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+  values ('00000000-dead-0000-0000-00000000000a','00000000-dead-0000-0000-000000000002',
+          '00000000-dead-0000-0000-00000000000b','confirmed',
+          '2030-01-10 18:00+01','2030-01-11 02:00+01');
+  raise exception 'FAIL: the database accepted a double booking';
+exception
+  when exclusion_violation then
+    raise notice 'PASS: overlapping venue booking refused';
+end $$;
+
+-- ---- what an anonymous visitor can see --------------------------------
+set local role anon;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+declare v_bookings int; v_free boolean; v_providers int;
+begin
+  select count(*) into v_bookings from bookings;
+  if v_bookings <> 0 then raise exception 'FAIL: anon read % bookings', v_bookings; end if;
+
+  select resource_is_free('00000000-dead-0000-0000-00000000000b',
+                          '2030-01-10 00:00+01','2030-01-10 23:59+01') into v_free;
+  if v_free then raise exception 'FAIL: availability lied — occupied date reported free'; end if;
+  raise notice 'PASS: anon reads no bookings and still gets truthful availability';
+
+  select count(*) into v_providers from providers where slug = 'verify-salao';
+  if v_providers <> 1 then raise exception 'FAIL: published supplier not visible to anon'; end if;
+  raise notice 'PASS: anon sees the published, verified supplier';
+end $$;
+
+do $$
+declare v_n int;
+begin
+  insert into newsletter_subscribers (email, status, source)
+  values ('verify@ngueza.invalid','pending','waitlist');
+  select count(*) into v_n from newsletter_subscribers;
+  if v_n <> 0 then raise exception 'FAIL: anon read % newsletter rows', v_n; end if;
+  raise notice 'PASS: anon can join the waitlist but cannot read it';
+end $$;
+
+reset role;
+rollback;
+SQL

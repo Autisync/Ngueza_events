@@ -6,10 +6,9 @@
 begin;
 
 -- ---- fixtures -------------------------------------------------------
-insert into profiles (id, email, role) values
-  ('11111111-1111-1111-1111-111111111111', 'dono@salao.ao',  'provider'),
-  ('22222222-2222-2222-2222-222222222222', 'ana@example.ao', 'client'),
-  ('33333333-3333-3333-3333-333333333333', 'joao@example.ao','client');
+select tests_user('11111111-1111-1111-1111-111111111111', 'dono@salao.ao',  'provider');
+select tests_user('22222222-2222-2222-2222-222222222222', 'ana@example.ao', 'client');
+select tests_user('33333333-3333-3333-3333-333333333333', 'joao@example.ao','client');
 
 insert into categories (id, slug, name, default_supplier_type) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 't-saloes', 'Salões de festas', 'venue'),

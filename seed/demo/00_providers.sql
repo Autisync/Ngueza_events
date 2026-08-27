@@ -8,6 +8,21 @@
 -- Prices are cêntimos: 2 000 000,00 Kz = 200000000.
 -- =====================================================================
 
+-- 0015 ties profiles.id to auth.users. Locally that table is the test
+-- shim; on a real Supabase project this demo seed is never applied, so
+-- these rows never exist there.
+insert into auth.users (id, email) values
+  ('40000000-0000-0000-0000-000000000001','dono.horizonte@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000002','dono.palmeiras@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000003','dono.mirante@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000004','dono.baia@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000005','dono.kianda@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000006','dono.centro@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000090','ana.cliente@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000091','joao.cliente@exemplo.ao'),
+  ('40000000-0000-0000-0000-000000000099','admin@ngueza.com')
+on conflict (id) do nothing;
+
 insert into profiles (id, email, full_name, role, email_verified, phone_verified) values
   ('40000000-0000-0000-0000-000000000001','dono.horizonte@exemplo.ao','Manuel Kiala','provider',true,true),
   ('40000000-0000-0000-0000-000000000002','dono.palmeiras@exemplo.ao','Teresa Neto','provider',true,true),

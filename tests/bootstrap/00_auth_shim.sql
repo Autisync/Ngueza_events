@@ -39,3 +39,17 @@ create or replace function tests_logout()
 returns void language sql as $$
   select set_config('request.jwt.claims', '', true);
 $$;
+
+-- ---------------------------------------------------------------------
+-- Create an identity the way production does: an auth user first, then
+-- the profile that points at it (0015). plpgsql defers name resolution,
+-- so this can reference `profiles` before the migrations create it.
+-- ---------------------------------------------------------------------
+create or replace function tests_user(p_id uuid, p_email text, p_role text default 'client')
+returns uuid language plpgsql as $$
+begin
+  insert into auth.users (id, email) values (p_id, p_email) on conflict (id) do nothing;
+  insert into profiles (id, email, role) values (p_id, p_email, p_role)
+    on conflict (id) do nothing;
+  return p_id;
+end $$;

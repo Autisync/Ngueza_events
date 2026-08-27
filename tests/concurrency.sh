@@ -24,12 +24,13 @@ delete from resources  where provider_id::text like 'cccccccc-9999%';
 delete from providers  where id::text like 'cccccccc-9999%';
 delete from profiles   where id in ('11111111-9999-1111-1111-111111111111',
                                     '22222222-9999-2222-2222-222222222222');
+delete from auth.users where id in ('11111111-9999-1111-1111-111111111111',
+                                    '22222222-9999-2222-2222-222222222222');
 delete from categories where id = 'aaaaaaaa-9999-0000-0000-000000000001';
 delete from locations  where id = 'bbbbbbbb-9999-0000-0000-000000000001';
 
-insert into profiles (id, email, role) values
-  ('11111111-9999-1111-1111-111111111111','race.dono@x.ao','provider'),
-  ('22222222-9999-2222-2222-222222222222','race.ana@x.ao','client');
+select tests_user('11111111-9999-1111-1111-111111111111','race.dono@x.ao','provider');
+select tests_user('22222222-9999-2222-2222-222222222222','race.ana@x.ao','client');
 insert into categories (id, slug, name, default_supplier_type)
   values ('aaaaaaaa-9999-0000-0000-000000000001','race-saloes','Salões','venue');
 insert into locations (id, level, slug, name)

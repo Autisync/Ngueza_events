@@ -25,9 +25,21 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f"
 done
 
-if [ "${WITH_SEED:-1}" = "1" ]; then
-  for f in "$ROOT"/seed/*.sql; do
-    echo "→ seed $(basename "$f")"
+# Reference data — real Luanda locations, real categories, the platform
+# cancellation policy. Every environment needs these, production included.
+if [ "${WITH_REFERENCE:-1}" = "1" ]; then
+  for f in "$ROOT"/seed/reference/*.sql; do
+    echo "→ reference $(basename "$f")"
+    psql -q -v ON_ERROR_STOP=1 -f "$f"
+  done
+fi
+
+# Demo suppliers. Local development and tests ONLY. "Salão Horizonte" and
+# "Quinta das Palmeiras" do not exist; shipping them to production would
+# put fake listings in front of real clients.
+if [ "${WITH_DEMO:-1}" = "1" ]; then
+  for f in "$ROOT"/seed/demo/*.sql; do
+    echo "→ demo $(basename "$f")"
     psql -q -v ON_ERROR_STOP=1 -f "$f"
   done
 fi

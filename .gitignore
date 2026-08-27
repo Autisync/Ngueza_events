@@ -39,3 +39,6 @@ docs/source/*.pdf
 
 # local mail outbox (dev/CI stand-in for Resend)
 .outbox/
+
+# local media stack env (secrets)
+deploy/media/.env

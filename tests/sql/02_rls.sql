@@ -11,11 +11,10 @@ grant usage on schema public, auth to app_user;
 grant select, insert, update on all tables in schema public to app_user;
 grant execute on all functions in schema public, auth to app_user;
 
-insert into profiles (id, email, role) values
-  ('11111111-1111-1111-1111-111111111111', 'dono.a@x.ao', 'provider'),
-  ('44444444-4444-4444-4444-444444444444', 'dono.b@x.ao', 'provider'),
-  ('22222222-2222-2222-2222-222222222222', 'ana@x.ao',    'client'),
-  ('99999999-9999-9999-9999-999999999999', 'admin@x.ao',  'admin');
+select tests_user('11111111-1111-1111-1111-111111111111', 'dono.a@x.ao', 'provider');
+select tests_user('44444444-4444-4444-4444-444444444444', 'dono.b@x.ao', 'provider');
+select tests_user('22222222-2222-2222-2222-222222222222', 'ana@x.ao',    'client');
+select tests_user('99999999-9999-9999-9999-999999999999', 'admin@x.ao',  'admin');
 
 insert into categories (id, slug, name, default_supplier_type)
   values ('aaaaaaaa-0000-0000-0000-000000000001','t-saloes','Salões','venue');
