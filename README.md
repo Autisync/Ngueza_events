@@ -26,6 +26,15 @@ Schema and safety rails. No application code yet — that starts at slice 02.
 
 Requires PostgreSQL 17 and Node 20+.
 
+On macOS:
+
+```bash
+brew install postgresql@17 && brew services start postgresql@17
+export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
+```
+
+Then:
+
 ```bash
 createdb ngueza
 npm run db:reset     # migrations + seed
