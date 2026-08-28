@@ -163,5 +163,33 @@ exception
 end $$;
 
 reset role;
+
+-- ---- provider_health is administrator-only (0024, slice 14) -----------
+-- The view had no security_invoker, so it ran with its owner's
+-- privileges against bookings/booking_events and ignored their RLS —
+-- confirmed live before this was even a migration: anon could read
+-- every supplier's booking-derived numbers. Asserted permanently so a
+-- future `create or replace view provider_health` cannot silently drop
+-- the fix.
+set local role anon;
+select set_config('request.jwt.claims', '', true);
+do $$
+begin
+  perform 1 from provider_health;
+  raise exception 'FAIL: anon could read provider_health directly';
+exception
+  when insufficient_privilege then
+    raise notice 'PASS: anon refused direct SELECT on provider_health';
+end $$;
+do $$
+begin
+  perform admin_provider_health();
+  raise exception 'FAIL: anon could call admin_provider_health()';
+exception
+  when insufficient_privilege then
+    raise notice 'PASS: anon refused admin_provider_health()';
+end $$;
+
+reset role;
 rollback;
 SQL

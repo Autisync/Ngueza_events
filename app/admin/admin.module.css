@@ -57,3 +57,10 @@
 .audit .when { color: var(--tinta-3); }
 .alert { padding: 12px 14px; border-radius: var(--raio); margin: 0 0 16px; font-size: 0.93rem;
          background: var(--bom-fundo); color: var(--bom); border: 1px solid rgba(27,107,78,0.3); }
+
+/* Metrics dashboard — added for slice 14. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.stat { border: 1px solid var(--linha); border-radius: var(--raio); padding: 12px 14px; }
+.stat .n { display: block; font-size: 1.4rem; font-weight: 700; color: var(--azul-700); letter-spacing: -0.02em; }
+.stat .label { display: block; font-size: 0.78rem; color: var(--tinta-3); margin-top: 2px; }
+.statWarn .n { color: #8A5D0E; }

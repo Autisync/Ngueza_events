@@ -19,7 +19,7 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 23 migrations from empty · 182 tests · 21 database assertions |
+| Verified | 24 migrations from empty · 187 tests · 21 database assertions |
 
 ### Done
 
@@ -40,6 +40,7 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 | 10 | Notifications — the outbox pattern, booking transitions, verification decisions |
 | 03 | Categories and locations, administered at runtime — the CLAUDE.md rule, made real |
 | 11 | Reviews — verified seal, sub-scores, supplier right of reply |
+| 14 | Admin metrics — today/month activity, §32 leakage ratio, supplier health |
 
 ### Infrastructure
 
@@ -60,7 +61,6 @@ Measured: a 1600×1067 PNG of 139 KB is delivered as a 640×427 WebP of
 
 | Slice | Blocked on |
 |---|---|
-| 14 | Nothing external. |
 | Real signups at volume | **SMTP for Supabase Auth.** The built-in mailer allows a few messages an hour and lands in spam. Point it at Resend before anyone outside the team registers. |
 | 15 legal pages | **A lawyer**. Terms, privacy and cancellation policy are not drafts to generate |
 | 16 payments | Legal opinion first (§28), then a provider |
