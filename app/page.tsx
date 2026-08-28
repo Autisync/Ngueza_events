@@ -167,7 +167,11 @@ export default async function Waitlist({
             É fornecedor? Estamos a registar salões, casas de festas e salas de conferência em
             Luanda. Escreva para fornecedores@ngueza.com.
           </p>
-          <p>NGUEZA · Luanda, Angola</p>
+          <p>
+            NGUEZA · Luanda, Angola ·{' '}
+            <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
+            <a href="/cancelamento">Cancelamento</a>
+          </p>
         </footer>
       </div>
     </main>

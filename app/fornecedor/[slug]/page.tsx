@@ -368,6 +368,10 @@ export default async function ProviderPage({
             Os preços e a disponibilidade são indicados pelo fornecedor. Confirme sempre antes de
             efectuar qualquer pagamento.
           </p>
+          <p>
+            <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
+            <a href="/cancelamento">Cancelamento</a>
+          </p>
         </footer>
       </div>
     </main>

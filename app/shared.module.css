@@ -9,7 +9,14 @@
 }
 .iconOk { background: var(--bom-fundo); color: var(--bom); }
 .iconWarn { background: var(--erro-fundo); color: var(--erro); }
+.iconWait { background: #F8EFDC; color: #8A5D0E; }
 .title { font-size: 1.55rem; line-height: 1.2; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.015em; }
 .body { color: var(--tinta-2); margin: 0 0 14px; }
 .body strong { color: var(--tinta); }
 .back { display: inline-block; margin-top: 20px; font-weight: 600; }
+
+/* Cross-links between the legal pages (§15). */
+.legalNav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 28px 0 0;
+            padding-top: 20px; border-top: 1px solid var(--linha);
+            font-size: 0.88rem; color: var(--tinta-3); }
+.legalNav a { font-weight: 600; }
