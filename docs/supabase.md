@@ -65,9 +65,11 @@ development and tests. Never apply them here.
 
 ## What is already deployed
 
-15 migrations, RLS on all 18 tables, and reference data: 15 categories,
+25 migrations, RLS on all 22 tables, and reference data: 15 categories,
 10 locations (Angola → Luanda → 8 municípios), and the platform default
-cancellation policy. No suppliers, no profiles, no bookings.
+cancellation policy. No suppliers, no profiles, no bookings — every
+identity this session created to verify a slice live was deleted
+afterward; `select count(*) from providers` on the live project is 0.
 
 ## Deleting a user is a two-step, on purpose
 
@@ -94,6 +96,51 @@ delete from profiles where id = '<uuid>';   -- fails if they have history
 then delete the identity through the admin API. For an account **with**
 history, erasure means setting `status = 'deleted'` and clearing the
 personal fields, leaving the row and its references intact.
+
+## Point Supabase Auth's mailer at Resend
+
+Two separate email paths exist in this codebase, easy to conflate:
+
+- `lib/email.ts` sends the app's own transactional and marketing mail
+  (booking updates, verification decisions) through the Resend API
+  directly. Already wired up, already deployed.
+- **Supabase Auth's own built-in mailer** sends everything GoTrue
+  generates itself — the signup confirmation link, the password-reset
+  email. This one is *not* code; it is a setting on the Supabase project,
+  and it still uses Supabase's shared mailer today. That mailer allows a
+  few messages an hour and lands in spam — fine for the identities this
+  session creates and deletes for verification, not fine for a real
+  person's confirmation email arriving in junk or not arriving at all.
+
+This is a dashboard change, not a deploy, and it needs a real Resend API
+key — nothing here can complete it. The steps, so it is a checklist
+rather than a research task when a Resend account exists:
+
+1. **Resend → API Keys** — create a key scoped to sending only.
+2. **Resend → Domains** — verify `ngueza.com` (or whatever domain the
+   `EMAIL_FROM_TRANSACTIONAL` / `EMAIL_FROM_MARKETING` addresses in
+   `lib/email.ts` actually use) so mail from it is not immediately
+   flagged.
+3. **Supabase → Project Settings → Authentication → SMTP Settings** —
+   enable custom SMTP and fill in:
+
+   | Field | Value |
+   |---|---|
+   | Sender email | An address on the verified domain, e.g. `reservas@ngueza.com` |
+   | Sender name | `NGUEZA` |
+   | Host | `smtp.resend.com` |
+   | Port | `587` |
+   | Username | `resend` (literally, not an account name) |
+   | Password | The Resend API key from step 1 |
+
+4. **Supabase → Authentication → Email Templates** — the default
+   templates are in English; translate them to pt-AO to match the rest
+   of the product before real signups start.
+5. Send a real test signup through `/criar-conta` afterward and confirm
+   the email arrives from the right address, not spam-filtered.
+
+Until this is done, real signups at volume stay blocked, exactly as
+README's own table says.
 
 ## Rotate the credentials
 

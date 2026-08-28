@@ -61,7 +61,7 @@ Measured: a 1600×1067 PNG of 139 KB is delivered as a 640×427 WebP of
 
 | Slice | Blocked on |
 |---|---|
-| Real signups at volume | **SMTP for Supabase Auth.** The built-in mailer allows a few messages an hour and lands in spam. Point it at Resend before anyone outside the team registers. |
+| Real signups at volume | **SMTP for Supabase Auth.** The built-in mailer allows a few messages an hour and lands in spam. A Resend account and API key, plus five dashboard steps — see [`docs/supabase.md`](docs/supabase.md#point-supabase-auths-mailer-at-resend) — before anyone outside the team registers. |
 | 15 legal pages | **A lawyer**. Terms, privacy and cancellation policy are not drafts to generate. Routes exist (`/termos`, `/privacidade`, `/cancelamento`) and are linked from the footer, each holding a plain "pending legal review" placeholder — see `spec/slices/15-legal-pages.md` |
 | 16 payments | **Legal opinion first (§28), then a provider.** The non-money half — the client uploading proof of an off-platform payment, an administrator eyeballing it as plausible, the supplier still separately confirming — is built; NGUEZA never receives, holds, or moves money at any point in it. See `spec/slices/16-payment-proof.md` |
 
