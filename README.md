@@ -99,6 +99,31 @@ npm run test:media
 `db:reset` applies a local-only `auth` shim so the schema runs on plain
 Postgres. Deployed environments get the real `auth` schema from Supabase.
 
+### First administrator on a fresh Supabase project — break glass, once
+
+`profiles_guard_role` (0011) requires an existing admin to promote anyone
+to `admin` — correct, and also a chicken-and-egg gap on a project that
+has none yet. `scripts/bootstrap-admin.sh` is a **one-time, by-hand**
+escape hatch for exactly that moment, not a repeatable command:
+
+```bash
+set -a; source .env.local; set +a
+./scripts/bootstrap-admin.sh admin@ngueza.com
+```
+
+It writes directly to `auth.users` in a single INSERT with a real bcrypt
+password hash — not the Supabase Admin REST API, which does an
+insert-then-update that `handle_new_auth_user` (0016) can race and
+silently provision `client` instead. Verified end to end against a live
+project: sign-in through the real `/entrar` form, `/admin` loads.
+
+The script refuses outright unless you confirm explicitly when the
+project already has an admin — that situation means someone is reaching
+for the wrong tool, not that the tool needs a bigger hammer. See the
+comments at the top of the script for the full "why" and see
+[`spec/slices/14-admin-metrics.md`](spec/slices/14-admin-metrics.md) for
+how the gap was found.
+
 ---
 
 ## Layout
