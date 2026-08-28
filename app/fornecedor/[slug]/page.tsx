@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { formatPrice } from '@/lib/money'
 import { availability, getProvider, recordProviderView } from '@/lib/provider'
 import { isCrawler, sessionId } from '@/lib/session'
+import { currentProfile } from '@/lib/auth'
+import { doRequestBooking } from '@/app/booking-actions'
 import { PhoneLink } from './PhoneLink'
 import styles from './provider.module.css'
 
@@ -36,9 +38,16 @@ export async function generateMetadata({
   }
 }
 
-export default async function ProviderPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ProviderPage({
+  params, searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ erro?: string }>
+}) {
   const { slug } = await params
-  const provider = await getProvider(slug)
+  const [provider, flags, profile] = await Promise.all([
+    getProvider(slug), searchParams, currentProfile(),
+  ])
   if (!provider) notFound()
 
   // Crawlers must reach this page (§50) but must not inflate a supplier's
@@ -183,6 +192,111 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
             </p>
           </section>
         ) : null}
+
+        <section className={styles.sec} id="reservar">
+          <h2 className={styles.h}>Solicitar reserva</h2>
+          {flags.erro ? (
+            <p className={styles.svcPriceQuiet} style={{
+              color: 'var(--erro)', background: 'var(--erro-fundo)',
+              padding: '10px 14px', borderRadius: 'var(--raio)', marginBottom: 14,
+            }}>
+              {flags.erro === 'data_indisponivel'
+                ? 'Essa data já não está disponível. Escolha outra.'
+                : flags.erro === 'horario'
+                  ? 'A hora de fim tem de ser depois da hora de início.'
+                  : 'Verifique os dados introduzidos.'}
+            </p>
+          ) : null}
+
+          {!profile ? (
+            <p className={styles.p}>
+              <a href={`/entrar?next=/fornecedor/${provider.slug}%23reservar`}>Entre na sua conta</a>{' '}
+              para solicitar uma reserva. Ainda não tem conta?{' '}
+              <a href="/criar-conta">Criar conta</a>.
+            </p>
+          ) : (
+            <form action={doRequestBooking} method="post">
+              <input type="hidden" name="providerId" value={provider.id} />
+              <input type="hidden" name="providerSlug" value={provider.slug} />
+              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: '1fr', marginBottom: 14 }}>
+                {provider.supplierType === 'venue' && provider.resources.length > 1 ? (
+                  <label>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                      Espaço
+                    </span>
+                    <select name="resourceId" required style={{
+                      width: '100%', padding: '11px 12px', font: 'inherit',
+                      border: '1px solid var(--linha)', borderRadius: 'var(--raio)',
+                    }}>
+                      {provider.resources.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}{r.capacity ? ` (até ${r.capacity} pessoas)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : provider.supplierType === 'venue' && provider.resources[0] ? (
+                  <input type="hidden" name="resourceId" value={provider.resources[0].id} />
+                ) : null}
+
+                <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                  <label>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                      Data
+                    </span>
+                    <input type="date" name="date" required
+                           min={new Date().toISOString().slice(0, 10)}
+                           style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                    border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                      Hora de início
+                    </span>
+                    <input type="time" name="startTime" defaultValue="09:00"
+                           style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                    border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                  </label>
+                  <label>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                      Hora de fim
+                    </span>
+                    <input type="time" name="endTime"
+                           defaultValue={provider.supplierType === 'venue' ? '23:59' : '12:00'}
+                           style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                    border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                  </label>
+                </div>
+
+                <label>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                    Número de pessoas <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span>
+                  </span>
+                  <input type="number" name="partySize" min={1}
+                         style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                  border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                </label>
+                <label>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                    Observações <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span>
+                  </span>
+                  <textarea name="notes" maxLength={1000} rows={3}
+                            style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                     border: '1px solid var(--linha)', borderRadius: 'var(--raio)',
+                                     resize: 'vertical' }} />
+                </label>
+              </div>
+              <button className={`${styles.btn} ${styles.btnMain}`} type="submit"
+                      style={{ border: 0, cursor: 'pointer' }}>
+                Solicitar reserva
+              </button>
+              <p style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--tinta-3)' }}>
+                O fornecedor tem até 48 horas para responder. A data só fica reservada depois de
+                aceite e confirmada.
+              </p>
+            </form>
+          )}
+        </section>
 
         <section className={styles.sec}>
           <h2 className={styles.h}>Contactar</h2>

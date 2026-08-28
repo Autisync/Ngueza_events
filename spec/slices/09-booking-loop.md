@@ -1,6 +1,6 @@
 # Slice 09 — the booking loop (domain layer)
 
-**Status:** domain layer done; the supplier and client screens wait on auth.
+**Status:** done — domain layer, plus the screens as slice 08.
 **Ownership:** agent + review.
 
 ## Why only the domain layer
@@ -82,7 +82,9 @@ needing to special-case it.
 See `tests/integration/booking.test.ts`'s `who may drive a transition
 (0021)` block (11 tests) and `spec/states.md` for the full rule.
 
-## Waiting on auth
+## Screens
 
-Supplier accept/reject screen, client booking form, "as minhas reservas",
-and the supplier calendar with manual blocking.
+The supplier accept/reject screen, client booking form, "as minhas
+reservas", and the supplier calendar with manual blocking landed as
+slice 08 — see `spec/slices/08-booking-screens.md`. They add nothing to
+the rules on this page; they just render them.

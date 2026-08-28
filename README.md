@@ -19,7 +19,7 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 20 migrations from empty · 155 tests · 22 database assertions |
+| Verified | 21 migrations from empty · 171 tests · 21 database assertions |
 
 ### Done
 
@@ -30,7 +30,8 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 | 01 | Schema, RLS, the double-booking constraint, seed |
 | 06 | Public supplier page — own URL, schema.org, calendar |
 | 07 | Search — trees, date availability, keyset pagination |
-| 09 | Booking domain layer (screens wait on auth) |
+| 09 | Booking domain layer — state machine, exclusion constraint, audit trail |
+| 08 | Booking screens — request, "as minhas reservas", supplier accept/reject, manual blocking |
 | 13 | Event tracking, sessions, robots and sitemap |
 | 05 | Media pipeline — presigned upload, on-delivery resize (`deploy/media/`) |
 | 02 | Auth — three roles, local ES256 verification, transparent refresh |
@@ -58,7 +59,7 @@ Measured: a 1600×1067 PNG of 139 KB is delivered as a 640×427 WebP of
 
 | Slice | Blocked on |
 |---|---|
-| 08, 11, 14 | Nothing external. |
+| 11, 14 | Nothing external. |
 | Real signups at volume | **SMTP for Supabase Auth.** The built-in mailer allows a few messages an hour and lands in spam. Point it at Resend before anyone outside the team registers. |
 | 15 legal pages | **A lawyer**. Terms, privacy and cancellation policy are not drafts to generate |
 | 16 payments | Legal opinion first (§28), then a provider |

@@ -55,3 +55,22 @@
 .link:hover { border-color: var(--azul-300); }
 .link strong { display: block; font-size: 1.02rem; }
 .inline { display: inline-block; margin-left: 10px; font-size: 0.86rem; }
+
+/* Decision buttons and audit history — added for slice 08's booking
+   screens, matching admin.module.css's equivalent pattern for the same
+   "review and decide" shape, so the two feel like one product rather
+   than two different stylesheets that happened to end up similar. */
+.row { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0;
+       font-size: 0.93rem; border-bottom: 1px solid var(--linha); }
+.row:last-child { border-bottom: 0; }
+.row span:first-child { color: var(--tinta-3); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.btn { padding: 11px 18px; font: inherit; font-size: 0.94rem; font-weight: 700;
+       border-radius: var(--raio); cursor: pointer; border: 0; }
+.go { background: var(--bom); color: var(--branco); }
+.no { background: var(--branco); color: var(--erro); border: 1px solid var(--erro); }
+
+.audit { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem;
+         border-bottom: 1px solid var(--linha); padding: 9px 0; color: var(--tinta-2); }
+.when { color: var(--tinta-3); }

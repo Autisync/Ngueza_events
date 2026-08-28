@@ -182,3 +182,128 @@ export async function expireStaleBookings(): Promise<number> {
     return rows[0]!.expired
   })
 }
+
+
+// ---------------------------------------------------------------------
+// Reads. RLS (bookings_party_read) already scopes these to bookings the
+// caller is a party to — a client sees theirs, a supplier owner sees
+// every booking across every business they own. No extra WHERE clause
+// duplicates that rule here; the one place it is enforced is the policy.
+// ---------------------------------------------------------------------
+
+export interface BookingSummary {
+  id: string
+  providerId: string
+  providerName: string
+  providerSlug: string
+  clientId: string | null
+  clientName: string | null
+  clientEmail: string | null
+  status: BookingStatus
+  startsAt: string
+  endsAt: string
+  partySize: number | null
+  totalMinor: string | null
+  createdAt: string
+  expiresAt: string | null
+}
+
+function toSummary(r: any): BookingSummary {
+  return {
+    id: r.id, providerId: r.provider_id, providerName: r.provider_name,
+    providerSlug: r.provider_slug, clientId: r.client_id,
+    clientName: r.client_name, clientEmail: r.client_email,
+    status: r.status, startsAt: r.starts_at, endsAt: r.ends_at,
+    partySize: r.party_size, totalMinor: r.total_minor,
+    createdAt: r.created_at, expiresAt: r.expires_at,
+  }
+}
+
+/** "As minhas reservas" — everything a signed-in client has requested,
+ *  across every supplier. */
+export async function clientBookings(clientId: string): Promise<BookingSummary[]> {
+  return asUser(clientId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select b.*, p.name as provider_name, p.slug as provider_slug,
+              null as client_name, null as client_email
+         from bookings b
+         join providers p on p.id = b.provider_id
+        where b.client_id = $1
+        order by b.created_at desc`,
+      [clientId],
+    )
+    return rows.map(toSummary)
+  })
+}
+
+/** Every booking across every resource for one business a supplier owns.
+ *  RLS already refuses this for a provider the caller does not own; the
+ *  WHERE clause here is what NARROWS an owner's other businesses out of
+ *  the list, not what authorises it. */
+export async function providerBookings(
+  ownerId: string, providerId: string,
+): Promise<BookingSummary[]> {
+  return asUser(ownerId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select b.*, p.name as provider_name, p.slug as provider_slug,
+              pr.full_name as client_name, pr.email as client_email
+         from bookings b
+         join providers p on p.id = b.provider_id
+         left join profiles pr on pr.id = b.client_id
+        where b.provider_id = $1
+        order by
+          case b.status when 'requested' then 0 else 1 end,
+          b.starts_at`,
+      [providerId],
+    )
+    return rows.map(toSummary)
+  })
+}
+
+export interface BookingDetail extends BookingSummary {
+  resourceId: string | null
+  resourceName: string | null
+  serviceId: string | null
+  serviceName: string | null
+  notes: string | null
+  policySnapshot: Record<string, unknown> | null
+  history: Array<{ fromStatus: string | null; toStatus: string; createdAt: string }>
+}
+
+/** One booking, with the transition history both parties are entitled
+ *  to see (§38) — never returns someone else's booking, indistinguishable
+ *  from it not existing, for the same reason transition() does. */
+export async function bookingDetail(actorId: string, bookingId: string): Promise<BookingDetail | null> {
+  return asUser(actorId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select b.*, p.name as provider_name, p.slug as provider_slug,
+              pr.full_name as client_name, pr.email as client_email,
+              r.name as resource_name, s.name as service_name
+         from bookings b
+         join providers p on p.id = b.provider_id
+         left join profiles pr on pr.id = b.client_id
+         left join resources r on r.id = b.resource_id
+         left join services s on s.id = b.service_id
+        where b.id = $1`,
+      [bookingId],
+    )
+    const row = rows[0]
+    if (!row) return null
+
+    const history = await c.query<{ from_status: string | null; to_status: string; created_at: string }>(
+      `select from_status, to_status, created_at from booking_events
+        where booking_id = $1 order by id`,
+      [bookingId],
+    )
+
+    return {
+      ...toSummary(row),
+      resourceId: row.resource_id, resourceName: row.resource_name,
+      serviceId: row.service_id, serviceName: row.service_name,
+      notes: row.notes, policySnapshot: row.policy_snapshot,
+      history: history.rows.map((h) => ({
+        fromStatus: h.from_status, toStatus: h.to_status, createdAt: h.created_at,
+      })),
+    }
+  })
+}

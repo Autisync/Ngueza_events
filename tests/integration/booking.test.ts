@@ -343,3 +343,94 @@ describe('who may drive a transition (0021)', () => {
     expect(await transition(OWNER, id, 'no_show')).toEqual({ ok: true })
   })
 })
+
+/**
+ * The read side slice 08 needed: a client's own list, a supplier's list
+ * for one business, and a single-booking detail both parties can open.
+ * RLS (bookings_party_read) is what actually scopes these — these tests
+ * assert the application layer surfaces it correctly, the same posture
+ * as the rest of this file.
+ */
+describe('reading bookings', () => {
+  it('lists a client\'s own bookings across every supplier, newest first', async () => {
+    const { clientBookings } = await import('@/lib/booking')
+    const a = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-20T09:00:00Z'), endsAt: at('2027-10-20T22:00:00Z'),
+    })
+    const b = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-21T09:00:00Z'), endsAt: at('2027-10-21T22:00:00Z'),
+    })
+    if (!a.ok || !b.ok) throw new Error('setup failed')
+
+    const list = await clientBookings(JOAO)
+    const ids = list.map((x) => x.id)
+    expect(ids.indexOf(b.bookingId)).toBeLessThan(ids.indexOf(a.bookingId)) // newest first
+    expect(list.every((x) => x.clientId === JOAO || x.clientId === null)).toBe(true)
+  })
+
+  it('does not leak into another client\'s list', async () => {
+    const { clientBookings } = await import('@/lib/booking')
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-22T09:00:00Z'), endsAt: at('2027-10-22T22:00:00Z'),
+    })
+    if (!created.ok) throw new Error('setup failed')
+    const anasList = await clientBookings(ANA)
+    expect(anasList.some((x) => x.id === created.bookingId)).toBe(false)
+  })
+
+  it('lists every booking for a supplier\'s business, requests first', async () => {
+    const { providerBookings } = await import('@/lib/booking')
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-23T09:00:00Z'), endsAt: at('2027-10-23T22:00:00Z'),
+    })
+    if (!created.ok) throw new Error('setup failed')
+
+    const list = await providerBookings(OWNER, HORIZONTE)
+    expect(list.some((x) => x.id === created.bookingId)).toBe(true)
+    // 'requested' bookings sort first, ahead of already-decided ones.
+    const firstRequestedIdx = list.findIndex((x) => x.status === 'requested')
+    const firstOtherIdx = list.findIndex((x) => x.status !== 'requested')
+    if (firstOtherIdx !== -1 && firstRequestedIdx !== -1) {
+      expect(firstRequestedIdx).toBeLessThan(firstOtherIdx)
+    }
+  })
+
+  it('refuses another supplier\'s business entirely', async () => {
+    const { providerBookings } = await import('@/lib/booking')
+    // OWNER does not own PALMEIRAS (owner ...002).
+    const list = await providerBookings(OWNER, '50000000-0000-0000-0000-000000000002')
+    expect(list).toHaveLength(0)
+  })
+
+  it('shows a full booking with its history to either party', async () => {
+    const { bookingDetail } = await import('@/lib/booking')
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-24T09:00:00Z'), endsAt: at('2027-10-24T22:00:00Z'),
+      partySize: 80, notes: 'Aniversário de 30 anos',
+    })
+    if (!created.ok) throw new Error('setup failed')
+    await transition(OWNER, created.bookingId, 'accepted')
+
+    const asClient = await bookingDetail(JOAO, created.bookingId)
+    const asSupplier = await bookingDetail(OWNER, created.bookingId)
+    expect(asClient?.notes).toBe('Aniversário de 30 anos')
+    expect(asClient?.partySize).toBe(80)
+    expect(asSupplier?.history.map((h) => h.toStatus)).toEqual(['requested', 'accepted'])
+  })
+
+  it('returns null for a booking that is not this actor\'s to see', async () => {
+    const { bookingDetail } = await import('@/lib/booking')
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-25T09:00:00Z'), endsAt: at('2027-10-25T22:00:00Z'),
+    })
+    if (!created.ok) throw new Error('setup failed')
+    const stranger = '40000000-0000-0000-0000-000000000002' // Quinta das Palmeiras' owner
+    expect(await bookingDetail(stranger, created.bookingId)).toBeNull()
+  })
+})

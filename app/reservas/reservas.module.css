@@ -1,0 +1,37 @@
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 18px; }
+.top { background: var(--azul-800); color: var(--branco); padding: 16px 0 24px; margin-bottom: 24px; }
+.mark { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--azul-300); text-decoration: none; }
+.title { font-size: clamp(1.4rem,4vw,1.8rem); font-weight: 700; margin: 14px 0 0;
+         letter-spacing: -0.02em; }
+
+.item { display: block; padding: 16px; border: 1px solid var(--linha); border-radius: var(--raio);
+        text-decoration: none; color: inherit; margin-bottom: 12px; background: var(--branco); }
+.item:hover { border-color: var(--azul-300); }
+.item strong { display: block; font-size: 1.02rem; }
+.meta { display: block; font-size: 0.88rem; color: var(--tinta-3); margin-top: 4px; }
+
+.pill { display: inline-block; font-size: 0.78rem; font-weight: 600; padding: 4px 10px;
+        border-radius: 999px; margin-top: 10px; }
+.wait { background: #F8EFDC; color: #8A5D0E; }
+.ok { background: var(--bom-fundo); color: var(--bom); }
+.bad { background: var(--erro-fundo); color: var(--erro); }
+.off { background: var(--azul-050); color: var(--tinta-3); border: 1px solid var(--linha); }
+
+.empty { color: var(--tinta-3); font-size: 0.93rem; padding: 24px; text-align: center;
+         border: 1px dashed var(--linha); border-radius: var(--raio); }
+
+.card { border: 1px solid var(--linha); border-radius: var(--raio); background: var(--branco);
+        padding: 20px; margin-bottom: 16px; }
+.row { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0;
+       font-size: 0.93rem; border-bottom: 1px solid var(--linha); }
+.row:last-child { border-bottom: 0; }
+.row span:first-child { color: var(--tinta-3); }
+.alert { padding: 12px 14px; border-radius: var(--raio); margin: 0 0 16px; font-size: 0.93rem;
+         background: var(--bom-fundo); color: var(--bom); border: 1px solid rgba(27,107,78,0.3); }
+.alertBad { background: var(--erro-fundo); color: var(--erro); border-color: rgba(179,64,43,0.3); }
+.btn { padding: 11px 18px; font: inherit; font-size: 0.94rem; font-weight: 700;
+       border-radius: var(--raio); cursor: pointer; border: 0; background: var(--branco);
+       color: var(--erro); border: 1px solid var(--erro); }
+.history { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem;
+           border-bottom: 1px solid var(--linha); padding: 9px 0; color: var(--tinta-2); }

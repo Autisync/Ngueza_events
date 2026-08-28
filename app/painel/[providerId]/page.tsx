@@ -89,6 +89,19 @@ export default async function GerirNegocio({
           <p className={styles.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
         ) : null}
 
+        {/* ---- bookings ---- */}
+        <div className={styles.card}>
+          <h2>Reservas</h2>
+          <p className={styles.note}>
+            Pedidos por responder, reservas confirmadas, e o bloqueio manual de datas para quem
+            reservou fora da NGUEZA (§27).
+          </p>
+          <a className={styles.submit} href={`/painel/${provider.id}/reservas`}
+             style={{ display: 'inline-block', textDecoration: 'none' }}>
+            Ver reservas
+          </a>
+        </div>
+
         {/* ---- verification ---- */}
         <div className={styles.card} id="verificacao">
           <h2>Estado</h2>
