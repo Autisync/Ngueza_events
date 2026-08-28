@@ -56,10 +56,27 @@ out of a terminal state; a client who wants to rebook creates a new booking.
 | `→ awaiting_payment` | — | ✓ | ✓ | — |
 | `→ confirmed` | — | ✓ | ✓ | ✓ (payment webhook) |
 | `→ completed` | — | ✓ | ✓ | ✓ (after `ends_at`) |
-| `→ expired` | — | — | — | ✓ only |
+| `→ no_show` | — | ✓ | ✓ | — |
+| `→ expired` | — | — | — | ✓ only, no exception |
 | `→ cancelled_client` | ✓ | — | ✓ | — |
 | `→ cancelled_provider` | — | ✓ | ✓ | — |
 | `→ blocked` | — | ✓ | ✓ | — |
+
+**Enforced by `bookings_guard_actor` (0021), not only documented here.**
+`bookings_guard_transition` (0006) enforces the state *graph* — that
+`requested → confirmed` directly is illegal, for instance. It never
+enforced *who* may walk a legal edge, and nothing else did either:
+`bookings_party_update`'s RLS policy only checks that the actor is *a*
+party to the booking (`client_id = auth.uid() OR owns_provider(...)`),
+not which transition that party is entitled to make. A client could set
+their own booking straight to `accepted` and then `confirmed`, with zero
+supplier action — confirmed directly, as the real `authenticated` role,
+while building the booking screens (slice 08).
+
+`→ expired` has no admin exception, deliberately. A person deciding a
+date is free again is making a cancellation, which is attributable to
+whoever decided it; `expired` means specifically that nobody acted in
+time, and only the scheduled job may set it.
 
 ## Expiry
 

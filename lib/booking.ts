@@ -2,7 +2,7 @@
 // ERROR, not a code-review question. Writes bookings and runs the expiry job.
 import 'server-only'
 
-import { asSystem, asUser, isSlotTaken } from '@/lib/db'
+import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege, isSlotTaken } from '@/lib/db'
 
 /**
  * The booking loop (§10, §26, §27).
@@ -115,11 +115,15 @@ export async function requestBooking(
 
 export type TransitionOutcome =
   | { ok: true }
-  | { ok: false; reason: 'slot_taken' | 'illegal_transition' | 'not_found' }
+  | { ok: false; reason: 'slot_taken' | 'illegal_transition' | 'not_found' | 'not_allowed' }
 
 /**
  * Move a booking along. The database refuses anything the state machine
- * does not permit, so this cannot drift from spec/states.md.
+ * does not permit (illegal_transition), and, separately, refuses a legal
+ * transition attempted by the wrong party (not_allowed) — a client
+ * cannot self-accept their own request, only a supplier or admin can
+ * (0021). Neither guarantee can drift from spec/states.md, because
+ * neither lives in this file.
  */
 export async function transition(
   actorId: string,
@@ -137,10 +141,8 @@ export async function transition(
     return changed === 0 ? { ok: false, reason: 'not_found' } : { ok: true }
   } catch (error) {
     if (isSlotTaken(error)) return { ok: false, reason: 'slot_taken' }
-    if (typeof error === 'object' && error !== null && 'code' in error &&
-        (error as { code?: string }).code === '23514') {
-      return { ok: false, reason: 'illegal_transition' }
-    }
+    if (isInsufficientPrivilege(error)) return { ok: false, reason: 'not_allowed' }
+    if (isCheckViolation(error)) return { ok: false, reason: 'illegal_transition' }
     throw error
   }
 }
