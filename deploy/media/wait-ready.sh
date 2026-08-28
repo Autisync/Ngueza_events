@@ -31,9 +31,20 @@ curl -sf "$IMGPROXY_URL/health" >/dev/null   || { echo "imgproxy never became he
 
 # The bucket is what the app actually needs, so assert that rather than
 # the init container's status.
-if ! docker compose logs minio-init 2>&1 | grep -q "ready"; then
-  echo "bucket was not created:"
-  docker compose logs minio-init | tail -20
+for bucket in "${MEDIA_BUCKET:-ngueza-media}" "${DOCUMENTS_BUCKET:-ngueza-documents}"; do
+  if ! docker compose logs minio-init 2>&1 | grep -q "bucket $bucket ready"; then
+    echo "bucket $bucket was not created:"
+    docker compose logs minio-init | tail -20
+    exit 1
+  fi
+done
+
+# The documents bucket holds identity papers. Assert it is NOT readable
+# without a signature — a wrong policy here is a data breach, not a bug.
+probe="http://localhost:${MINIO_PORT:-9000}/${DOCUMENTS_BUCKET:-ngueza-documents}/"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$probe")
+if [ "$code" = "200" ]; then
+  echo "REFUSING TO CONTINUE: ${DOCUMENTS_BUCKET:-ngueza-documents} is anonymously listable"
   exit 1
 fi
 

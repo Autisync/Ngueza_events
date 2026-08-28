@@ -191,7 +191,8 @@ jobs:
           missing=0
           for f in lib/db.ts lib/supabase.ts lib/media.ts lib/email.ts \
                    lib/newsletter.ts lib/booking.ts lib/provider.ts \
-                   lib/search.ts lib/session.ts; do
+                   lib/search.ts lib/session.ts lib/auth.ts \
+                   lib/onboarding.ts lib/painel.ts; do
             if ! head -5 "$f" | grep -q "import 'server-only'"; then
               echo "::error file=$f::$f holds secrets or bypasses RLS and must import 'server-only'"
               missing=1

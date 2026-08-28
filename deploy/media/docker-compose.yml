@@ -56,12 +56,26 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MEDIA_BUCKET: ${MEDIA_BUCKET:-ngueza-media}
+      DOCUMENTS_BUCKET: ${DOCUMENTS_BUCKET:-ngueza-documents}
+    # Two buckets, and the difference between them matters.
+    #
+    #   media      — anonymously readable, so supplier photographs load
+    #                straight from storage with no signed URL.
+    #   documents  — identity cards, NIFs, commercial registrations. NO
+    #                anonymous access. Reachable only through a
+    #                short-lived signed URL issued to an administrator.
+    #
+    # `mc anonymous set none` is applied explicitly rather than relying on
+    # the default, so a later MinIO default cannot quietly open it.
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
       mc mb --ignore-existing local/$$MEDIA_BUCKET &&
       mc anonymous set download local/$$MEDIA_BUCKET &&
-      echo 'bucket '$$MEDIA_BUCKET' ready'
+      mc mb --ignore-existing local/$$DOCUMENTS_BUCKET &&
+      mc anonymous set none local/$$DOCUMENTS_BUCKET &&
+      echo 'bucket '$$MEDIA_BUCKET' ready' &&
+      echo 'bucket '$$DOCUMENTS_BUCKET' ready (private)'
       "
     networks: [media]
     restart: "no"

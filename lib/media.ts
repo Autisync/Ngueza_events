@@ -46,6 +46,16 @@ export interface MediaStore {
   url(objectId: string, variant: Variant): string
 }
 
+/** Identity papers arrive as a photo or a scan. */
+export const ALLOWED_DOCUMENT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+])
+
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+
 export const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -111,6 +121,41 @@ export function presignPut(opts: {
   expiresInSeconds: number
   now?: Date
 }): string {
+  return presign({ ...opts, method: 'PUT' })
+}
+
+/**
+ * A short-lived read URL for an object in the PRIVATE documents bucket.
+ *
+ * Identity papers are never anonymously readable, so an administrator
+ * reviewing them gets a signature that expires in minutes rather than a
+ * durable link that could be forwarded or logged.
+ */
+export function presignGet(opts: {
+  endpoint: string
+  bucket: string
+  objectKey: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  expiresInSeconds: number
+  now?: Date
+}): string {
+  return presign({ ...opts, method: 'GET' })
+}
+
+function presign(opts: {
+  endpoint: string
+  bucket: string
+  objectKey: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  contentType?: string
+  expiresInSeconds: number
+  method: 'PUT' | 'GET'
+  now?: Date
+}): string {
   const now = opts.now ?? new Date()
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
   const dateStamp = amzDate.slice(0, 8)
@@ -125,12 +170,16 @@ export function presignPut(opts: {
   const scope = `${dateStamp}/${opts.region}/s3/aws4_request`
   const host = url.host
 
+  // GET has no body, so there is no content-type to bind. PUT signs it,
+  // which is what stops a .png upload URL being used to store HTML.
+  const signedHeaders = opts.method === 'PUT' ? 'content-type;host' : 'host'
+
   const query = new URLSearchParams({
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
     'X-Amz-Credential': `${opts.accessKeyId}/${scope}`,
     'X-Amz-Date': amzDate,
     'X-Amz-Expires': String(opts.expiresInSeconds),
-    'X-Amz-SignedHeaders': 'content-type;host',
+    'X-Amz-SignedHeaders': signedHeaders,
   })
   // S3 requires query parameters sorted by name.
   const canonicalQuery = [...query.entries()]
@@ -138,13 +187,16 @@ export function presignPut(opts: {
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
 
-  const canonicalHeaders = `content-type:${opts.contentType}\nhost:${host}\n`
+  const canonicalHeaders = opts.method === 'PUT'
+    ? `content-type:${opts.contentType}\nhost:${host}\n`
+    : `host:${host}\n`
+
   const canonicalRequest = [
-    'PUT',
+    opts.method,
     canonicalUri,
     canonicalQuery,
     canonicalHeaders,
-    'content-type;host',
+    signedHeaders,
     'UNSIGNED-PAYLOAD',
   ].join('\n')
 
@@ -235,5 +287,83 @@ export function mediaStore(): MediaStore {
     imgproxyUrl: required('IMGPROXY_PUBLIC_URL'),
     imgproxyKey: required('IMGPROXY_KEY'),
     imgproxySalt: required('IMGPROXY_SALT'),
+  })
+}
+
+// ---------------------------------------------------------------------
+// Verification documents (§25)
+//
+// A separate store from media, pointing at a separate PRIVATE bucket.
+// Keeping them apart is the whole safeguard: the media bucket is
+// anonymously readable so photographs load, and an identity card must
+// never end up behind that policy by a naming mistake.
+// ---------------------------------------------------------------------
+export interface DocumentStore {
+  presignUpload(input: { contentType: string; providerId: string }): Promise<PresignedUpload>
+  /** Short-lived read URL, for an administrator reviewing paperwork. */
+  presignRead(objectId: string, expiresInSeconds?: number): string
+}
+
+class MinioDocumentStore implements DocumentStore {
+  constructor(
+    private readonly cfg: {
+      publicEndpoint: string
+      bucket: string
+      region: string
+      accessKeyId: string
+      secretAccessKey: string
+    },
+  ) {}
+
+  async presignUpload(input: { contentType: string; providerId: string }): Promise<PresignedUpload> {
+    if (!ALLOWED_DOCUMENT_TYPES.has(input.contentType)) {
+      throw new Error(`unsupported document type: ${input.contentType}`)
+    }
+    const objectId = `${input.providerId}/${randomUUID()}`
+    const expiresInSeconds = 300
+    return {
+      url: presignPut({
+        endpoint: this.cfg.publicEndpoint,
+        bucket: this.cfg.bucket,
+        objectKey: objectId,
+        region: this.cfg.region,
+        accessKeyId: this.cfg.accessKeyId,
+        secretAccessKey: this.cfg.secretAccessKey,
+        contentType: input.contentType,
+        expiresInSeconds,
+      }),
+      objectId,
+      method: 'PUT',
+      headers: { 'content-type': input.contentType },
+      expiresInSeconds,
+    }
+  }
+
+  presignRead(objectId: string, expiresInSeconds = 300): string {
+    return presignGet({
+      endpoint: this.cfg.publicEndpoint,
+      bucket: this.cfg.bucket,
+      objectKey: objectId,
+      region: this.cfg.region,
+      accessKeyId: this.cfg.accessKeyId,
+      secretAccessKey: this.cfg.secretAccessKey,
+      expiresInSeconds,
+    })
+  }
+}
+
+export function documentStore(): DocumentStore {
+  const bucket = env('DOCUMENTS_BUCKET', 'ngueza-documents')
+  if (bucket === env('MEDIA_BUCKET', 'ngueza-media')) {
+    // The media bucket is anonymously readable. Sharing it would publish
+    // every supplier's identity card.
+    throw new Error('DOCUMENTS_BUCKET must not be the same bucket as MEDIA_BUCKET')
+  }
+  return new MinioDocumentStore({
+    publicEndpoint: required('MEDIA_S3_PUBLIC_ENDPOINT'),
+    bucket,
+    region: env('MEDIA_REGION', 'us-east-1'),
+    accessKeyId: required('MEDIA_ACCESS_KEY_ID'),
+    secretAccessKey: required('MEDIA_SECRET_ACCESS_KEY'),
   })
 }

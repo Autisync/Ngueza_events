@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { imgproxyUrl, presignPut } from '@/lib/media'
+import { imgproxyUrl, presignGet, presignPut } from '@/lib/media'
 
 /**
  * The media stack, end to end, against real MinIO and real imgproxy.
@@ -98,5 +98,54 @@ describe('media round-trip', () => {
       method: 'PUT', headers: { 'content-type': 'text/html' }, body: '<script>x</script>',
     })
     expect(response.ok).toBe(false)
+  })
+})
+
+describe('verification documents stay private', () => {
+  const objectKey = `test-provider/doc-${Date.now()}.pdf`
+  const DOCS = process.env.DOCUMENTS_BUCKET ?? 'ngueza-documents'
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF')
+
+  it('uploads to the private bucket', async () => {
+    const url = presignPut({
+      ...CFG, bucket: DOCS, objectKey,
+      contentType: 'application/pdf', expiresInSeconds: 300,
+    })
+    const r = await fetch(url, {
+      method: 'PUT', headers: { 'content-type': 'application/pdf' }, body: pdf,
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('is NOT readable without a signature — this one is a breach, not a bug', async () => {
+    const naked = `${CFG.endpoint}/${DOCS}/${objectKey}`
+    const r = await fetch(naked)
+    expect(r.ok).toBe(false)
+    expect([401, 403]).toContain(r.status)
+  })
+
+  it('is readable through a short-lived signed URL', async () => {
+    const url = presignGet({ ...CFG, bucket: DOCS, objectKey, expiresInSeconds: 300 })
+    const r = await fetch(url)
+    expect(r.status).toBe(200)
+    expect(Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString()).toBe('%PDF')
+  })
+
+  it('refuses a signed URL that has expired', async () => {
+    const url = presignGet({
+      ...CFG, bucket: DOCS, objectKey,
+      expiresInSeconds: 1, now: new Date(Date.now() - 60_000),
+    })
+    expect((await fetch(url)).ok).toBe(false)
+  })
+
+  it('never serves documents through imgproxy', async () => {
+    // imgproxy is configured against the media bucket only. A document
+    // key resolved there must not produce an image.
+    const url = imgproxyUrl({
+      baseUrl: CFG.imgproxy, bucket: DOCS, objectId: objectKey,
+      variant: 'card', keyHex: CFG.key, saltHex: CFG.salt,
+    })
+    expect((await fetch(url)).ok).toBe(false)
   })
 })

@@ -88,6 +88,25 @@ exception
     raise notice 'PASS: verification_status is administrator-only';
 end $$;
 
+-- ---- 4a. but they MAY submit their paperwork for review -------------
+do $$
+begin
+  update providers set verification_status = 'pending'
+   where id = 'cccccccc-0000-0000-0000-00000000000b';
+  raise notice 'PASS: a supplier can ask to be reviewed';
+exception
+  when insufficient_privilege then
+    raise exception 'FAIL: a supplier cannot submit for verification';
+end $$;
+-- put it back so the rest of the file sees the original state
+do $$ begin
+  update providers set verification_status = 'unverified'
+   where id = 'cccccccc-0000-0000-0000-00000000000b';
+exception when insufficient_privilege then
+  -- expected: pending -> unverified is not self-service either
+  null;
+end $$;
+
 -- ---- 4b. nor publish an unverified listing --------------------------
 do $$
 begin

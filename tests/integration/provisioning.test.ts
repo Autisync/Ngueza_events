@@ -37,7 +37,7 @@ describe('identity provisioning', () => {
       await c.query(`delete from auth.users where id = $1`, [id])
       await c.query(
         `insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data)
-         values ($1, 'trick@x.ao', '{"app_role":"admin","role":"admin"}', '{}')`,
+         values ($1, 'provisioning-trick@teste.ao', '{"app_role":"admin","role":"admin"}', '{}')`,
         [id],
       )
     })
@@ -61,7 +61,7 @@ describe('identity provisioning', () => {
     await asSystem(async (c) => {
       await c.query(`delete from profiles where id = $1`, [id])
       await c.query(`delete from auth.users where id = $1`, [id])
-      await c.query(`insert into auth.users (id, email) values ($1, 'novo@x.ao')`, [id])
+      await c.query(`insert into auth.users (id, email) values ($1, 'provisioning-confirm@teste.ao')`, [id])
     })
 
     const before = await asSystem(async (c) => {
