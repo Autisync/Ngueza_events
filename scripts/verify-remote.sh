@@ -191,5 +191,42 @@ exception
 end $$;
 
 reset role;
+
+-- ---- proof of payment is party-scoped, and only an admin decides it --
+-- (0025, slice 16). NGUEZA never moves money here — this only asserts
+-- who may attach and see the record of a claimed off-platform payment.
+insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+values ('00000000-dead-0000-0000-00000000000a','00000000-dead-0000-0000-000000000002',
+        '00000000-dead-0000-0000-00000000000b','awaiting_payment',
+        '2030-02-10 10:00+01','2030-02-10 23:00+01')
+returning id as payment_booking_id \gset
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  json_build_object('sub','00000000-dead-0000-0000-000000000002','role','authenticated')::text, true);
+insert into payment_documents (id, booking_id, uploaded_by, external_id)
+values ('00000000-dead-0000-0000-00000000000f', :'payment_booking_id',
+        '00000000-dead-0000-0000-000000000002','x/verify.jpg');
+insert into payments (id, booking_id, provider_key, status, amount_minor, currency, proof_document_id)
+values ('00000000-dead-0000-0000-000000000010', :'payment_booking_id',
+        'manual_proof','submitted',1000000,'AOA','00000000-dead-0000-0000-00000000000f');
+
+-- the client tries to self-confirm — a silent no-op under RLS, not an
+-- exception, so the assertion is on the row afterward.
+update payments set status = 'confirmed', confirmed_by = '00000000-dead-0000-0000-000000000002', confirmed_at = now()
+ where id = '00000000-dead-0000-0000-000000000010';
+
+reset role;
+do $$
+declare v_status text;
+begin
+  select status into v_status from payments where id = '00000000-dead-0000-0000-000000000010';
+  if v_status is distinct from 'submitted' then
+    raise exception 'FAIL: a client self-confirmed a payment (status=%)', v_status;
+  end if;
+  raise notice 'PASS: a client cannot confirm their own payment';
+end $$;
+
+reset role;
 rollback;
 SQL

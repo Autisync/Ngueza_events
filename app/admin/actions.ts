@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { requireProfile } from '@/lib/auth'
 import {
-  decideDocument, rejectProvider, reinstateProvider, resolveReport,
+  decideDocument, decidePayment, rejectProvider, reinstateProvider, resolveReport,
   setAccountStatus, suspendProvider, verifyProvider,
 } from '@/lib/admin'
 
@@ -69,4 +69,14 @@ export async function doResolveReport(formData: FormData): Promise<void> {
   const outcome = id(formData, 'outcome') === 'upheld' ? 'upheld' : 'dismissed'
   await resolveReport(admin.id, id(formData, 'reportId'), outcome, text(formData, 'note'))
   redirect('/admin/denuncias')
+}
+
+/** Marks a submission reviewed. Never moves money and never decides
+ *  anything about the booking itself — the supplier still confirms that
+ *  separately, from their own screen. */
+export async function doDecidePayment(formData: FormData): Promise<void> {
+  const admin = await requireProfile('admin')
+  const decision = id(formData, 'decision') === 'confirmed' ? 'confirmed' : 'failed'
+  await decidePayment(admin.id, id(formData, 'paymentId'), decision)
+  redirect('/admin/pagamentos')
 }

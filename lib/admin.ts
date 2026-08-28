@@ -20,21 +20,26 @@ export interface QueueCounts {
   pendingProviders: number
   submittedDocuments: number
   openReports: number
+  submittedPayments: number
 }
 
 export async function queueCounts(adminId: string): Promise<QueueCounts> {
   return asUser(adminId, async (c) => {
-    const { rows } = await c.query<{ providers: string; documents: string; reports: string }>(
+    const { rows } = await c.query<{
+      providers: string; documents: string; reports: string; payments: string
+    }>(
       `select
          (select count(*) from providers where verification_status = 'pending')::text as providers,
          (select count(*) from provider_documents where status = 'submitted')::text  as documents,
-         (select count(*) from reports where status in ('open','reviewing'))::text    as reports`,
+         (select count(*) from reports where status in ('open','reviewing'))::text    as reports,
+         (select count(*) from payments where status = 'submitted')::text             as payments`,
     )
     const r = rows[0]!
     return {
       pendingProviders: Number(r.providers),
       submittedDocuments: Number(r.documents),
       openReports: Number(r.reports),
+      submittedPayments: Number(r.payments),
     }
   })
 }
@@ -304,4 +309,73 @@ export async function recentAudit(adminId: string, limit = 60) {
     )
     return rows
   })
+}
+
+// ---------------------------------------------------------------------
+// Payment proofs (§28, §29) — reviewing what a client submitted,
+// deciding nothing about the money itself. Confirming here only marks
+// the record; it is still the supplier who decides, from their own
+// booking screen, that the booking is actually paid.
+// ---------------------------------------------------------------------
+
+export interface PaymentQueueItem {
+  id: string
+  bookingId: string
+  providerName: string
+  clientName: string | null
+  clientEmail: string | null
+  amountMinor: string
+  currency: string
+  reference: string | null
+  createdAt: string
+  documentId: string | null
+}
+
+export async function paymentQueue(adminId: string): Promise<PaymentQueueItem[]> {
+  return asUser(adminId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select p.id, p.booking_id, p.amount_minor, p.currency, p.reference, p.created_at,
+              p.proof_document_id, pr.name as provider_name,
+              cl.full_name as client_name, cl.email as client_email
+         from payments p
+         join bookings b   on b.id = p.booking_id
+         join providers pr on pr.id = b.provider_id
+         left join profiles cl on cl.id = b.client_id
+        where p.status = 'submitted'
+        order by p.created_at`,
+    )
+    return rows.map((r: any) => ({
+      id: r.id, bookingId: r.booking_id, providerName: r.provider_name,
+      clientName: r.client_name, clientEmail: r.client_email,
+      amountMinor: r.amount_minor, currency: r.currency, reference: r.reference,
+      createdAt: r.created_at, documentId: r.proof_document_id,
+    }))
+  })
+}
+
+/** Minutes, not hours: a forwarded link should stop working quickly —
+ *  the same rule documentViewUrl uses for identity paperwork. */
+export async function paymentProofUrl(adminId: string, documentId: string): Promise<string | null> {
+  const externalId = await asUser(adminId, async (c) => {
+    const { rows } = await c.query<{ external_id: string }>(
+      `select external_id from payment_documents where id = $1`,
+      [documentId],
+    )
+    return rows[0]?.external_id ?? null
+  })
+  if (!externalId) return null
+  return documentStore().presignRead(externalId, 180)
+}
+
+export async function decidePayment(
+  adminId: string,
+  paymentId: string,
+  decision: 'confirmed' | 'failed',
+): Promise<void> {
+  await asUser(adminId, (c) =>
+    c.query(
+      `update payments set status = $2, confirmed_by = $3, confirmed_at = now() where id = $1`,
+      [paymentId, decision, adminId],
+    ),
+  )
 }

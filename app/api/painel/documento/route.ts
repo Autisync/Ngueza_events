@@ -69,7 +69,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const upload = await documentStore().presignUpload({
       contentType: parsed.data.contentType,
-      providerId: parsed.data.providerId,
+      keyPrefix: parsed.data.providerId,
     })
     return NextResponse.json(upload)
   }

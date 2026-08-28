@@ -19,7 +19,7 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 24 migrations from empty · 187 tests · 21 database assertions |
+| Verified | 25 migrations from empty · 196 tests · 21 database assertions |
 
 ### Done
 
@@ -63,7 +63,7 @@ Measured: a 1600×1067 PNG of 139 KB is delivered as a 640×427 WebP of
 |---|---|
 | Real signups at volume | **SMTP for Supabase Auth.** The built-in mailer allows a few messages an hour and lands in spam. Point it at Resend before anyone outside the team registers. |
 | 15 legal pages | **A lawyer**. Terms, privacy and cancellation policy are not drafts to generate. Routes exist (`/termos`, `/privacidade`, `/cancelamento`) and are linked from the footer, each holding a plain "pending legal review" placeholder — see `spec/slices/15-legal-pages.md` |
-| 16 payments | Legal opinion first (§28), then a provider |
+| 16 payments | **Legal opinion first (§28), then a provider.** The non-money half — the client uploading proof of an off-platform payment, an administrator eyeballing it as plausible, the supplier still separately confirming — is built; NGUEZA never receives, holds, or moves money at any point in it. See `spec/slices/16-payment-proof.md` |
 
 Per §45 every one of these is opened in NGUEZA's name, with NGUEZA's email
 and card. Engineers receive access; engineers do not own accounts.

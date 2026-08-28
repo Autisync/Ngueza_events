@@ -299,7 +299,11 @@ export function mediaStore(): MediaStore {
 // never end up behind that policy by a naming mistake.
 // ---------------------------------------------------------------------
 export interface DocumentStore {
-  presignUpload(input: { contentType: string; providerId: string }): Promise<PresignedUpload>
+  // keyPrefix scopes the object key — a provider for identity paperwork
+  // (§25), a booking for proof of payment (§28). Whatever it is, the
+  // caller must have already checked the signed-in user owns it; this
+  // store only ever prefixes a key, it never authorises anything.
+  presignUpload(input: { contentType: string; keyPrefix: string }): Promise<PresignedUpload>
   /** Short-lived read URL, for an administrator reviewing paperwork. */
   presignRead(objectId: string, expiresInSeconds?: number): string
 }
@@ -315,11 +319,11 @@ class MinioDocumentStore implements DocumentStore {
     },
   ) {}
 
-  async presignUpload(input: { contentType: string; providerId: string }): Promise<PresignedUpload> {
+  async presignUpload(input: { contentType: string; keyPrefix: string }): Promise<PresignedUpload> {
     if (!ALLOWED_DOCUMENT_TYPES.has(input.contentType)) {
       throw new Error(`unsupported document type: ${input.contentType}`)
     }
-    const objectId = `${input.providerId}/${randomUUID()}`
+    const objectId = `${input.keyPrefix}/${randomUUID()}`
     const expiresInSeconds = 300
     return {
       url: presignPut({

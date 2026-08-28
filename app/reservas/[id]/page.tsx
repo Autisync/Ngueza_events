@@ -4,8 +4,12 @@ import { currentProfile } from '@/lib/auth'
 import { bookingDetail } from '@/lib/booking'
 import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
 import { reviewExistsForBooking } from '@/lib/reviews'
+import { clientPayments } from '@/lib/payments'
+import { PAYMENT_STATUS_CLASS, PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
+import { formatMinor } from '@/lib/money'
 import { doClientCancel } from '@/app/booking-actions'
 import { doLeaveReview } from '@/app/review-actions'
+import { PaymentProofUpload } from './PaymentProofUpload'
 import styles from '../reservas.module.css'
 
 export const metadata: Metadata = { title: 'A minha reserva', robots: { index: false } }
@@ -28,6 +32,9 @@ export default async function ReservaDetalhe({
 
   const canCancel = ['requested', 'accepted', 'awaiting_payment', 'confirmed'].includes(booking.status)
   const canReview = booking.status === 'completed' && !(await reviewExistsForBooking(profile.id, booking.id))
+  const payments = ['awaiting_payment', 'confirmed'].includes(booking.status)
+    ? await clientPayments(profile.id, booking.id)
+    : []
 
   return (
     <main>
@@ -75,6 +82,35 @@ export default async function ReservaDetalhe({
             <span><a href={`/fornecedor/${booking.providerSlug}`}>{booking.providerName}</a></span>
           </div>
         </div>
+
+        {payments.length > 0 || booking.status === 'awaiting_payment' ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Pagamento</h2>
+            <p style={{ margin: '0 0 16px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              O pagamento é feito directamente ao fornecedor, fora da NGUEZA. Submeta o
+              comprovativo aqui para o fornecedor confirmar a reserva.
+            </p>
+            {payments.map((p) => (
+              <div className={styles.row} key={p.id}>
+                <span>
+                  {formatWhen(p.createdAt)}
+                  {p.reference ? ` · ${p.reference}` : ''}
+                </span>
+                <span>
+                  {formatMinor(BigInt(p.amountMinor))}{' '}
+                  <span className={`${styles.pill} ${styles[PAYMENT_STATUS_CLASS[p.status]]}`}>
+                    {PAYMENT_STATUS_LABEL[p.status]}
+                  </span>
+                </span>
+              </div>
+            ))}
+            {booking.status === 'awaiting_payment' ? (
+              <div style={{ marginTop: payments.length > 0 ? 16 : 0 }}>
+                <PaymentProofUpload bookingId={booking.id} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {canCancel ? (
           <form action={doClientCancel} method="post" style={{ marginBottom: 20 }}>
