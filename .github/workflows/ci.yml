@@ -204,7 +204,10 @@ jobs:
         run: |
           missing=0
           for t in $(grep -rhoE "^create table ([a-z_]+)" supabase/migrations/ | awk '{print $3}'); do
-            if ! grep -q "alter table $t  *enable row level security" supabase/migrations/0011_rls.sql; then
+            # Across ALL migrations, not just 0011: a table added later
+            # enables its own RLS in its own file, and pinning this to one
+            # file made the check pass while missing exactly that case.
+            if ! grep -qrE "alter table $t +enable row level security" supabase/migrations/; then
               echo "::error::table '$t' has no RLS"; missing=1
             fi
           done
