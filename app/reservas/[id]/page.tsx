@@ -3,7 +3,9 @@ import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { bookingDetail } from '@/lib/booking'
 import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { reviewExistsForBooking } from '@/lib/reviews'
 import { doClientCancel } from '@/app/booking-actions'
+import { doLeaveReview } from '@/app/review-actions'
 import styles from '../reservas.module.css'
 
 export const metadata: Metadata = { title: 'A minha reserva', robots: { index: false } }
@@ -13,7 +15,7 @@ export default async function ReservaDetalhe({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ novo?: string; feito?: string; erro?: string }>
+  searchParams: Promise<{ novo?: string; feito?: string; avaliado?: string; erro?: string }>
 }) {
   const profile = await currentProfile()
   const { id } = await params
@@ -25,6 +27,7 @@ export default async function ReservaDetalhe({
   if (!booking) notFound()
 
   const canCancel = ['requested', 'accepted', 'awaiting_payment', 'confirmed'].includes(booking.status)
+  const canReview = booking.status === 'completed' && !(await reviewExistsForBooking(profile.id, booking.id))
 
   return (
     <main>
@@ -41,6 +44,7 @@ export default async function ReservaDetalhe({
           </p>
         ) : null}
         {flags.feito ? <p className={styles.alert}>Feito.</p> : null}
+        {flags.avaliado ? <p className={styles.alert}>Avaliação publicada. Obrigado!</p> : null}
         {flags.erro ? (
           <p className={`${styles.alert} ${styles.alertBad}`}>
             {TRANSITION_ERROR[flags.erro] ?? TRANSITION_ERROR.dados}
@@ -77,6 +81,36 @@ export default async function ReservaDetalhe({
             <input type="hidden" name="bookingId" value={booking.id} />
             <button className={styles.btn} type="submit">Cancelar reserva</button>
           </form>
+        ) : null}
+
+        {canReview ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Deixe a sua avaliação</h2>
+            <p style={{ margin: '0 0 16px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Como a reserva foi feita através da NGUEZA, a sua avaliação fica marcada como
+              «Reserva verificada».
+            </p>
+            <form action={doLeaveReview} method="post">
+              <input type="hidden" name="bookingId" value={booking.id} />
+              <input type="hidden" name="providerId" value={booking.providerId} />
+              <label className={styles.field}>
+                <span className={styles.label}>Avaliação geral</span>
+                <span className={styles.stars} role="radiogroup" aria-label="Avaliação geral">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <label className={styles.star} key={n}>
+                      <input type="radio" name="ratingOverall" value={n} required defaultChecked={n === 5} />
+                      ★
+                    </label>
+                  ))}
+                </span>
+              </label>
+              <label className={styles.field}>
+                <span className={styles.label}>Comentário <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span></span>
+                <textarea className={styles.area} name="comment" maxLength={2000} rows={3} />
+              </label>
+              <button className={styles.submit} type="submit">Publicar avaliação</button>
+            </form>
+          </div>
         ) : null}
 
         <div className={styles.card}>

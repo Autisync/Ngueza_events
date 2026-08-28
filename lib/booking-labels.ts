@@ -27,10 +27,14 @@ export function formatWhen(iso: string): string {
   })
 }
 
+// Shared with app/review-actions.ts's error redirects — one small,
+// generic "URL error code → Portuguese message" table beats a second
+// one for the one extra key reviews need.
 export const TRANSITION_ERROR: Record<string, string> = {
   slot_taken: 'Essa data já não está disponível.',
   illegal_transition: 'Esta reserva já não pode mudar para esse estado.',
   not_found: 'Reserva não encontrada.',
   not_allowed: 'Não tem permissão para fazer essa alteração.',
+  already_reviewed: 'Esta reserva já tem uma avaliação.',
   dados: 'Verifique os dados introduzidos.',
 }

@@ -102,6 +102,18 @@ export default async function GerirNegocio({
           </a>
         </div>
 
+        {/* ---- reviews ---- */}
+        <div className={styles.card}>
+          <h2>Avaliações</h2>
+          <p className={styles.note}>
+            O que os clientes dizem, e o seu direito de resposta (§30).
+          </p>
+          <a className={styles.submit} href={`/painel/${provider.id}/avaliacoes`}
+             style={{ display: 'inline-block', textDecoration: 'none' }}>
+            Ver avaliações
+          </a>
+        </div>
+
         {/* ---- verification ---- */}
         <div className={styles.card} id="verificacao">
           <h2>Estado</h2>

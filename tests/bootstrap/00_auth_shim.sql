@@ -70,6 +70,19 @@ end $$;
 -- tests that provision identities fail with "permission denied for
 -- schema auth", which looks like an RLS problem and is not one.
 --
+-- Real Supabase also grants anon and authenticated USAGE on schema auth
+-- and EXECUTE on auth.uid() (confirmed directly against a live project:
+-- has_function_privilege('authenticated', 'auth.uid()', 'execute') is
+-- true there). Most RLS policies never notice a missing grant here
+-- because is_admin()/owns_provider() are SECURITY DEFINER and so call
+-- auth.uid() as their owner — but a plain, non-definer trigger function
+-- calling auth.uid() directly runs as the invoking role, and needs the
+-- grant itself. reviews_guard_reply() (0011/0022) is exactly that shape,
+-- and its auth.uid() call went unexercised by any test until slice 11,
+-- when it failed locally with "permission denied for schema auth" —
+-- not a real bug, but this shim not matching what production actually
+-- grants, on a path nothing had walked before.
+--
 -- The roles come from migration 0012, so this runs after migrations.
 -- ---------------------------------------------------------------------
 do $$
@@ -77,5 +90,9 @@ begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     grant usage on schema auth to service_role;
     grant select, insert, update, delete on auth.users to service_role;
+  end if;
+  if exists (select 1 from pg_roles where rolname in ('anon', 'authenticated')) then
+    grant usage on schema auth to anon, authenticated;
+    grant execute on function auth.uid() to anon, authenticated;
   end if;
 end $$;

@@ -117,5 +117,51 @@ begin
 end $$;
 
 reset role;
+
+-- ---- a supplier's right of reply (0022, slice 11) ----------------------
+-- reviews_guard_reply()'s whole branch was dead code until 0022: the only
+-- UPDATE policy on reviews required author_id = auth.uid() or is_admin(),
+-- so a supplier who was neither never reached the trigger that was meant
+-- to let them reply. Asserted here so a future migration cannot regress
+-- it silently, the same way the double-booking constraint above is.
+insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+values ('00000000-dead-0000-0000-00000000000a','00000000-dead-0000-0000-000000000002',
+        '00000000-dead-0000-0000-00000000000b','completed',
+        '2025-01-10 10:00+01','2025-01-10 23:00+01')
+returning id as review_booking_id \gset
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  json_build_object('sub','00000000-dead-0000-0000-000000000002','role','authenticated')::text, true);
+insert into reviews (id, provider_id, author_id, booking_id, rating_overall)
+values ('00000000-dead-0000-0000-00000000000e','00000000-dead-0000-0000-00000000000a',
+        '00000000-dead-0000-0000-000000000002', :'review_booking_id', 5);
+
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims',
+  json_build_object('sub','00000000-dead-0000-0000-000000000001','role','authenticated')::text, true);
+
+do $$
+begin
+  update reviews set provider_reply = 'Obrigado!'
+   where id = '00000000-dead-0000-0000-00000000000e';
+  if not found then
+    raise exception 'FAIL: the business owner could not reply to their own review';
+  end if;
+  raise notice 'PASS: a supplier can reply to a review on their own business';
+end $$;
+
+do $$
+begin
+  update reviews set provider_reply = 'x', rating_overall = 1
+   where id = '00000000-dead-0000-0000-00000000000e';
+  raise exception 'FAIL: a supplier rewrote the rating while replying';
+exception
+  when insufficient_privilege then
+    raise notice 'PASS: a supplier still cannot rewrite the rating while replying';
+end $$;
+
+reset role;
 rollback;
 SQL

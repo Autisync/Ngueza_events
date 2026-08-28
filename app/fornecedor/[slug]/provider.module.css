@@ -49,3 +49,19 @@
          color: var(--tinta-3); font-size: 0.9rem; }
 .foot { margin: 40px 0; padding-top: 20px; border-top: 1px solid var(--linha);
         color: var(--tinta-3); font-size: 0.82rem; }
+
+.review { padding: 16px 0; border-bottom: 1px solid var(--linha); }
+.review:last-child { border-bottom: 0; }
+.reviewHead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.reviewWho { display: flex; align-items: baseline; flex-wrap: wrap; }
+.reviewAuthor { font-weight: 600; }
+.reviewVerified { display: inline-flex; align-items: center; gap: 4px; font-size: 0.76rem; font-weight: 600;
+                   color: var(--bom); background: var(--bom-fundo); padding: 2px 8px; border-radius: 999px;
+                   margin-left: 8px; }
+.reviewStars { color: var(--azul-700); font-weight: 700; white-space: nowrap; }
+.reviewDate { font-size: 0.8rem; color: var(--tinta-3); }
+.reviewComment { margin: 8px 0 0; color: var(--tinta-2); }
+.reviewReply { margin: 12px 0 0 16px; padding: 10px 14px; background: var(--azul-050); border-radius: var(--raio);
+               font-size: 0.9rem; }
+.reviewReplyLabel { font-weight: 700; font-size: 0.78rem; color: var(--azul-700); text-transform: uppercase;
+                     letter-spacing: 0.04em; display: block; margin-bottom: 4px; }

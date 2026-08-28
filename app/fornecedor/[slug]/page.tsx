@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { formatPrice } from '@/lib/money'
 import { availability, getProvider, recordProviderView } from '@/lib/provider'
+import { providerReviews } from '@/lib/reviews'
 import { isCrawler, sessionId } from '@/lib/session'
 import { currentProfile } from '@/lib/auth'
 import { doRequestBooking } from '@/app/booking-actions'
@@ -49,6 +50,8 @@ export default async function ProviderPage({
     getProvider(slug), searchParams, currentProfile(),
   ])
   if (!provider) notFound()
+
+  const reviews = await providerReviews(provider.id)
 
   // Crawlers must reach this page (§50) but must not inflate a supplier's
   // view count, which is a business signal rather than a traffic number.
@@ -295,6 +298,41 @@ export default async function ProviderPage({
                 aceite e confirmada.
               </p>
             </form>
+          )}
+        </section>
+
+        <section className={styles.sec}>
+          <h2 className={styles.h}>Avaliações</h2>
+          {reviews.length === 0 ? (
+            <p className={styles.empty}>Ainda sem avaliações.</p>
+          ) : (
+            <div>
+              {reviews.map((r) => (
+                <div key={r.id} className={styles.review}>
+                  <div className={styles.reviewHead}>
+                    <span className={styles.reviewWho}>
+                      <span className={styles.reviewAuthor}>{r.authorName}</span>
+                      {r.isVerified ? (
+                        <span className={styles.reviewVerified}>✓ Reserva verificada</span>
+                      ) : null}
+                    </span>
+                    <span className={styles.reviewStars}>{'★'.repeat(r.ratingOverall)}{'☆'.repeat(5 - r.ratingOverall)}</span>
+                  </div>
+                  <p className={styles.reviewDate}>
+                    {new Date(r.createdAt).toLocaleDateString('pt-PT', {
+                      timeZone: 'Africa/Luanda', dateStyle: 'long',
+                    })}
+                  </p>
+                  {r.comment ? <p className={styles.reviewComment}>{r.comment}</p> : null}
+                  {r.providerReply ? (
+                    <div className={styles.reviewReply}>
+                      <span className={styles.reviewReplyLabel}>Resposta do fornecedor</span>
+                      {r.providerReply}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           )}
         </section>
 
