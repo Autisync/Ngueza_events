@@ -4,7 +4,7 @@ export function Chrome({
   title, active, counts,
 }: {
   title: string
-  active: 'inicio' | 'fornecedores' | 'denuncias' | 'registo'
+  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'localizacoes' | 'registo'
   counts?: { pendingProviders: number; openReports: number }
 }) {
   const link = (href: string, key: typeof active, label: string, badge?: number) => (
@@ -22,6 +22,8 @@ export function Chrome({
           {link('/admin', 'inicio', 'Início')}
           {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
           {link('/admin/denuncias', 'denuncias', 'Denúncias', counts?.openReports)}
+          {link('/admin/categorias', 'categorias', 'Categorias')}
+          {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
           {link('/admin/registo', 'registo', 'Registo')}
         </nav>
       </div>

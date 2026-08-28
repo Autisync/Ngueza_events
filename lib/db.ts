@@ -76,6 +76,8 @@ function hasCode(error: unknown, code: string): boolean {
  *  service concurrency trigger, so callers handle one code path. */
 export const SLOT_TAKEN = '23P01'
 export const ALREADY_EXISTS = '23505'
+export const CHECK_VIOLATION = '23514'
 
 export const isSlotTaken = (error: unknown) => hasCode(error, SLOT_TAKEN)
 export const isAlreadyExists = (error: unknown) => hasCode(error, ALREADY_EXISTS)
+export const isCheckViolation = (error: unknown) => hasCode(error, CHECK_VIOLATION)
