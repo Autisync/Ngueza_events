@@ -33,3 +33,28 @@ services:
           echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $${body}"
           sleep "$${INTERVAL_SECONDS}"
         done
+
+  # §17 — sends whatever is waiting in the notification outbox. A shorter
+  # default interval than expiry: a booking's 48-hour deadline does not
+  # care if the sweep runs five minutes late, but a client waiting to
+  # hear whether their date was accepted does.
+  send-notifications:
+    image: curlimages/curl:8.11.1
+    container_name: ngueza-cron-notify
+    restart: unless-stopped
+    environment:
+      SITE_URL: ${SITE_URL:?set SITE_URL, e.g. https://ngueza.com}
+      CRON_SECRET: ${CRON_SECRET:?set CRON_SECRET, matching the app}
+      NOTIFY_INTERVAL_SECONDS: ${NOTIFY_INTERVAL_SECONDS:-60}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "notify job: every $${NOTIFY_INTERVAL_SECONDS}s against $${SITE_URL}"
+        while true; do
+          body=$$(curl -sS --max-time 30 \
+            -H "authorization: Bearer $${CRON_SECRET}" \
+            "$${SITE_URL}/api/cron/notify" 2>&1) || body="request failed"
+          echo "$$(date -u +%Y-%m-%dT%H:%M:%SZ) $${body}"
+          sleep "$${NOTIFY_INTERVAL_SECONDS}"
+        done
