@@ -125,3 +125,23 @@ same effect. Left undone for that reason, not attempted a third way.
 to provision the very first real administrator on a fresh project. Follow
 up separately — likely a one-time bootstrap script using a direct SQL
 insert into `auth.users`, the same shape `verify-remote.sh` already uses.
+
+**Follow-up, done separately:** `scripts/bootstrap-admin.sh` (see
+[`README.md`](../../README.md#first-administrator-on-a-fresh-supabase-project--break-glass-once)).
+It confirmed the `user_not_found` gap above precisely: a live
+`auth.users` had no default on `instance_id`, `aud` or `role`, so the
+minimal insert this doc describes left `instance_id` `NULL`, which
+never matches GoTrue's lookup. Setting the full column set a real signup
+row carries — and hashing the password with `pgcrypto`'s
+`crypt(password, gen_salt('bf', 10))`, already enabled by 0001 — produced
+a row that signed in through the real `/entrar` form and reached `/admin`,
+verified live and cleaned up afterward. Also closes the specific gap
+above about `profiles_guard_role`: the script writes `raw_app_meta_data`
+with `app_role: admin` directly into the `INSERT`, so `handle_new_auth_user`
+(0016) provisions the profile as `admin` on creation — nothing needs to
+disable the trigger to promote an existing row after the fact.
+
+Independently re-verified in this same slice's follow-up: sign-in,
+`/admin`, `/admin/metricas` and `/admin/pagamentos` all confirmed live
+a second time, closing the exact gap this file's own "Not verified"
+section above named.

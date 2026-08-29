@@ -146,3 +146,8 @@ slice 14) exists to fix. The review queue's actual logic —
 `paymentQueue()`, `decidePayment()`, the admin-only RLS boundary — is
 fully covered by 5 of the integration tests above and by the live RLS
 verification; only the rendered HTML of that one page is unconfirmed.
+
+**Resolved, separately.** `scripts/bootstrap-admin.sh` closed this —
+see `spec/slices/14-admin-metrics.md`'s follow-up. `/admin/pagamentos`
+loads correctly for a real, live-verified admin session; so does
+`/admin/metricas`.
