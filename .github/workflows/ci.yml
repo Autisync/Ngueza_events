@@ -116,6 +116,15 @@ jobs:
           fi
           echo "client bundle carries no server secrets"
 
+      # CLAUDE.md has claimed "CI fails the build on either [180KB JS or
+      # 2.5s LCP]" since slice 00. It never did — this step is that claim,
+      # made real. The database seeded above (WITH_DEMO=1) is what lets it
+      # also measure real dynamic routes, not only the three static pages.
+      - name: Route JS is within the 180KB budget
+        run: ./scripts/check-js-budget.sh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ngueza_test
+
       - name: spec/schema.sql is in sync with the migrations
         run: |
           ./scripts/schema-dump.sh
@@ -186,16 +195,24 @@ jobs:
           fi
           echo "no ?? fallbacks on environment variables"
 
+      # A hardcoded file list here drifts the moment a new lib/ module
+      # ships without anyone remembering to add it — which is exactly what
+      # happened: lib/analytics.ts, lib/payments.ts and lib/reviews.ts all
+      # shipped correctly marked, and this check never once looked at any
+      # of them. Enumerate lib/*.ts instead, and name only the files that
+      # are deliberately pure — that list changes far more rarely, and
+      # forgetting to add to it fails loudly (a real file flagged) rather
+      # than silently (a real file never checked).
       - name: Modules holding secrets are marked server-only
         run: |
+          pure="lib/booking-labels.ts lib/env.ts lib/money.ts lib/notify.ts lib/payment-labels.ts"
           missing=0
-          for f in lib/db.ts lib/supabase.ts lib/media.ts lib/email.ts \
-                   lib/newsletter.ts lib/booking.ts lib/provider.ts \
-                   lib/search.ts lib/session.ts lib/auth.ts \
-                   lib/onboarding.ts lib/painel.ts lib/admin.ts \
-                   lib/notifications.ts lib/taxonomy.ts; do
+          for f in lib/*.ts; do
+            case " $pure " in
+              *" $f "*) continue ;;
+            esac
             if ! head -5 "$f" | grep -q "import 'server-only'"; then
-              echo "::error file=$f::$f holds secrets or bypasses RLS and must import 'server-only'"
+              echo "::error file=$f::$f is not in the pure-file exemption list and must import 'server-only' — or, if it genuinely holds no secret and touches no database, add it to \$pure above"
               missing=1
             fi
           done
