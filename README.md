@@ -48,6 +48,7 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 |---|---|
 | Database, auth | Supabase, deployed and verified. **Connect through the pooler** — `db.<ref>.supabase.co` is IPv6-only. See [`docs/supabase.md`](docs/supabase.md) |
 | Media | Self-hosted MinIO + imgproxy via Portainer. See [`deploy/media/`](deploy/media/README.md) |
+| Backup, restore | Schema from migrations (proven daily by CI), data from a `pg_dump`. Rehearsed end to end, including exactly how a full schema+data dump fights Supabase's own extension management — see [`docs/backup-restore.md`](docs/backup-restore.md) |
 
 Media runs on your own host instead of Cloudflare. The §40 contract is
 unchanged: the app server never handles image bytes, the browser uploads to
@@ -133,6 +134,7 @@ how the gap was found.
 app/                   Next.js routes
 deploy/media/          MinIO + imgproxy stack for Portainer
 docs/supabase.md       connecting to Supabase, and the IPv6 trap
+docs/backup-restore.md schema from migrations, data from a dump — rehearsed
 lib/                   domain layer — money, db, search, booking, newsletter
 proxy.ts               issues the pseudonymous session cookie
 supabase/migrations/   the schema — source of truth for the whole system
