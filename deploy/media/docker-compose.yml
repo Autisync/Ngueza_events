@@ -20,7 +20,12 @@
 
 services:
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # MinIO removed both images from Docker Hub's anonymous-pull tier in
+    # 2025 — "pull access denied ... repository does not exist" is that,
+    # not a typo or a rate limit. quay.io/minio/ is MinIO's own registry
+    # and carries the identical tags; confirmed by pulling both by exact
+    # digest before switching.
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ngueza-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -47,7 +52,7 @@ services:
   # Creates the bucket and applies a read-only public policy to it, then
   # exits. Runs on every stack start and is idempotent.
   minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
     container_name: ngueza-minio-init
     depends_on:
       minio:
