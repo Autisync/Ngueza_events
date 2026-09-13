@@ -114,6 +114,18 @@ export default async function GerirNegocio({
           </a>
         </div>
 
+        {/* ---- cancellation policy ---- */}
+        <div className={styles.card}>
+          <h2>Política de cancelamento</h2>
+          <p className={styles.note}>
+            O que um cliente recebe de volta, consoante a antecedência com que cancela.
+          </p>
+          <a className={styles.submit} href={`/painel/${provider.id}/cancelamento`}
+             style={{ display: 'inline-block', textDecoration: 'none' }}>
+            Ver política
+          </a>
+        </div>
+
         {/* ---- verification ---- */}
         <div className={styles.card} id="verificacao">
           <h2>Estado</h2>

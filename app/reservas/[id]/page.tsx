@@ -7,6 +7,7 @@ import { reviewExistsForBooking } from '@/lib/reviews'
 import { clientPayments } from '@/lib/payments'
 import { PAYMENT_STATUS_CLASS, PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
 import { formatMinor } from '@/lib/money'
+import { refundEntitlement } from '@/lib/cancellation-policy'
 import { doClientCancel } from '@/app/booking-actions'
 import { doLeaveReview } from '@/app/review-actions'
 import { PaymentProofUpload } from './PaymentProofUpload'
@@ -35,6 +36,9 @@ export default async function ReservaDetalhe({
   const payments = ['awaiting_payment', 'confirmed'].includes(booking.status)
     ? await clientPayments(profile.id, booking.id)
     : []
+  const showEntitlement = canCancel
+    || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+  const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
 
   return (
     <main>
@@ -109,6 +113,22 @@ export default async function ReservaDetalhe({
                 <PaymentProofUpload bookingId={booking.id} />
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {entitlement ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>
+              {entitlement.isFinal ? 'Reembolso a que tem direito' : 'Se cancelar hoje'}
+            </h2>
+            <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Segundo a política «{entitlement.policyName}» do fornecedor. O reembolso em si é
+              combinado directamente com o fornecedor — a NGUEZA não guarda nem transfere dinheiro.
+            </p>
+            <div className={styles.row}>
+              <span>{entitlement.isFinal ? 'Reembolso' : 'Reembolso estimado agora'}</span>
+              <span><strong>{entitlement.refundPct}%</strong></span>
+            </div>
           </div>
         ) : null}
 

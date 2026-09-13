@@ -4,6 +4,7 @@ import { currentProfile } from '@/lib/auth'
 import { bookingDetail, type BookingStatus } from '@/lib/booking'
 import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
 import { ownedProvider } from '@/lib/painel'
+import { refundEntitlement } from '@/lib/cancellation-policy'
 import { doSupplierTransition } from '@/app/booking-actions'
 import styles from '../../../painel.module.css'
 
@@ -56,6 +57,9 @@ export default async function ReservaFornecedor({
   if (!booking || booking.providerId !== providerId) notFound()
 
   const steps = NEXT_STEPS[booking.status] ?? []
+  const showEntitlement = steps.length > 0
+    || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+  const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
 
   return (
     <main>
@@ -94,6 +98,22 @@ export default async function ReservaFornecedor({
             <div className={styles.row}><span>Observações</span><span>{booking.notes}</span></div>
           ) : null}
         </div>
+
+        {entitlement ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>
+              {entitlement.isFinal ? 'Reembolso devido ao cliente' : 'Se cancelar hoje'}
+            </h2>
+            <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Segundo a política «{entitlement.policyName}». O reembolso em si é combinado
+              directamente com o cliente — a NGUEZA não guarda nem transfere dinheiro.
+            </p>
+            <div className={styles.row}>
+              <span>{entitlement.isFinal ? 'Reembolso' : 'Reembolso estimado agora'}</span>
+              <span><strong>{entitlement.refundPct}%</strong></span>
+            </div>
+          </div>
+        ) : null}
 
         {steps.length > 0 ? (
           <div className={styles.card}>
