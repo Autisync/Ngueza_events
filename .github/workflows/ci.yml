@@ -125,6 +125,27 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ngueza_test
 
+      # Lighthouse needs a real Chrome binary. Hosted runner images
+      # usually carry one already, but pinning it explicitly here means
+      # this step's Chrome version can't silently drift out from under
+      # it on a runner-image update.
+      - name: Install Chrome for Lighthouse
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      # The other half of the budget claim the JS step above made real:
+      # CLAUDE.md says "LCP budget is 2.5s [under simulated mobile
+      # throttling]. CI fails the build on either." See
+      # scripts/check-lcp-budget.sh for what "throttled" means here,
+      # and why simulated throttling rather than a fixed CPU multiplier.
+      - name: LCP is within the 2.5s budget
+        run: ./scripts/check-lcp-budget.sh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ngueza_test
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+
       - name: spec/schema.sql is in sync with the migrations
         run: |
           ./scripts/schema-dump.sh

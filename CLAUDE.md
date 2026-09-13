@@ -95,8 +95,10 @@ per provider.
   from the client, defined in the design tokens. Do not introduce a second hue
   except for semantic state (success / warning / danger).
 - **Mobile first.** Most users arrive on a phone, on mobile data they pay for.
-  Route JS budget is 180KB; LCP budget is 2.5s on throttled 3G. CI fails the
-  build on either.
+  Route JS budget is 180KB; LCP budget is 2.5s under simulated mobile
+  network+CPU throttling (Lighthouse's default profile, calibrated per-host
+  rather than a fixed multiplier — see `scripts/check-lcp-budget.sh` for why).
+  CI fails the build on either.
 - **Timestamps** are `timestamptz`, always. Display in `Africa/Luanda`.
 - **Currency** is AOA (Kwanza), stored in cêntimos, formatted `pt-AO`.
 - **Migrations are append-only.** Never edit a migration that has been applied
