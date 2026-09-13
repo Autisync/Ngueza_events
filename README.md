@@ -41,6 +41,8 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 | 03 | Categories and locations, administered at runtime — the CLAUDE.md rule, made real |
 | 11 | Reviews — verified seal, sub-scores, supplier right of reply |
 | 14 | Admin metrics — today/month activity, §32 leakage ratio, supplier health |
+| 15 | Legal pages — accepted as final by NGUEZA. Placeholder text at `/termos`, `/privacidade`, `/cancelamento`, linked from the footer; see `spec/slices/15-legal-pages.md` |
+| 16 | Payments — manual proof of payment via reference, decided as the permanent v1 model, not an interim one. NGUEZA never receives, holds, or moves money at any point; see `spec/slices/16-payment-proof.md` |
 
 ### Infrastructure
 
@@ -62,9 +64,7 @@ Measured: a 1600×1067 PNG of 139 KB is delivered as a 640×427 WebP of
 
 | Slice | Blocked on |
 |---|---|
-| Real signups at volume | **SMTP for Supabase Auth.** The built-in mailer allows a few messages an hour and lands in spam. A Resend account and API key, plus five dashboard steps — see [`docs/supabase.md`](docs/supabase.md#point-supabase-auths-mailer-at-resend) — before anyone outside the team registers. |
-| 15 legal pages | **A lawyer**. Terms, privacy and cancellation policy are not drafts to generate. Routes exist (`/termos`, `/privacidade`, `/cancelamento`) and are linked from the footer, each holding a plain "pending legal review" placeholder — see `spec/slices/15-legal-pages.md` |
-| 16 payments | **Legal opinion first (§28), then a provider.** The non-money half — the client uploading proof of an off-platform payment, an administrator eyeballing it as plausible, the supplier still separately confirming — is built; NGUEZA never receives, holds, or moves money at any point in it. See `spec/slices/16-payment-proof.md` |
+| Real signups at volume | **SMTP for Supabase Auth**, in hand — NGUEZA is setting this up directly (Resend plus complementary tooling). The built-in mailer allows a few messages an hour and lands in spam; the dashboard steps are at [`docs/supabase.md`](docs/supabase.md#point-supabase-auths-mailer-at-resend) if useful. |
 
 Per §45 every one of these is opened in NGUEZA's name, with NGUEZA's email
 and card. Engineers receive access; engineers do not own accounts.

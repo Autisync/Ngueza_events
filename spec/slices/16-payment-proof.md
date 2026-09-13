@@ -1,11 +1,14 @@
-# Slice 16 — proof-of-payment scaffold (no money moved)
+# Slice 16 — payments (manual proof of payment via reference)
 
-**Status:** non-money scaffold only. The `manual_proof` adapter's
-record-and-review loop, nothing that moves, holds, or forwards money.
-**Ownership:** agent (this scaffold) + a lawyer and a payment provider
-(everything else §16 needs, per README) + review.
+**Status:** done. NGUEZA has decided the `manual_proof` model — a client
+paying a supplier directly, off-platform, and uploading a reference and
+evidence of it — is the permanent v1 payment model, not an interim one
+awaiting a gateway. That decision is NGUEZA's own; nothing here argues
+the legal question either way, and this file still doesn't move money.
+**Ownership:** agent (the record-and-review loop) + NGUEZA's own
+decision to run v1 on it permanently.
 
-## Why this exists despite slice 16 being blocked
+## Why this exists despite slice 16 having been blocked
 
 CLAUDE.md is explicit: anything that moves money — payment adapters,
 refunds, payouts — is never implemented without a human in the loop.
@@ -151,3 +154,14 @@ verification; only the rendered HTML of that one page is unconfirmed.
 see `spec/slices/14-admin-metrics.md`'s follow-up. `/admin/pagamentos`
 loads correctly for a real, live-verified admin session; so does
 `/admin/metricas`.
+
+## Permanent, not interim
+
+This was written as a scaffold ahead of a legal opinion and a gateway
+choice. NGUEZA has since decided `manual_proof` is the v1 payment model
+outright — not a placeholder for a real integration to replace once
+legal clears it. Nothing above changes: NGUEZA still never receives,
+holds, or moves money at any point, `refunds` and `payment_events`
+remain entirely unbuilt, and a real gateway (§28's Model B/C) would
+still need its own legal opinion and provider if NGUEZA ever wants one.
+This slice just stops waiting on that to call itself finished.

@@ -1,7 +1,10 @@
 # Slice 15 — legal pages
 
-**Status:** scaffold only. Blocked on a lawyer for the actual text.
-**Ownership:** agent (scaffold) + a lawyer (the substance) + review.
+**Status:** done. NGUEZA has accepted the placeholder text at `/termos`,
+`/privacidade` and `/cancelamento` as final for now — not a drafting
+decision made here; recorded because the acceptance criterion below
+("real legal text") is being waived on purpose, not forgotten.
+**Ownership:** agent (scaffold) + NGUEZA's own sign-off on shipping with it.
 
 ## Why this file exists despite the slice being blocked
 
@@ -56,9 +59,14 @@ nowhere else in this codebase — the addresses that do exist
 audience-specific, and inventing a general inbox that may not exist
 would be worse than saying nothing. Removed before it shipped.
 
-## Not in the Done table
+## Now in the Done table, and why that's a change of scope, not a fix
 
-The acceptance criterion for slice 15 is real legal text, not a
-placeholder that says text is coming. This stays out of README's "Done"
-list until that lands — the scaffold is prerequisite work, not the
-deliverable.
+The acceptance criterion had been real legal text, not a placeholder
+that says text is coming — the scaffold was written as prerequisite
+work, not the deliverable. NGUEZA has since decided the placeholder is
+what ships, which changes what "done" means for this slice; it does not
+mean real Terms/Privacy/cancellation text now exists. If that changes
+later, replacing the placeholder copy in `app/termos/page.tsx`,
+`app/privacidade/page.tsx` and `app/cancelamento/page.tsx` is the only
+work left — the routes, footer links and cross-navigation already
+described above don't change.
