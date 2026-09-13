@@ -29,6 +29,16 @@ done
 curl -sf "$MINIO_URL/minio/health/live" >/dev/null || { echo "minio never became healthy"; docker compose logs minio | tail -20; exit 1; }
 curl -sf "$IMGPROXY_URL/health" >/dev/null   || { echo "imgproxy never became healthy"; docker compose logs imgproxy | tail -20; exit 1; }
 
+# minio becoming healthy only means minio-init has STARTED (its
+# depends_on condition), not finished — the two loops above never wait
+# on it at all. Reading its logs immediately after raced its own exit on
+# a CI runner slower than this laptop: minio was healthy, curl passed,
+# and minio-init had created both buckets but not yet echoed "ready" —
+# read a moment too early, every single time on that runner. `docker
+# compose wait` blocks on the one container actually finishing, not on
+# an HTTP port that was never the thing being waited for.
+docker compose wait minio-init >/dev/null 2>&1 || true
+
 # The bucket is what the app actually needs, so assert that rather than
 # the init container's status.
 for bucket in "${MEDIA_BUCKET:-ngueza-media}" "${DOCUMENTS_BUCKET:-ngueza-documents}"; do
