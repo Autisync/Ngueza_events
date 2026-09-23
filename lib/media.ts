@@ -3,7 +3,7 @@
 import 'server-only'
 
 import { createHash, createHmac, randomUUID } from 'node:crypto'
-import { env } from '@/lib/env'
+import { env, optionalEnv } from '@/lib/env'
 
 /**
  * Media (§40).
@@ -274,6 +274,37 @@ function required(name: string): string {
   const value = process.env[name]
   if (!value) throw new Error(`${name} is not set — see deploy/media/README.md`)
   return value
+}
+
+/** A resized photo URL for display — a search card, a profile header.
+ *  Unlike mediaStore(), this never throws: a page rendering a supplier
+ *  card is not the place to fail loudly over an unset IMGPROXY_KEY, the
+ *  way presignUpload() correctly does for an actual upload. No object,
+ *  or media not configured, both mean "show the placeholder instead". */
+export function coverImageUrl(objectId: string | null, variant: Variant): string | null {
+  if (!objectId) return null
+  // Only imgproxy's own address and signing secret, plus the bucket name
+  // — MEDIA_S3_* is presigned-upload configuration (what the browser
+  // talks to), irrelevant to imgproxy resolving an "s3://bucket/key"
+  // source server-side against its own AWS credentials.
+  const bucket = optionalEnv('MEDIA_BUCKET') ?? 'ngueza-media'
+  const imgproxyPublicUrl = optionalEnv('IMGPROXY_PUBLIC_URL')
+  const imgproxyKey = optionalEnv('IMGPROXY_KEY')
+  const imgproxySalt = optionalEnv('IMGPROXY_SALT')
+  if (!imgproxyPublicUrl || !imgproxyKey || !imgproxySalt) return null
+
+  try {
+    return imgproxyUrl({
+      baseUrl: imgproxyPublicUrl,
+      bucket,
+      objectId,
+      variant,
+      keyHex: imgproxyKey,
+      saltHex: imgproxySalt,
+    })
+  } catch {
+    return null
+  }
 }
 
 export function mediaStore(): MediaStore {

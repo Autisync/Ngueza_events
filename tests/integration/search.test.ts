@@ -123,6 +123,35 @@ describe('search', () => {
   })
 })
 
+describe('rating and categoryNames on a hit (modern marketplace UI)', () => {
+  it('carries a null rating with zero reviews, and a real average once reviews exist', async () => {
+    const HORIZONTE = '50000000-0000-0000-0000-000000000001'
+    const ANA = '40000000-0000-0000-0000-000000000090'
+
+    const before = (await search({})).hits.find((h) => h.id === HORIZONTE)
+    expect(before?.ratingAverage).toBeNull()
+    expect(before?.reviewCount).toBe(0)
+    expect(before?.categoryNames).toEqual(['Salões de festas'])
+
+    const reviewId = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into reviews (provider_id, author_id, rating_overall, status)
+         values ($1, $2, 5, 'published') returning id`,
+        [HORIZONTE, ANA],
+      )
+      return rows[0]!.id
+    })
+
+    try {
+      const after = (await search({})).hits.find((h) => h.id === HORIZONTE)
+      expect(after?.ratingAverage).toBe(5)
+      expect(after?.reviewCount).toBe(1)
+    } finally {
+      await asSystem((c) => c.query(`delete from reviews where id = $1`, [reviewId]))
+    }
+  })
+})
+
 describe('multi-category matching (slice 22 / migration 0028)', () => {
   it('a venue registered under saloes-de-festas surfaces in a fotografia search once it lists a photography service', async () => {
     const HORIZONTE = '50000000-0000-0000-0000-000000000001'

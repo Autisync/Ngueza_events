@@ -52,6 +52,10 @@ export interface PublicProvider {
   website: string | null
   yearsActiveDeclared: number | null
   verifiedAt: string | null
+  /** Cover first, then sort_order — lib/media.ts's coverImageUrl() turns
+   *  an externalId into a real, resized photo URL when media is
+   *  configured, null otherwise (never throws). */
+  photos: { externalId: string; altText: string | null }[]
   resources: PublicResource[]
   services: PublicService[]
   reviewCount: number
@@ -122,6 +126,12 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       p.category_name as string,
       ...services.rows.map((s) => s.category_name as string),
     ].filter((name, i, all) => all.indexOf(name) === i)
+    const photos = await c.query<{ external_id: string; alt_text: string | null }>(
+      `select external_id, alt_text from media
+        where provider_id = $1 and kind = 'image'
+        order by is_cover desc, sort_order, created_at`,
+      [p.id],
+    )
 
     return {
       id: p.id,
@@ -140,6 +150,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       website: p.website,
       yearsActiveDeclared: p.years_active_declared,
       verifiedAt: p.verified_at ? new Date(p.verified_at).toISOString() : null,
+      photos: photos.rows.map((m) => ({ externalId: m.external_id, altText: m.alt_text })),
       resources: resources.rows,
       services: services.rows.map((s) => ({
         id: s.id,

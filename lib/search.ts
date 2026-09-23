@@ -37,11 +37,17 @@ export interface SearchHit {
   description: string | null
   supplierType: 'venue' | 'service'
   categoryName: string
+  /** categoryName plus every active service's own category, deduplicated
+   *  (slice 22) — what this provider actually matched the search through,
+   *  not only what it registered as. */
+  categoryNames: string[]
   locationName: string
   capacity: number | null
   coverImageId: string | null
   price: Price | null
   hasPrice: boolean
+  ratingAverage: number | null
+  reviewCount: number
 }
 
 export interface SearchResult {
@@ -56,6 +62,7 @@ interface Row {
   description: string | null
   supplier_type: 'venue' | 'service'
   category_name: string
+  extra_category_names: string[] | null
   location_name: string
   capacity: number | null
   cover_image_id: string | null
@@ -63,6 +70,8 @@ interface Row {
   price_minor: string | null
   price_max_minor: string | null
   has_price: boolean
+  rating_average: string | null
+  review_count: string
 }
 
 function toPrice(row: Row): Price | null {
@@ -101,6 +110,13 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
           r.capacity,
           (select m.external_id from media m
             where m.provider_id = p.id and m.is_cover limit 1) as cover_image_id,
+          (select array_agg(cat2.name) from services sv2
+             join categories cat2 on cat2.id = sv2.category_id
+            where sv2.provider_id = p.id and sv2.is_active) as extra_category_names,
+          (select round(avg(rv.rating_overall), 1) from reviews rv
+            where rv.provider_id = p.id and rv.status = 'published') as rating_average,
+          (select count(*) from reviews rv
+            where rv.provider_id = p.id and rv.status = 'published')::int as review_count,
           s.price_mode, s.price_minor, s.price_max_minor
         from providers p
         join categories cat on cat.id = p.category_id
@@ -149,8 +165,9 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       ),
       ranked as (
         select distinct on (id)
-          id, slug, name, description, supplier_type, category_name, location_name,
-          capacity, cover_image_id, price_mode, price_minor, price_max_minor,
+          id, slug, name, description, supplier_type, category_name, extra_category_names,
+          location_name, capacity, cover_image_id, price_mode, price_minor, price_max_minor,
+          rating_average, review_count,
           (price_mode is not null and price_mode <> 'on_request') as has_price
         from candidate
         order by id, capacity desc nulls last
@@ -193,11 +210,15 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       description: row.description,
       supplierType: row.supplier_type,
       categoryName: row.category_name,
+      categoryNames: [row.category_name, ...(row.extra_category_names ?? [])]
+        .filter((name, i, all) => all.indexOf(name) === i),
       locationName: row.location_name,
       capacity: row.capacity,
       coverImageId: row.cover_image_id,
       price: toPrice(row),
       hasPrice: row.has_price,
+      ratingAverage: row.rating_average === null ? null : Number(row.rating_average),
+      reviewCount: Number(row.review_count),
     })),
     nextCursor:
       hasMore && last ? { hasPrice: last.has_price, name: last.name, id: last.id } : null,

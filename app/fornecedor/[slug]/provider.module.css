@@ -1,4 +1,15 @@
 .wrap { max-width: 780px; margin: 0 auto; padding: 0 18px; }
+
+.hero { aspect-ratio: 16 / 9; max-height: 420px; position: relative; overflow: hidden;
+        background: linear-gradient(135deg, var(--azul-100), #c9dcf0);
+        display: flex; align-items: center; justify-content: center; }
+.heroImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.heroIcon { color: var(--azul-300); }
+.heroDots { position: absolute; top: 14px; left: 0; right: 0; display: flex;
+            justify-content: center; gap: 5px; }
+.heroDot { width: 4px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.55); }
+.heroDotActive { width: 16px; background: var(--branco); }
+
 .top { background: var(--azul-800); color: var(--branco); padding: 16px 0 30px; }
 .mark { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
         color: var(--azul-300); text-decoration: none; }
@@ -16,7 +27,7 @@
 .h { font-size: 1.05rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
 .p { color: var(--tinta-2); margin: 0 0 12px; }
 
-.svc { border: 1px solid var(--linha); border-radius: var(--raio); overflow: hidden; }
+.svc { border: 1px solid var(--linha); border-radius: 16px; overflow: hidden; }
 /* Stacked on a phone: a range like "3 500 000 Kz – 6 200 000 Kz" cannot
    share a narrow line with the service name without overflowing. */
 .svcRow { display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
@@ -41,11 +52,11 @@
 
 .contact { display: grid; gap: 9px; }
 .btn { display: block; text-align: center; padding: 13px 18px; font-weight: 700;
-       border-radius: var(--raio); text-decoration: none; }
+       border-radius: 10px; text-decoration: none; }
 .btnMain { background: var(--azul-700); color: var(--branco); }
 .btnAlt { background: var(--branco); color: var(--azul-700); border: 1px solid var(--azul-500); }
 
-.empty { border: 1px dashed var(--linha); border-radius: var(--raio); padding: 18px;
+.empty { border: 1px dashed var(--linha); border-radius: 16px; padding: 18px;
          color: var(--tinta-3); font-size: 0.9rem; }
 .foot { margin: 40px 0; padding-top: 20px; border-top: 1px solid var(--linha);
         color: var(--tinta-3); font-size: 0.82rem; }
