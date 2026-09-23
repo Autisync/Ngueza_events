@@ -122,3 +122,33 @@ describe('search', () => {
     })
   })
 })
+
+describe('multi-category matching (slice 22 / migration 0028)', () => {
+  it('a venue registered under saloes-de-festas surfaces in a fotografia search once it lists a photography service', async () => {
+    const HORIZONTE = '50000000-0000-0000-0000-000000000001'
+    const fotografiaId = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(`select id from categories where slug = 'fotografia'`)
+      return rows[0]!.id
+    })
+
+    const before = await search({ categoryId: fotografiaId })
+    expect(before.hits.some((h) => h.id === HORIZONTE)).toBe(false)
+
+    const serviceId = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into services (provider_id, category_id, name, price_mode, price_minor, price_unit, is_active)
+         values ($1, $2, 'Fotografia do evento', 'exact', 9500000, 'event', true)
+         returning id`,
+        [HORIZONTE, fotografiaId],
+      )
+      return rows[0]!.id
+    })
+
+    try {
+      const after = await search({ categoryId: fotografiaId })
+      expect(after.hits.some((h) => h.id === HORIZONTE)).toBe(true)
+    } finally {
+      await asSystem((c) => c.query(`delete from services where id = $1`, [serviceId]))
+    }
+  })
+})

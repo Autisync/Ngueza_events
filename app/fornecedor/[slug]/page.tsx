@@ -108,6 +108,19 @@ export default async function ProviderPage({
           </p>
           <h1 className={styles.name}>{provider.name}</h1>
 
+          {/* Only shown once there is a second category to say — a provider
+              offering just the one they registered under needs no tag row
+              repeating what the crumb above already said (§6, §44: services
+              carry their own category, so a business can span more than
+              one without a second registration). */}
+          {provider.categoryNames.length > 1 ? (
+            <div className={styles.seals} style={{ marginTop: 12 }}>
+              {provider.categoryNames.map((name) => (
+                <span className={`${styles.seal} ${styles.sealQuiet}`} key={name}>{name}</span>
+              ))}
+            </div>
+          ) : null}
+
           {/* Reviews are necessarily empty at launch, so credibility comes
               from what exists on day one: verification, declared history,
               and a complete profile. Each is labelled for what it is. */}
@@ -147,6 +160,11 @@ export default async function ProviderPage({
               {provider.services.map((s) => (
                 <div className={styles.svcRow} key={s.id}>
                   <div>
+                    {provider.categoryNames.length > 1 ? (
+                      <p className={styles.svcMeta} style={{ margin: '0 0 2px', fontWeight: 600 }}>
+                        {s.categoryName}
+                      </p>
+                    ) : null}
                     <p className={styles.svcName}>{s.name}</p>
                     <p className={styles.svcMeta}>
                       {UNITS[s.priceUnit] ?? s.priceUnit}

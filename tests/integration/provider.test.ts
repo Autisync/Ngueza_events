@@ -84,3 +84,37 @@ describe('planningContext (slice 21 — weather and tips)', () => {
     expect(await planningContext('00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 })
+
+describe('categoryNames (slice 22 — multi-category discoverability)', () => {
+  it('is just the provider\'s own category when every service shares it', async () => {
+    const p = await getProvider('salao-horizonte-talatona')
+    expect(p?.categoryNames).toEqual(['Salões de festas'])
+    expect(p?.services.every((s) => s.categoryName === 'Salões de festas')).toBe(true)
+  })
+
+  it('adds a second category once a service is listed under a different one', async () => {
+    const HORIZONTE = '50000000-0000-0000-0000-000000000001'
+    const fotografiaId = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(`select id from categories where slug = 'fotografia'`)
+      return rows[0]!.id
+    })
+    const serviceId = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into services (provider_id, category_id, name, price_mode, price_minor, price_unit, is_active)
+         values ($1, $2, 'Fotografia do evento', 'exact', 9500000, 'event', true)
+         returning id`,
+        [HORIZONTE, fotografiaId],
+      )
+      return rows[0]!.id
+    })
+
+    try {
+      const p = await getProvider('salao-horizonte-talatona')
+      expect(p?.categoryNames).toEqual(['Salões de festas', 'Fotografia'])
+      const photoService = p?.services.find((s) => s.name === 'Fotografia do evento')
+      expect(photoService?.categoryName).toBe('Fotografia')
+    } finally {
+      await asSystem((c) => c.query(`delete from services where id = $1`, [serviceId]))
+    }
+  })
+})
