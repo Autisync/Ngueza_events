@@ -27,7 +27,7 @@
 
 .card {
   background: var(--branco); border: 1px solid var(--linha);
-  border-radius: var(--raio); box-shadow: var(--sombra);
+  border-radius: 16px; box-shadow: var(--sombra);
   padding: 26px 22px; margin: -32px 0 0;
 }
 .cardTitle { font-size: 1.2rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
@@ -40,7 +40,7 @@
 .input {
   width: 100%; padding: 13px 14px; font: inherit; font-size: 1rem;
   color: var(--tinta); background: var(--branco);
-  border: 1px solid var(--linha); border-radius: var(--raio);
+  border: 1px solid var(--linha); border-radius: 10px;
 }
 .input:focus { border-color: var(--azul-500); }
 
@@ -65,13 +65,13 @@
 .submit {
   width: 100%; padding: 15px 20px; font: inherit; font-size: 1.02rem; font-weight: 700;
   color: var(--branco); background: var(--azul-700);
-  border: 0; border-radius: var(--raio); cursor: pointer;
+  border: 0; border-radius: 10px; cursor: pointer;
 }
 .submit:hover { background: var(--azul-800); }
 .submit:active { background: var(--azul-900); }
 
 .alert {
-  padding: 12px 14px; border-radius: var(--raio); margin: 0 0 20px;
+  padding: 12px 14px; border-radius: 10px; margin: 0 0 20px;
   background: var(--erro-fundo); color: var(--erro);
   border: 1px solid rgba(179, 64, 43, 0.3); font-size: 0.93rem;
 }
