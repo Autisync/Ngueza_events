@@ -103,6 +103,45 @@ describe('provider decision notifications', () => {
   })
 })
 
+const NBSP = ' '
+
+describe('quote request notifications (slice 20)', () => {
+  const REQUEST_CONTEXT = {
+    quote_request_id: 'q1', category_name: 'Salões', location_name: 'Talatona',
+    event_date: '2027-12-15', capacity: 80, description: 'Um espaço amplo e coberto, por favor.',
+  }
+  const OFFER_CONTEXT = {
+    quote_request_id: 'q1', offer_id: 'o1', provider_name: 'Salão Horizonte',
+    provider_slug: 'salao-horizonte', price_minor: 4500000, message: 'Temos disponibilidade.',
+  }
+
+  it('tells a matching supplier about a new request, without needing a provider_name', () => {
+    const mail = render('quote_request_new', REQUEST_CONTEXT)
+    expect(mail.subject).toContain('Salões')
+    expect(mail.text).toContain('Talatona')
+    expect(mail.text).toContain('80 pessoas')
+    expect(mail.text).toContain('Um espaço amplo')
+  })
+
+  it('formats the event date in Africa/Luanda', () => {
+    const mail = render('quote_request_new', REQUEST_CONTEXT)
+    expect(mail.text).toMatch(/15 de dezembro/i)
+  })
+
+  it('omits the capacity line when none was given', () => {
+    const mail = render('quote_request_new', { ...REQUEST_CONTEXT, capacity: null })
+    expect(mail.text).not.toContain('Capacidade:')
+  })
+
+  it('tells the requester about a new offer, with the price in Kz', () => {
+    const mail = render('quote_offer_received', OFFER_CONTEXT)
+    expect(mail.subject).toContain('Salão Horizonte')
+    expect(mail.text).toContain(`45${NBSP}000,00${NBSP}Kz`)
+    expect(mail.text).toContain('Temos disponibilidade.')
+    expect(mail.text).toContain('/conta/pedidos')
+  })
+})
+
 describe('links use the configured site origin', () => {
   it('falls back sanely when nothing is configured', () => {
     const mail = render('booking_requested', BOOKING_CONTEXT)

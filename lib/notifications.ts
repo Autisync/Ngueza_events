@@ -120,3 +120,51 @@ export async function recentNotifications(adminId: string, limit = 50) {
     return rows
   })
 }
+
+// ---------------------------------------------------------------------
+// A recipient's own in-webapp notifications (slice 20). RLS
+// (`notification_outbox_recipient_read`/`_mark_read`, 0027) scopes both
+// of these to the caller's own rows — no WHERE recipient_id = $1 needed
+// here, RLS already is that WHERE clause.
+// ---------------------------------------------------------------------
+
+export interface MyNotification {
+  id: number
+  kind: string
+  context: Record<string, unknown>
+  createdAt: string
+  readAt: string | null
+}
+
+export async function myNotifications(actorId: string, limit = 30): Promise<MyNotification[]> {
+  return asUser(actorId, async (c) => {
+    const { rows } = await c.query<{
+      id: number; kind: string; context: Record<string, unknown>
+      created_at: string; read_at: string | null
+    }>(
+      `select id, kind, context, created_at, read_at
+         from notification_outbox
+        order by created_at desc
+        limit $1`,
+      [limit],
+    )
+    return rows.map((r) => ({
+      id: r.id, kind: r.kind, context: r.context, createdAt: r.created_at, readAt: r.read_at,
+    }))
+  })
+}
+
+export async function myUnreadNotificationCount(actorId: string): Promise<number> {
+  return asUser(actorId, async (c) => {
+    const { rows } = await c.query<{ n: string }>(
+      `select count(*)::text as n from notification_outbox where read_at is null`,
+    )
+    return Number(rows[0]!.n)
+  })
+}
+
+export async function markNotificationRead(actorId: string, id: number): Promise<void> {
+  await asUser(actorId, (c) =>
+    c.query(`update notification_outbox set read_at = now() where id = $1 and read_at is null`, [id]),
+  )
+}

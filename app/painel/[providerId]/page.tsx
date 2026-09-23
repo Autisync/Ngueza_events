@@ -114,6 +114,18 @@ export default async function GerirNegocio({
           </a>
         </div>
 
+        {/* ---- quote requests (slice 20) ---- */}
+        <div className={styles.card}>
+          <h2>Pedidos de orçamento</h2>
+          <p className={styles.note}>
+            Pedidos de clientes que correspondem à sua categoria e localização — responda com um preço.
+          </p>
+          <a className={styles.submit} href={`/painel/${provider.id}/pedidos`}
+             style={{ display: 'inline-block', textDecoration: 'none' }}>
+            Ver pedidos
+          </a>
+        </div>
+
         {/* ---- cancellation policy ---- */}
         <div className={styles.card}>
           <h2>Política de cancelamento</h2>

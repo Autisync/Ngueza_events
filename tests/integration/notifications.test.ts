@@ -342,11 +342,16 @@ describe('admin visibility', () => {
     expect(recent[0]!.status).toBe('sent')
   })
 
-  it('is invisible to a non-administrator', async () => {
-    const seen = await asUser(JOAO, async (c) => {
-      const { rows } = await c.query(`select id from notification_outbox`)
-      return rows.length
-    })
-    expect(seen).toBe(0)
+  it('shows a non-administrator only their own notifications, never anyone else\'s', async () => {
+    // Slice 20 gave a recipient read access to their own rows (an
+    // in-webapp notification list) — this table is no longer
+    // admin-only, but it is still not everyone's.
+    const [joaoRows, ownerRows] = await Promise.all([
+      asUser(JOAO, (c) => c.query(`select recipient_id from notification_outbox`)),
+      asUser(OWNER, (c) => c.query(`select recipient_id from notification_outbox`)),
+    ])
+    expect(joaoRows.rows.length).toBeGreaterThan(0)
+    expect(joaoRows.rows.every((r) => r.recipient_id === JOAO)).toBe(true)
+    expect(ownerRows.rows.every((r) => r.recipient_id === OWNER)).toBe(true)
   })
 })
