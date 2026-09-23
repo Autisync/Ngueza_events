@@ -186,6 +186,25 @@ export async function revoke(accessToken: string): Promise<void> {
   }).catch(() => {})
 }
 
+/**
+ * "Continuar com Google" — a plain link, not a fetch. GoTrue's
+ * /authorize is a full-page redirect into Google's own consent screen
+ * and back, so it has to be navigable without JavaScript; there is
+ * nowhere to attach a header to a browser navigation, which is why this
+ * needs no apikey the way the fetch-based calls above do.
+ *
+ * Supabase's own callback (configured in its dashboard, not here) lands
+ * the browser back at redirectTo with the session in the URL
+ * *fragment*, never a query string — the server never sees it. GoogleCallback
+ * (app/auth/google/GoogleCallback.tsx) reads it client-side, exactly the
+ * same shape app/nova-palavra-passe/Recover.tsx already uses for a
+ * password-recovery link.
+ */
+export function googleAuthorizeUrl(redirectTo: string): string {
+  const { url } = publicConfig()
+  return `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
+}
+
 // ---------------------------------------------------------------------
 // Cookies
 // ---------------------------------------------------------------------

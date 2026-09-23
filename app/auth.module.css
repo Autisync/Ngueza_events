@@ -16,6 +16,16 @@
           border-radius: var(--raio); cursor: pointer; margin-top: 4px; }
 .submit:hover { background: var(--azul-800); }
 
+.google { width: 100%; padding: 13px 20px; font: inherit; font-size: 0.98rem; font-weight: 600;
+          color: var(--tinta); background: var(--branco); border: 1px solid var(--linha);
+          border-radius: var(--raio); cursor: pointer; display: flex; align-items: center;
+          justify-content: center; gap: 10px; text-decoration: none; }
+.google:hover { border-color: var(--azul-300); background: var(--azul-050); }
+
+.divider { display: flex; align-items: center; gap: 12px; margin: 22px 0;
+           color: var(--tinta-3); font-size: 0.82rem; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--linha); }
+
 .alert { padding: 12px 14px; border-radius: var(--raio); margin: 0 0 20px; font-size: 0.93rem;
          background: var(--erro-fundo); color: var(--erro);
          border: 1px solid rgba(179,64,43,0.3); }
