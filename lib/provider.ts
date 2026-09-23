@@ -17,6 +17,10 @@ export interface PublicService {
   priceUnit: string
   minCapacity: number | null
   maxCapacity: number | null
+  /** Its own category — independent of the provider's, and of every
+   *  other service this provider lists (slice 22: a provider is
+   *  discoverable through any of them, not only its own category_id). */
+  categoryName: string
 }
 
 export interface PublicResource {
@@ -31,7 +35,14 @@ export interface PublicProvider {
   name: string
   description: string | null
   supplierType: 'venue' | 'service'
+  /** Its own registered category — still what SEO titles and the
+   *  breadcrumb lead with. */
   categoryName: string
+  /** Every category this provider is actually discoverable under:
+   *  categoryName plus each active service's own category, deduplicated,
+   *  categoryName first (slice 22). What search and quote-request
+   *  matching both key on now — see lib/search.ts and migration 0028. */
+  categoryNames: string[]
   locationPath: string[]
   addressLine: string | null
   lat: number | null
@@ -100,12 +111,17 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       [p.id],
     )
     const services = await c.query<any>(
-      `select id, name, description, price_mode, price_minor, price_max_minor,
-              price_unit, min_capacity, max_capacity
-         from services where provider_id = $1 and is_active
-        order by (price_mode <> 'on_request') desc, price_minor asc nulls last`,
+      `select sv.id, sv.name, sv.description, sv.price_mode, sv.price_minor, sv.price_max_minor,
+              sv.price_unit, sv.min_capacity, sv.max_capacity, cat.name as category_name
+         from services sv join categories cat on cat.id = sv.category_id
+        where sv.provider_id = $1 and sv.is_active
+        order by (sv.price_mode <> 'on_request') desc, sv.price_minor asc nulls last`,
       [p.id],
     )
+    const categoryNames = [
+      p.category_name as string,
+      ...services.rows.map((s) => s.category_name as string),
+    ].filter((name, i, all) => all.indexOf(name) === i)
 
     return {
       id: p.id,
@@ -114,6 +130,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       description: p.description,
       supplierType: p.supplier_type,
       categoryName: p.category_name,
+      categoryNames,
       locationPath: (p.location_path ?? []) as string[],
       addressLine: p.address_line,
       lat: p.lat === null ? null : Number(p.lat),
@@ -132,6 +149,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
         priceUnit: s.price_unit,
         minCapacity: s.min_capacity,
         maxCapacity: s.max_capacity,
+        categoryName: s.category_name,
       })),
       reviewCount: p.review_count,
       ratingAverage: p.rating_average === null ? null : Number(p.rating_average),

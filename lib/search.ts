@@ -116,7 +116,20 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
         ) s on true
         where p.is_published
           and p.verification_status = 'verified'
-          and ($1::uuid is null or p.category_id in (select id from category_descendants($1)))
+          -- A provider matches a category through its own category_id OR
+          -- through any active service it lists under that category —
+          -- a business registered as 'djs' that also lists a 'fotografia'
+          -- service is discoverable under both, not just the one it
+          -- registered as. services.category_id has always been settable
+          -- independently per service (see the add-service form); this is
+          -- the search side finally reading it.
+          and ($1::uuid is null or
+               p.category_id in (select id from category_descendants($1))
+               or exists (
+                 select 1 from services sv
+                  where sv.provider_id = p.id and sv.is_active
+                    and sv.category_id in (select id from category_descendants($1))
+               ))
           and ($2::uuid is null or p.location_id in (select id from location_descendants($2)))
           and ($3::int  is null or r.capacity is null or r.capacity >= $3)
           and ($4::bigint is null or s.price_minor is null or s.price_minor <= $4)
