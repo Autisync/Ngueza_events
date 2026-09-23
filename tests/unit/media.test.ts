@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { ALLOWED_IMAGE_TYPES, imgproxyUrl, presignPut, signImgproxyPath } from '@/lib/media'
+import { afterEach, describe, expect, it } from 'vitest'
+import { ALLOWED_IMAGE_TYPES, coverImageUrl, imgproxyUrl, presignPut, signImgproxyPath } from '@/lib/media'
 
 const KEY = '943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881'
 const SALT = '520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5'
@@ -96,5 +96,30 @@ describe('accepted types', () => {
     for (const t of ['image/svg+xml', 'text/html', 'application/pdf', 'video/mp4']) {
       expect(ALLOWED_IMAGE_TYPES.has(t)).toBe(false)
     }
+  })
+})
+
+describe('coverImageUrl — never throws, unlike mediaStore()', () => {
+  const ENV_KEYS = ['MEDIA_BUCKET', 'IMGPROXY_PUBLIC_URL', 'IMGPROXY_KEY', 'IMGPROXY_SALT'] as const
+  afterEach(() => {
+    for (const k of ENV_KEYS) delete process.env[k]
+  })
+
+  it('is null with no object id, media unconfigured or not', () => {
+    expect(coverImageUrl(null, 'card')).toBeNull()
+  })
+
+  it('is null when imgproxy is not configured, rather than throwing', () => {
+    expect(() => coverImageUrl('some-object-id', 'card')).not.toThrow()
+    expect(coverImageUrl('some-object-id', 'card')).toBeNull()
+  })
+
+  it('builds a real signed URL once imgproxy is configured', () => {
+    process.env.IMGPROXY_PUBLIC_URL = 'https://img.ngueza.com'
+    process.env.IMGPROXY_KEY = KEY
+    process.env.IMGPROXY_SALT = SALT
+    const url = coverImageUrl('some-object-id', 'card')
+    expect(url).toContain('https://img.ngueza.com/')
+    expect(url).toContain('/rs:fill:640:427/')
   })
 })

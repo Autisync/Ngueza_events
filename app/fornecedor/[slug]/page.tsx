@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { coverImageUrl } from '@/lib/media'
 import { formatPrice } from '@/lib/money'
 import { availability, getProvider, recordProviderView } from '@/lib/provider'
 import { providerReviews } from '@/lib/reviews'
@@ -63,6 +64,8 @@ export default async function ProviderPage({
   const days = await availability(provider.id, today, 28)
   const firstResource = provider.resources[0]
   const calendar = firstResource ? days.filter((d) => d.resourceId === firstResource.id) : []
+  const heroPhoto = provider.photos[0]
+  const heroUrl = coverImageUrl(heroPhoto?.externalId ?? null, 'hero')
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -97,6 +100,29 @@ export default async function ProviderPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+
+      <div className={styles.hero}>
+        {heroUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
+          <img className={styles.heroImg} src={heroUrl} alt={heroPhoto?.altText ?? ''} />
+        ) : (
+          <svg className={styles.heroIcon} width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <circle cx="8.5" cy="10.5" r="1.5" />
+            <path d="M21 15l-5-5-9 9" />
+          </svg>
+        )}
+        {provider.photos.length > 1 ? (
+          <div className={styles.heroDots}>
+            {provider.photos.map((photo, i) => (
+              <span
+                className={i === 0 ? `${styles.heroDot} ${styles.heroDotActive}` : styles.heroDot}
+                key={photo.externalId}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <section className={styles.top}>
         <div className={styles.wrap}>
