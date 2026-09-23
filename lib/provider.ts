@@ -139,6 +139,26 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
   })
 }
 
+export interface PlanningContext {
+  categorySlug: string
+  supplierType: 'venue' | 'service'
+}
+
+/** What lib/event-tips.ts needs to pick the right tips — nothing this
+ *  provider's own public page doesn't already show, by id rather than
+ *  slug since a booking or a quote offer carries the id, not the slug. */
+export async function planningContext(providerId: string): Promise<PlanningContext | null> {
+  return asVisitor(async (c) => {
+    const { rows } = await c.query<{ category_slug: string; supplier_type: 'venue' | 'service' }>(
+      `select cat.slug as category_slug, p.supplier_type
+         from providers p join categories cat on cat.id = p.category_id
+        where p.id = $1`,
+      [providerId],
+    )
+    return rows[0] ? { categorySlug: rows[0].category_slug, supplierType: rows[0].supplier_type } : null
+  })
+}
+
 /** The next N days for each bookable space, for the profile calendar (§9). */
 export async function availability(
   providerId: string,

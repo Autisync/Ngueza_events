@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { asSystem } from '@/lib/db'
-import { availability, getProvider, recordContactReveal } from '@/lib/provider'
+import { availability, getProvider, planningContext, recordContactReveal } from '@/lib/provider'
 
 describe('public supplier page', () => {
   it('returns a published, verified supplier', async () => {
@@ -70,5 +70,17 @@ describe('public supplier page', () => {
       return Number(rows[0]!.n)
     })
     expect(after - before).toBe(2)
+  })
+})
+
+describe('planningContext (slice 21 — weather and tips)', () => {
+  it('gives the category slug and supplier type for a real provider', async () => {
+    const p = await getProvider('salao-horizonte-talatona')
+    const ctx = await planningContext(p!.id)
+    expect(ctx).toEqual({ categorySlug: 'saloes-de-festas', supplierType: 'venue' })
+  })
+
+  it('returns null for a provider that does not exist', async () => {
+    expect(await planningContext('00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 })

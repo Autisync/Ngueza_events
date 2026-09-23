@@ -8,6 +8,9 @@ import { clientPayments } from '@/lib/payments'
 import { PAYMENT_STATUS_CLASS, PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
 import { formatMinor } from '@/lib/money'
 import { refundEntitlement } from '@/lib/cancellation-policy'
+import { eventTips } from '@/lib/event-tips'
+import { planningContext } from '@/lib/provider'
+import { eventWeather } from '@/lib/weather'
 import { doClientCancel } from '@/app/booking-actions'
 import { doLeaveReview } from '@/app/review-actions'
 import { PaymentProofUpload } from './PaymentProofUpload'
@@ -39,6 +42,20 @@ export default async function ReservaDetalhe({
   const showEntitlement = canCancel
     || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
+
+  // Still worth planning for while the date could still happen —
+  // requested/accepted/awaiting_payment/confirmed, the same set canCancel
+  // already uses. Nothing to advise on once it's cancelled or past.
+  const eventDateIso = canCancel
+    ? new Date(booking.startsAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Luanda' })
+    : null
+  const [weather, planning] = eventDateIso
+    ? await Promise.all([
+        eventWeather(booking.providerId, eventDateIso),
+        planningContext(booking.providerId),
+      ])
+    : [null, null]
+  const tips = planning ? eventTips(planning.categorySlug, planning.supplierType) : null
 
   return (
     <main>
@@ -86,6 +103,30 @@ export default async function ReservaDetalhe({
             <span><a href={`/fornecedor/${booking.providerSlug}`}>{booking.providerName}</a></span>
           </div>
         </div>
+
+        {weather || tips ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Dicas para o seu evento</h2>
+            {weather?.kind === 'forecast' ? (
+              <p style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>
+                <strong>Previsão para o dia:</strong> {weather.conditionLabel}, {weather.minC}°–{weather.maxC}°C,
+                {' '}{weather.rainChancePercent}% de probabilidade de chuva.
+              </p>
+            ) : null}
+            {weather?.kind === 'seasonal' ? (
+              <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+                <strong>Clima:</strong> {weather.note}
+              </p>
+            ) : null}
+            {tips ? (
+              <ul style={{ margin: '0 0 4px', paddingLeft: 20, fontSize: '0.9rem', color: 'var(--tinta-2)' }}>
+                {[...tips.specific, ...tips.general].map((tip) => (
+                  <li key={tip} style={{ marginBottom: 6 }}>{tip}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
 
         {payments.length > 0 || booking.status === 'awaiting_payment' ? (
           <div className={styles.card}>
