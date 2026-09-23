@@ -17,6 +17,14 @@ export const metadata: Metadata = {
     siteName: 'NGUEZA',
   },
   robots: { index: true, follow: true },
+  // app/manifest.ts covers Android/Chrome's install prompt. iOS ignores
+  // the manifest for "Adicionar ao ecrã principal" and needs these
+  // instead — apple-touch-icon comes from app/apple-icon.tsx.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'NGUEZA',
+  },
 }
 
 export const viewport: Viewport = {
