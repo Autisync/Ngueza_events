@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { doSignIn } from '../auth-actions'
-import { currentUser } from '@/lib/auth'
+import { currentUser, googleAuthorizeUrl } from '@/lib/auth'
+import { siteUrl } from '@/lib/env'
+import { GoogleMark } from '../GoogleMark'
 import styles from '../auth.module.css'
 
 export const metadata: Metadata = { title: 'Entrar', robots: { index: false } }
@@ -20,6 +22,8 @@ export default async function Entrar({
 }: { searchParams: Promise<{ erro?: string; next?: string }> }) {
   const { erro, next } = await searchParams
   if (await currentUser()) redirect(next?.startsWith('/') ? next : '/conta')
+  const target = next?.startsWith('/') ? next : '/conta'
+  const googleUrl = googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent(target)}`)
 
   return (
     <main className={styles.page}>
@@ -28,6 +32,11 @@ export default async function Entrar({
       <p className={styles.lede}>Aceda à sua conta para gerir reservas.</p>
 
       {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
+
+      <a className={styles.google} href={googleUrl}>
+        <GoogleMark /> Continuar com Google
+      </a>
+      <div className={styles.divider}>ou</div>
 
       <form action={doSignIn} method="post">
         <input type="hidden" name="next" value={next?.startsWith('/') ? next : '/conta'} />

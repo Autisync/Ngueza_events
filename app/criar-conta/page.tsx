@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { doSignUp } from '../auth-actions'
-import { currentUser } from '@/lib/auth'
+import { currentUser, googleAuthorizeUrl } from '@/lib/auth'
+import { siteUrl } from '@/lib/env'
+import { GoogleMark } from '../GoogleMark'
 import styles from '../auth.module.css'
 
 export const metadata: Metadata = { title: 'Criar conta', robots: { index: false } }
@@ -21,6 +23,7 @@ export default async function CriarConta({
 }: { searchParams: Promise<{ erro?: string }> }) {
   const { erro } = await searchParams
   if (await currentUser()) redirect('/conta')
+  const googleUrl = googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent('/conta')}`)
 
   return (
     <main className={styles.page}>
@@ -29,6 +32,11 @@ export default async function CriarConta({
       <p className={styles.lede}>Precisa de conta para reservar e para avaliar um serviço.</p>
 
       {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
+
+      <a className={styles.google} href={googleUrl}>
+        <GoogleMark /> Continuar com Google
+      </a>
+      <div className={styles.divider}>ou</div>
 
       <form action={doSignUp} method="post">
         <label className={styles.field}>
