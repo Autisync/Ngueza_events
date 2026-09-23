@@ -12,21 +12,22 @@ A place, a date, a capacity, a price, and a truthful answer about availability.
 
 ## Status
 
-The wedge works end to end for an anonymous visitor: search by zone, date and
-capacity, open a supplier, see prices and a truthful calendar, make contact.
+The wedge works end to end for an anonymous visitor, live at `/`: search by
+zone, date and capacity, open a supplier, see prices and a truthful calendar,
+make contact.
 
 | | |
 |---|---|
-| Launch scope | Venues, Luanda, six categories |
+| Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 26 migrations from empty · 207 tests · 21 database assertions |
+| Verified | 28 migrations from empty · 232 tests · 44 database assertions |
 
 ### Done
 
 | Slice | |
 |---|---|
 | 00 | Repo, CI gates, design tokens, money library |
-| 00.5 | Waitlist with double opt-in and a consent trail |
+| 00.5 | Waitlist with double opt-in and a consent trail — moved to `/lista-de-espera` once slice 24 gave `/` a real marketplace to show instead; supplier recruitment now links prospective clients there by hand, for zones and categories not covered yet |
 | 01 | Schema, RLS, the double-booking constraint, seed |
 | 06 | Public supplier page — own URL, schema.org, calendar |
 | 07 | Search — trees, date availability, keyset pagination |
@@ -44,6 +45,11 @@ capacity, open a supplier, see prices and a truthful calendar, make contact.
 | 15 | Legal pages — accepted as final by NGUEZA. Placeholder text at `/termos`, `/privacidade`, `/cancelamento`, linked from the footer; see `spec/slices/15-legal-pages.md` |
 | 16 | Payments — manual proof of payment via reference, decided as the permanent v1 model, not an interim one. NGUEZA never receives, holds, or moves money at any point; see `spec/slices/16-payment-proof.md` |
 | 19 | Cancellation & refund policy engine — per-supplier tiers, bounded by the database, frozen at cancellation time. First Phase Two slice; see `spec/slices/19-cancellation-refund-engine.md` |
+| 20 | Quote requests — a client describes what they need once, every matching verified supplier is notified and may respond with a priced offer; see `spec/slices/20-quote-requests.md` |
+| 21 | Weather tips and event-planning advice on a booking's own page — a real forecast within Google Weather API's window, an honest seasonal outlook beyond it; see `spec/slices/21-weather-and-tips.md` |
+| 22 | Multi-category discoverability — a provider matches search and quote requests through any category it lists an active service under, not only the one it registered as; see `spec/slices/22-multi-category-providers.md` |
+| 23 | The marketplace redesign — image-forward cards, real photo rendering (wired up for the first time), rating badges — on `/procurar` and `/fornecedor/[slug]`; see `spec/slices/23-marketplace-ui.md` |
+| 24 | The real homepage at `/`, replacing the pre-launch waitlist once there was enough live, verified supply to show instead of promise |
 
 ### Infrastructure
 
