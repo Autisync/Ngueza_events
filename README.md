@@ -50,6 +50,7 @@ make contact.
 | 22 | Multi-category discoverability — a provider matches search and quote requests through any category it lists an active service under, not only the one it registered as; see `spec/slices/22-multi-category-providers.md` |
 | 23 | The marketplace redesign — image-forward cards, real photo rendering (wired up for the first time), rating badges — on `/procurar` and `/fornecedor/[slug]`; see `spec/slices/23-marketplace-ui.md` |
 | 24 | The real homepage at `/`, replacing the pre-launch waitlist once there was enough live, verified supply to show instead of promise |
+| 25 | Free-text "Outro" on the waitlist's category/zone fields, entrance and selection animation, and `/admin/lista-de-espera` — the read-only admin view of who asked for what, so recruitment and a future campaign know where to go; see `spec/slices/25-waitlist-admin-and-other.md` |
 
 ### Infrastructure
 

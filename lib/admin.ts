@@ -379,3 +379,109 @@ export async function decidePayment(
     ),
   )
 }
+
+// ---------------------------------------------------------------------
+// The waitlist (§37, slice 00.5/24) — not a marketing list to admin has
+// wondered about, the evidence that was the whole point of collecting
+// it: which categories and municípios people actually want, so
+// recruitment (and eventually a real campaign, once "systems are
+// ready") knows where to go.
+// ---------------------------------------------------------------------
+
+export interface WaitlistSubscriber {
+  id: string
+  email: string
+  audience: 'client' | 'provider'
+  status: 'pending' | 'confirmed' | 'unsubscribed' | 'bounced' | 'complained'
+  categoryNames: string[]
+  locationNames: string[]
+  otherCategory: string | null
+  otherLocation: string | null
+  eventMonth: string | null
+  source: string | null
+  sourceDetail: string | null
+  createdAt: string
+  confirmedAt: string | null
+}
+
+export async function waitlistSubscribers(
+  adminId: string,
+  filter?: { status?: string },
+): Promise<WaitlistSubscriber[]> {
+  return asUser(adminId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select
+         s.id, s.email, s.audience, s.status, s.source, s.source_detail,
+         s.interests, s.created_at, s.confirmed_at,
+         (select array_agg(cat.name order by cat.name) from categories cat
+           where cat.id::text in (
+             select jsonb_array_elements_text(coalesce(s.interests->'categories', '[]'::jsonb))
+           )
+         ) as category_names,
+         (select array_agg(loc.name order by loc.name) from locations loc
+           where loc.id::text in (
+             select jsonb_array_elements_text(coalesce(s.interests->'locations', '[]'::jsonb))
+           )
+         ) as location_names
+       from newsletter_subscribers s
+       where $1::text is null or s.status = $1
+       order by s.created_at desc
+       limit 300`,
+      [filter?.status ?? null],
+    )
+    return rows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      audience: r.audience,
+      status: r.status,
+      categoryNames: r.category_names ?? [],
+      locationNames: r.location_names ?? [],
+      otherCategory: r.interests?.other_category ?? null,
+      otherLocation: r.interests?.other_location ?? null,
+      eventMonth: r.interests?.event_month ?? null,
+      source: r.source,
+      sourceDetail: r.source_detail,
+      createdAt: r.created_at,
+      confirmedAt: r.confirmed_at,
+    }))
+  })
+}
+
+export interface WaitlistDemandRow {
+  name: string
+  count: number
+}
+
+/** What tells recruitment where to go, made explicit: how many people —
+ *  pending or confirmed, either way they typed a real interest — want
+ *  each category and each município. */
+export async function waitlistDemand(
+  adminId: string,
+): Promise<{ categories: WaitlistDemandRow[]; locations: WaitlistDemandRow[] }> {
+  return asUser(adminId, async (c) => {
+    const categories = await c.query<{ name: string; n: string }>(
+      `select cat.name, count(distinct s.id)::text as n
+         from newsletter_subscribers s,
+              lateral jsonb_array_elements_text(coalesce(s.interests->'categories', '[]'::jsonb)) as cat_id
+         join categories cat on cat.id::text = cat_id
+        where s.status in ('confirmed', 'pending')
+        group by cat.name
+        order by count(distinct s.id) desc, cat.name
+        limit 12`,
+    )
+    const locations = await c.query<{ name: string; n: string }>(
+      `select loc.name, count(distinct s.id)::text as n
+         from newsletter_subscribers s,
+              lateral jsonb_array_elements_text(coalesce(s.interests->'locations', '[]'::jsonb)) as loc_id
+         join locations loc on loc.id::text = loc_id
+        where s.status in ('confirmed', 'pending')
+        group by loc.name
+        order by count(distinct s.id) desc, loc.name
+        limit 12`,
+    )
+    return {
+      categories: categories.rows.map((r) => ({ name: r.name, count: Number(r.n) })),
+      locations: locations.rows.map((r) => ({ name: r.name, count: Number(r.n) })),
+    }
+  })
+}

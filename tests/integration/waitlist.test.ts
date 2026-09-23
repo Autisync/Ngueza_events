@@ -83,6 +83,30 @@ describe('waitlist', () => {
     expect(events[0]!.source_url).toBe('/')
   })
 
+  it('1b. records free-text "other" category and zone alongside the real interests', async () => {
+    await subscribe(
+      {
+        ...base,
+        email: 'other@teste.ao',
+        otherCategory: 'Aluguer de tendas',
+        otherLocation: 'Bengo (fora de Luanda)',
+      },
+      {},
+    )
+
+    const r = await row('other@teste.ao')
+    expect(r.interests.other_category).toBe('Aluguer de tendas')
+    expect(r.interests.other_location).toBe('Bengo (fora de Luanda)')
+  })
+
+  it('1c. omits other_category/other_location entirely when left blank — no empty-string noise', async () => {
+    await subscribe({ ...base, email: 'noother@teste.ao' }, {})
+
+    const r = await row('noother@teste.ao')
+    expect(r.interests.other_category).toBeUndefined()
+    expect(r.interests.other_location).toBeUndefined()
+  })
+
   it('2. sends nothing but the confirmation until the link is followed', async () => {
     await subscribe({ ...base, email: 'b@teste.ao' }, {})
     const sent = await outbox()

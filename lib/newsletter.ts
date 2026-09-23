@@ -25,6 +25,12 @@ export const subscribeSchema = z.object({
   audience: z.enum(['client', 'provider']).default('client'),
   categories: z.array(z.string().uuid()).max(20).default([]),
   locations: z.array(z.string().uuid()).max(20).default([]),
+  // Free text for "isn't in the list yet" — categories and locations stay
+  // rows an administrator manages at runtime (§6, §44); this is not a
+  // parallel way to create one, only evidence for recruitment that
+  // someone typed something worth turning into a real row later.
+  otherCategory: z.string().trim().max(200).optional(),
+  otherLocation: z.string().trim().max(200).optional(),
   eventMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   source: z.enum(['waitlist', 'footer', 'zero_result', 'signup', 'booking']).default('waitlist'),
   sourceDetail: z.string().max(500).optional(),
@@ -52,6 +58,8 @@ export async function subscribe(input: SubscribeInput, ctx: RequestContext): Pro
     categories: input.categories,
     locations: input.locations,
     ...(input.eventMonth ? { event_month: input.eventMonth } : {}),
+    ...(input.otherCategory ? { other_category: input.otherCategory } : {}),
+    ...(input.otherLocation ? { other_location: input.otherLocation } : {}),
   }
   const confirmToken = token()
 

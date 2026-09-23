@@ -30,7 +30,7 @@ export default async function Confirmar({ params }: { params: Promise<{ token: s
           Esta ligação já não é válida. Pode ter expirado ou já ter sido substituída por uma mais
           recente — nesse caso, use o email mais novo que recebeu.
         </p>
-        <a className={styles.back} href="/">
+        <a className={styles.back} href="/lista-de-espera">
           ← Inscrever de novo
         </a>
       </main>
