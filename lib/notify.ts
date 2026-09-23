@@ -1,4 +1,5 @@
 import { siteUrl } from '@/lib/env'
+import { formatMinor } from '@/lib/money'
 
 /**
  * Rendering for the notification outbox (§17).
@@ -16,6 +17,7 @@ export type NotificationKind =
   | 'booking_expired' | 'booking_cancelled_client' | 'booking_cancelled_provider'
   | 'booking_completed' | 'booking_no_show'
   | 'provider_verified' | 'provider_rejected' | 'provider_suspended' | 'provider_reinstated'
+  | 'quote_request_new' | 'quote_offer_received'
 
 export interface RenderedMail {
   subject: string
@@ -36,6 +38,24 @@ interface ProviderContext {
   provider_name: string
   provider_slug: string
   reason?: string | null
+}
+
+interface QuoteRequestContext {
+  quote_request_id: string
+  category_name: string
+  location_name: string
+  event_date?: string | null
+  capacity?: number | null
+  description: string
+}
+
+interface QuoteOfferContext {
+  quote_request_id: string
+  offer_id: string
+  provider_name: string
+  provider_slug: string
+  price_minor: number | string
+  message?: string | null
 }
 
 function when(context: BookingContext): string {
@@ -220,6 +240,49 @@ function providerMail(kind: NotificationKind, c: ProviderContext): RenderedMail 
   }
 }
 
+function quoteMail(kind: NotificationKind, context: unknown): RenderedMail {
+  const requestsPage = `${siteUrl()}/conta/pedidos`
+  switch (kind) {
+    case 'quote_request_new': {
+      const c = context as QuoteRequestContext
+      const when = c.event_date
+        ? new Date(c.event_date).toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda', dateStyle: 'long' })
+        : null
+      return {
+        subject: `Novo pedido de orçamento — ${c.category_name}`,
+        text: [
+          `Há um novo pedido de orçamento em ${c.location_name} que corresponde ao seu perfil.`,
+          '',
+          `Categoria: ${c.category_name}`,
+          when ? `Data do evento: ${when}` : null,
+          c.capacity ? `Capacidade: ${c.capacity} pessoas` : null,
+          '',
+          c.description,
+          '',
+          'Veja o pedido e envie a sua proposta a partir do seu painel.',
+        ].filter((line): line is string => line !== null).join('\n'),
+      }
+    }
+    case 'quote_offer_received': {
+      const c = context as QuoteOfferContext
+      return {
+        subject: `Nova proposta — ${c.provider_name}`,
+        text: [
+          `${c.provider_name} respondeu ao seu pedido de orçamento com uma proposta.`,
+          '',
+          `Preço: ${formatMinor(BigInt(c.price_minor))}`,
+          c.message ? '' : null,
+          c.message ? c.message : null,
+          '',
+          `Veja todas as propostas: ${requestsPage}`,
+        ].filter((line): line is string => line !== null).join('\n'),
+      }
+    }
+    default:
+      throw new Error(`quoteMail: unhandled kind ${String(kind)}`)
+  }
+}
+
 const BOOKING_KINDS = new Set<NotificationKind>([
   'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
   'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
@@ -227,18 +290,22 @@ const BOOKING_KINDS = new Set<NotificationKind>([
   'booking_completed', 'booking_no_show',
 ])
 
+const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received'])
+
 /** Turns one outbox row's `kind` and `context` into a subject and body. */
 export function render(kind: string, context: Record<string, unknown>): RenderedMail {
-  // Every template names the supplier, so this one check catches a
-  // malformed row regardless of which kind it is — defence against a
-  // future kind whose enqueue trigger forgot to populate context,
-  // surfacing as a clear error on that one row rather than a blank or
-  // half-rendered email going out.
+  const k = kind as NotificationKind
+  if (QUOTE_KINDS.has(k)) return quoteMail(k, context)
+
+  // Every booking/provider template names the supplier, so this one
+  // check catches a malformed row regardless of which kind it is —
+  // defence against a future kind whose enqueue trigger forgot to
+  // populate context, surfacing as a clear error on that one row
+  // rather than a blank or half-rendered email going out.
   if (typeof context.provider_name !== 'string' || context.provider_name === '') {
     throw new Error(`notification context missing provider_name for kind "${kind}"`)
   }
 
-  const k = kind as NotificationKind
   if (BOOKING_KINDS.has(k)) return bookingMail(k, context as unknown as BookingContext)
   return providerMail(k, context as unknown as ProviderContext)
 }
