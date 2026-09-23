@@ -53,6 +53,14 @@ export default async function Conta({
       </div>
 
       <div className={styles.card}>
+        <h2>Pedidos de orçamento</h2>
+        <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
+          Peça um preço a vários fornecedores de uma só vez, e veja as propostas que recebe.
+        </p>
+        <a href="/conta/pedidos">Os meus pedidos</a>
+      </div>
+
+      <div className={styles.card}>
         <h2>Segurança</h2>
         <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
           Pode alterar a palavra-passe a qualquer momento.
