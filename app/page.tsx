@@ -1,166 +1,157 @@
+import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
-import { CONSENT_TEXT } from '@/lib/newsletter'
-import { joinWaitlist } from './actions'
+import { search } from '@/lib/search'
+import { SupplierCard } from './SupplierCard'
 import styles from './page.module.css'
 
 /**
- * Slice 00.5 — the waitlist.
+ * Slice 24 — the real homepage.
  *
- * Ships before the platform exists. Supplier recruitment runs for eight
- * weeks before launch (§33) and client-side interest has nowhere to go in
- * the meantime. This page turns that window into an audience, and into
- * evidence of which categories and municípios people actually want —
- * which is what tells recruitment where to go.
+ * Replaces the pre-launch waitlist (moved to /lista-de-espera, slice
+ * 00.5) once there was enough live, verified supply to show instead of
+ * promise. Supplier recruitment now links prospective clients to
+ * /lista-de-espera by hand, for zones and categories not covered yet —
+ * a decision made outside this codebase, not inferred by it.
  */
 
 export const dynamic = 'force-dynamic'
 
-type Option = { id: string; name: string }
+export const metadata: Metadata = {
+  title: 'NGUEZA — encontre e reserve espaços para o seu evento',
+  description:
+    'Salões de festas, casas de eventos e salas de conferência em Luanda. ' +
+    'Veja preços, fotografias e datas disponíveis antes de se deslocar.',
+}
 
-async function options(): Promise<{ categories: Option[]; municipalities: Option[] }> {
+// Presentational only — categories stay rows an administrator manages
+// at runtime (§6, §44); this never gates which categories exist, only
+// which icon a known one gets. Unmapped falls back to a generic mark,
+// same shape as lib/event-tips.ts's category-slug lookups.
+const CATEGORY_ICON: Record<string, string> = {
+  'saloes-de-festas': '🎪',
+  'casas-de-festas': '🏠',
+  'casas-de-praia': '🏖️',
+  'salas-de-conferencia': '💼',
+  'salas-de-workshop': '🛠️',
+  djs: '🎧',
+  fotografia: '📸',
+  video: '🎥',
+  buffet: '🍽️',
+  decoracao: '🎈',
+  maquilhagem: '💄',
+  som: '🔊',
+  iluminacao: '💡',
+}
+
+async function filters() {
   return asVisitor(async (c) => {
-    const categories = await c.query<Option>(
-      `select id, name from categories
-        where is_active and parent_id is not null and default_supplier_type = 'venue'
-        order by sort_order`,
+    const categories = await c.query<{ id: string; slug: string; name: string }>(
+      `select id, slug, name from categories
+        where is_active and parent_id is not null
+        order by sort_order limit 8`,
     )
-    const municipalities = await c.query<Option>(
-      `select id, name from locations
-        where is_active and level = 'municipality'
-        order by name`,
+    const municipalities = await c.query<{ id: string; name: string }>(
+      `select id, name from locations where is_active and level = 'municipality' order by name`,
     )
     return { categories: categories.rows, municipalities: municipalities.rows }
   })
 }
 
-const ERRORS: Record<string, string> = {
-  email: 'Escreva um endereço de email válido.',
-  consentimento: 'Precisamos da sua autorização para lhe enviar novidades.',
-}
-
-export default async function Waitlist({
-  searchParams,
-}: {
-  searchParams: Promise<{ erro?: string }>
-}) {
-  const [{ categories, municipalities }, params] = await Promise.all([options(), searchParams])
-  const erro = params.erro ? ERRORS[params.erro] : undefined
+export default async function Home() {
+  const [{ categories, municipalities }, featured] = await Promise.all([
+    filters(),
+    search({ limit: 6 }),
+  ])
 
   return (
     <main>
+      <div className={styles.wrap}>
+        <div className={styles.top}>
+          <span className={styles.mark}>NGUEZA</span>
+          <a className={styles.entrar} href="/entrar">Entrar</a>
+        </div>
+      </div>
+
       <section className={styles.hero}>
         <div className={styles.wrap}>
-          <p className={styles.brand}>NGUEZA</p>
           <h1 className={styles.wedge}>
-            Salão de festas em Talatona,
+            Encontre e reserve
             <br />
-            <span className={styles.wedgeQuiet}>disponível a 15 de Dezembro?</span>
+            <span className={styles.wedgeQuiet}>o seu evento em Luanda</span>
           </h1>
           <p className={styles.sub}>
-            Em breve poderá ver preços, fotografias e datas livres antes de sair de casa.
+            Preços reais, disponibilidade verdadeira, fornecedores verificados.
           </p>
-          <span className={styles.badge}>Abrimos primeiro em Luanda</span>
+
+          <form className={styles.searchCard} method="get" action="/procurar">
+            <label className={styles.f}>
+              <span className={styles.lab}>O que procura</span>
+              <select className={styles.ctl} name="categoria" defaultValue="">
+                <option value="">Todos os espaços</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.f}>
+              <span className={styles.lab}>Zona</span>
+              <select className={styles.ctl} name="zona" defaultValue="">
+                <option value="">Toda a Luanda</option>
+                {municipalities.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.f}>
+              <span className={styles.lab}>Data</span>
+              <input className={styles.ctl} type="date" name="data" />
+            </label>
+            <button className={styles.go} type="submit">Procurar fornecedores</button>
+          </form>
         </div>
       </section>
 
       <div className={styles.wrap}>
-        <div className={styles.card} id="inscrever">
-          <h2 className={styles.cardTitle}>Quero saber quando abrir</h2>
-          <p className={styles.cardNote}>
-            Diga-nos o que procura e avisamos assim que houver fornecedores disponíveis.
-          </p>
-
-          {erro ? (
-            <p className={styles.alert} role="alert">
-              {erro}
-            </p>
-          ) : null}
-
-          <form action={joinWaitlist} method="post">
-            <label className={styles.field}>
-              <span className={styles.label}>O seu email</span>
-              <input
-                className={styles.input}
-                type="email"
-                name="email"
-                required
-                autoComplete="email"
-                inputMode="email"
-                placeholder="nome@exemplo.ao"
-              />
-            </label>
-
-            <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
-              <legend className={styles.label}>
-                O que procura? <span className={styles.hint}>(opcional)</span>
-              </legend>
-              <div className={styles.chips}>
-                {categories.map((c) => (
-                  <label key={c.id} className={styles.chip}>
-                    <input type="checkbox" name="categories" value={c.id} />
-                    <span>{c.name}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
-              <legend className={styles.label}>
-                Em que zona? <span className={styles.hint}>(opcional)</span>
-              </legend>
-              <div className={styles.chips}>
-                {municipalities.map((m) => (
-                  <label key={m.id} className={styles.chip}>
-                    <input type="checkbox" name="locations" value={m.id} />
-                    <span>{m.name}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            <label className={styles.field}>
-              <span className={styles.label}>
-                Quando é o evento? <span className={styles.hint}>(opcional)</span>
-              </span>
-              <input className={styles.input} type="month" name="eventMonth" />
-            </label>
-
-            <div className={styles.consent}>
-              <input type="checkbox" id="consent" name="consent" required />
-              <label htmlFor="consent">{CONSENT_TEXT}</label>
-            </div>
-
-            <button className={styles.submit} type="submit">
-              Avisem-me
-            </button>
-          </form>
-        </div>
-
-        <section className={styles.how}>
-          <h2 className={styles.howTitle}>Como vai funcionar</h2>
-          <ol className={styles.steps}>
-            <li className={styles.step}>
-              <span className={styles.stepNum}>1</span>
-              <p>
-                <strong>Procure pela sua data.</strong> Escolha a zona, o número de pessoas e o dia.
-                Só aparecem espaços realmente livres.
-              </p>
-            </li>
-            <li className={styles.step}>
-              <span className={styles.stepNum}>2</span>
-              <p>
-                <strong>Compare sem se deslocar.</strong> Preços, fotografias, capacidade e
-                contactos na mesma página.
-              </p>
-            </li>
-            <li className={styles.step}>
-              <span className={styles.stepNum}>3</span>
-              <p>
-                <strong>Reserve.</strong> O fornecedor confirma e fica com a data guardada.
-              </p>
-            </li>
-          </ol>
+        <section className={styles.rail}>
+          <h2 className={styles.railTitle}>Categorias populares</h2>
+          <div className={styles.railScroll}>
+            {categories.map((c) => (
+              <a className={styles.railItem} key={c.id} href={`/procurar?categoria=${c.id}`}>
+                <span className={styles.railIcon}>{CATEGORY_ICON[c.slug] ?? '🎉'}</span>
+                <span className={styles.railLabel}>{c.name}</span>
+              </a>
+            ))}
+          </div>
         </section>
+
+        <section className={styles.trust}>
+          <div className={styles.trustItem}>
+            <span className={styles.trustNum}>✓</span>
+            <span className={styles.trustLabel}>Verificados</span>
+          </div>
+          <div className={styles.trustItem}>
+            <span className={styles.trustNum}>48h</span>
+            <span className={styles.trustLabel}>Resposta</span>
+          </div>
+          <div className={styles.trustItem}>
+            <span className={styles.trustNum}>0%</span>
+            <span className={styles.trustLabel}>Comissão</span>
+          </div>
+        </section>
+
+        {featured.hits.length > 0 ? (
+          <section className={styles.featured}>
+            <div className={styles.featuredHead}>
+              <h2 className={styles.featuredTitle}>Fornecedores verificados</h2>
+              <a className={styles.featuredAll} href="/procurar">Ver todos</a>
+            </div>
+            <div className={styles.grid}>
+              {featured.hits.map((hit) => (
+                <SupplierCard hit={hit} key={hit.id} />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <footer className={styles.foot}>
           <p>

@@ -22,14 +22,14 @@ export async function joinWaitlist(formData: FormData): Promise<void> {
 
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path[0]
-    redirect(`/?erro=${field === 'consent' ? 'consentimento' : 'email'}#inscrever`)
+    redirect(`/lista-de-espera?erro=${field === 'consent' ? 'consentimento' : 'email'}#inscrever`)
   }
 
   const h = await headers()
   await subscribe(parsed.data, {
     ip: h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
     userAgent: h.get('user-agent'),
-    url: '/',
+    url: '/lista-de-espera',
   })
 
   redirect('/lista-de-espera/obrigado')
