@@ -1,8 +1,11 @@
 import next from 'eslint-config-next'
 
-export default [
+// eslint-config-next 16 exports the flat config array directly — it used
+// to export a function that returned one. Spreading `next()` throws
+// "next is not a function" now; spread the array itself.
+const config = [
   { ignores: ['.next/**', 'node_modules/**', 'coverage/**'] },
-  ...next(),
+  ...next,
   {
     rules: {
       // CLAUDE.md forbidden list, where a linter can see it.
@@ -34,3 +37,5 @@ export default [
     rules: { 'no-restricted-imports': 'off' },
   },
 ]
+
+export default config

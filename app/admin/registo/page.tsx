@@ -41,7 +41,7 @@ export default async function Registo() {
           <h2>Notificações (§17)</h2>
           <p className={styles.note}>
             O que foi enviado a clientes e fornecedores por cada reserva e decisão de verificação —
-            útil para responder a "o fornecedor foi mesmo avisado?".
+            útil para responder a «o fornecedor foi mesmo avisado?».
           </p>
           {notifications.length === 0 ? (
             <p className={styles.empty}>Ainda sem notificações registadas.</p>

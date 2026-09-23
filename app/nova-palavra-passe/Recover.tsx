@@ -23,12 +23,19 @@ export function Recover() {
     const refreshToken = params.get('refresh_token')
     if (!accessToken || !refreshToken) return
 
-    setState('working')
-    fetch('/api/auth/recover', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ accessToken, refreshToken }),
-    })
+    // setState here has to happen inside the promise chain, not
+    // synchronously at the top of the effect — react-hooks/set-state-in-effect
+    // flags a synchronous setState call in an effect body, but not one
+    // inside a .then()/.catch() continuation.
+    Promise.resolve()
+      .then(() => setState('working'))
+      .then(() =>
+        fetch('/api/auth/recover', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ accessToken, refreshToken }),
+        }),
+      )
       .then((r) => {
         setState(r.ok ? 'done' : 'failed')
         if (r.ok) {

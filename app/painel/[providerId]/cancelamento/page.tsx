@@ -71,7 +71,7 @@ export default async function PoliticaCancelamento({
 
             <span className={styles.label}>Níveis de reembolso</span>
             <p className={styles.hint} style={{ marginTop: -4, marginBottom: 10 }}>
-              Até 5 níveis. Deixe "Dias antes" em branco numa linha para não a usar. Mais
+              Até 5 níveis. Deixe «Dias antes» em branco numa linha para não a usar. Mais
               antecedência tem de dar um reembolso igual ou melhor do que menos antecedência.
             </p>
             {rows.map((row, i) => (
