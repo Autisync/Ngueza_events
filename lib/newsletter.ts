@@ -61,12 +61,42 @@ const token = () => randomBytes(24).toString('hex')
 const RESEND_COOLDOWN_MS = 5 * 60 * 1000
 
 /**
+ * The cooldown above stops one address being mailed repeatedly. It does
+ * nothing against a loop that submits many *different* fake addresses —
+ * a smaller problem (table bloat, not a victim's inbox) but still free
+ * to do against a form with no other rate limit. 10 new signups per IP
+ * per hour: loose enough that a real shared connection (a venue's own
+ * wifi, an office) never trips it, tight enough that a script does.
+ * `newsletter_consent_events.ip` already exists and is already written
+ * on every signup (recordConsent, below) — this reads that, nothing new
+ * to store.
+ */
+const SIGNUP_IP_LIMIT = 10
+
+async function recentSignupsFromIp(ip: string): Promise<number> {
+  return asSystem(async (c) => {
+    const { rows } = await c.query<{ n: string }>(
+      `select count(*)::text as n from newsletter_consent_events
+         where action = 'subscribed' and ip = $1 and created_at > now() - interval '1 hour'`,
+      [ip],
+    )
+    return Number(rows[0]!.n)
+  })
+}
+
+/**
  * Always resolves the same way from the caller's point of view, whether the
  * address is new, already pending, or already confirmed. Telling a stranger
  * which addresses are on the list is an enumeration oracle, and the
  * acceptance criteria forbid it.
  */
 export async function subscribe(input: SubscribeInput, ctx: RequestContext): Promise<void> {
+  // No IP (should not happen behind Vercel, but this is user input's
+  // journey through a header, not a guarantee) fails open — rejecting
+  // everyone over a missing header would be a worse regression than the
+  // abuse this exists to catch.
+  if (ctx.ip && (await recentSignupsFromIp(ctx.ip)) >= SIGNUP_IP_LIMIT) return
+
   const interests = {
     categories: input.categories,
     locations: input.locations,

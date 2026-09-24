@@ -192,6 +192,21 @@ describe('waitlist', () => {
     expect(await confirm(token)).toBe('confirmed')
   })
 
+  it('5d. more than 10 new signups from one IP in an hour are silently rejected — the smaller table-bloat problem the resend cooldown does not cover', async () => {
+    const ip = '41.223.0.99'
+    for (let i = 0; i < 10; i++) {
+      await subscribe({ ...base, email: `ip${i}@teste.ao` }, { ip })
+    }
+
+    // 11th from the same IP: rejected, no row, no email.
+    await subscribe({ ...base, email: 'ip10@teste.ao' }, { ip })
+    expect(await row('ip10@teste.ao')).toBeNull()
+
+    // A different IP is unaffected.
+    await subscribe({ ...base, email: 'ip-other@teste.ao' }, { ip: '41.223.0.100' })
+    expect(await row('ip-other@teste.ao')).not.toBeNull()
+  })
+
   it('6. unsubscribe works from the token alone, with no sign-in', async () => {
     await subscribe({ ...base, email: 'g@teste.ao' }, {})
     await confirm(linkFrom((await outbox())[0]!.text, 'confirmar'))
