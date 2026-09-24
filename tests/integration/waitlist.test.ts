@@ -29,12 +29,21 @@ const row = (email: string) =>
   asSystem(async (c) => {
     const { rows } = await c.query(
       `select id, status, interests, source, confirm_token, unsubscribe_token,
-              confirmed_at, unsubscribed_at
+              confirmed_at, unsubscribed_at, last_sent_at
          from newsletter_subscribers where email = $1`,
       [email],
     )
     return rows[0] ?? null
   })
+
+const backdateLastSent = (email: string, minutesAgo: number) =>
+  asSystem((c) =>
+    c.query(
+      `update newsletter_subscribers set last_sent_at = now() - ($2 || ' minutes')::interval
+         where email = $1`,
+      [email, String(minutesAgo)],
+    ),
+  )
 
 const consentEvents = (subscriberId: string) =>
   asSystem(async (c) => {
@@ -161,9 +170,19 @@ describe('waitlist', () => {
     expect(await outbox()).toHaveLength(1)
   })
 
-  it('5b. a pending address gets its confirmation resent', async () => {
+  it('5b. resubmitting a pending address within the cooldown does not resend — the anonymous, unauthenticated form has no other rate limit, so this is what stops it being an email bomb', async () => {
     await subscribe({ ...base, email: 'f@teste.ao' }, {})
     await subscribe({ ...base, email: 'f@teste.ao' }, {})
+    await subscribe({ ...base, email: 'f@teste.ao' }, {})
+
+    expect(await outbox()).toHaveLength(1)
+  })
+
+  it('5c. a pending address gets its confirmation resent once the cooldown has passed', async () => {
+    await subscribe({ ...base, email: 'g2@teste.ao' }, {})
+    await backdateLastSent('g2@teste.ao', 10)
+
+    await subscribe({ ...base, email: 'g2@teste.ao' }, {})
 
     const sent = await outbox()
     expect(sent).toHaveLength(2)

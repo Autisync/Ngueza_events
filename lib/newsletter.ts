@@ -48,6 +48,19 @@ export interface RequestContext {
 const token = () => randomBytes(24).toString('hex')
 
 /**
+ * `joinWaitlist` (app/actions.ts) is a fully anonymous, unauthenticated
+ * server action with no rate limiting anywhere in front of it — and the
+ * pending-resend path below used to re-send unconditionally, on every
+ * single call. That is an email bomb: submit a stranger's address in a
+ * loop and NGUEZA mails them repeatedly, from a real address, forever.
+ * This cooldown caps it to one send per address per window, regardless
+ * of how many times the form is submitted — closing the vector without
+ * disclosing anything to the caller (still resolves the same way either
+ * way, so it stays consistent with subscribe()'s no-enumeration rule).
+ */
+const RESEND_COOLDOWN_MS = 5 * 60 * 1000
+
+/**
  * Always resolves the same way from the caller's point of view, whether the
  * address is new, already pending, or already confirmed. Telling a stranger
  * which addresses are on the list is an enumeration oracle, and the
@@ -99,29 +112,39 @@ export async function subscribe(input: SubscribeInput, ctx: RequestContext): Pro
     })
     await recordConsent(created.id, 'subscribed', ctx)
     await sendConfirmation(input.email, confirmToken)
+    await asSystem((c) =>
+      c.query(`update newsletter_subscribers set last_sent_at = now() where id = $1`, [created.id]),
+    )
     return
   }
 
   // Address already known. A pending signup gets its confirmation resent —
-  // people lose the first email. A confirmed one gets nothing at all.
+  // people lose the first email — but not more than once per cooldown
+  // window, see RESEND_COOLDOWN_MS above.
   const existing = await asSystem(async (c) => {
-    const { rows } = await c.query<{ id: string; status: string; confirm_token: string | null }>(
-      `select id, status, confirm_token from newsletter_subscribers where email = $1`,
+    const { rows } = await c.query<{
+      id: string; status: string; confirm_token: string | null; last_sent_at: string | null
+    }>(
+      `select id, status, confirm_token, last_sent_at from newsletter_subscribers where email = $1`,
       [input.email],
     )
     return rows[0] ?? null
   })
 
-  if (existing?.status === 'pending') {
-    const resendToken = existing.confirm_token ?? token()
-    await asSystem((c) =>
-      c.query(`update newsletter_subscribers set confirm_token = $2 where id = $1`, [
-        existing.id,
-        resendToken,
-      ]),
-    )
-    await sendConfirmation(input.email, resendToken)
+  if (existing?.status !== 'pending') return
+
+  if (existing.last_sent_at && Date.now() - new Date(existing.last_sent_at).getTime() < RESEND_COOLDOWN_MS) {
+    return
   }
+
+  const resendToken = existing.confirm_token ?? token()
+  await asSystem((c) =>
+    c.query(
+      `update newsletter_subscribers set confirm_token = $2, last_sent_at = now() where id = $1`,
+      [existing.id, resendToken],
+    ),
+  )
+  await sendConfirmation(input.email, resendToken)
 }
 
 /** Idempotent: confirming twice succeeds and writes no second event. */

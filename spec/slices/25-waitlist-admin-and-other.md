@@ -114,6 +114,30 @@ jsonb column, not new columns), `categories`, `locations`.
   at `/lista-de-espera`. Test subscriber and outbox file removed
   afterward.
 
+## Addendum — resend cooldown (production-readiness review)
+
+`joinWaitlist` is a fully anonymous, unauthenticated server action with
+no rate limiting anywhere in front of it — and `subscribe()`'s
+pending-resend branch re-sent unconditionally, on every call. Together
+that is an email bomb: submit a stranger's address in a loop and NGUEZA
+mails them repeatedly, for as long as the loop runs. Harmless while mail
+went to a local outbox file; not harmless once real SMTP is live.
+
+Fixed with the `last_sent_at` column the schema already had but nothing
+wrote to: a resend is skipped, silently, if the address was mailed
+within the last 5 minutes — same external behavior either way (still
+resolves successfully, still discloses nothing about whether the
+address exists), just without spamming the same inbox on every
+resubmission. `tests/integration/waitlist.test.ts` — 5b now asserts a
+same-window resubmission does not resend; 5c backdates `last_sent_at`
+directly and confirms a resend does go out once the window has passed.
+13 tests total in that file now (was 12).
+
+Deliberately not built here: per-IP/session caps on distinct new
+addresses. That's a different problem (table bloat from many fake
+addresses, not one victim being mailed repeatedly) and a smaller one —
+left out to keep this fix scoped to the vulnerability actually found.
+
 ## Out of scope
 
 **Sending the campaign.** The admin page is read-only — it shows who
