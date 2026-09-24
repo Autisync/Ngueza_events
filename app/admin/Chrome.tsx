@@ -4,7 +4,7 @@ export function Chrome({
   title, active, counts,
 }: {
   title: string
-  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'localizacoes' | 'registo' | 'metricas' | 'pagamentos'
+  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'localizacoes' | 'registo' | 'metricas' | 'pagamentos' | 'espera'
   counts?: { pendingProviders: number; openReports: number; submittedPayments?: number }
 }) {
   const link = (href: string, key: typeof active, label: string, badge?: number) => (
@@ -24,6 +24,7 @@ export function Chrome({
           {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
           {link('/admin/pagamentos', 'pagamentos', 'Pagamentos', counts?.submittedPayments)}
           {link('/admin/denuncias', 'denuncias', 'Denúncias', counts?.openReports)}
+          {link('/admin/lista-de-espera', 'espera', 'Lista de espera')}
           {link('/admin/categorias', 'categorias', 'Categorias')}
           {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
           {link('/admin/registo', 'registo', 'Registo')}

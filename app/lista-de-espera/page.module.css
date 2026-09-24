@@ -51,12 +51,30 @@
   display: block; padding: 9px 14px; border: 1px solid var(--linha);
   border-radius: 999px; font-size: 0.9rem; background: var(--branco);
   color: var(--tinta-2); user-select: none;
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
+.chip:hover span { transform: translateY(-1px); border-color: var(--azul-300); }
 .chip input:checked + span {
   background: var(--azul-100); border-color: var(--azul-500);
   color: var(--azul-700); font-weight: 600;
+  animation: chipPop 0.2s ease;
 }
 .chip input:focus-visible + span { outline: 3px solid var(--azul-500); outline-offset: 2px; }
+
+/* "Outro" — a plain checkbox+label (never hidden: always keyboard- and
+   screen-reader-reachable), revealing a text input with a height/opacity
+   transition rather than a hard show/hide. No JavaScript: the :checked ~
+   sibling combinator does the whole thing, so it works exactly the same
+   with JS disabled, just without the animation easing. */
+.otherCheckbox { width: 16px; height: 16px; accent-color: var(--azul-700); vertical-align: middle;
+                  margin: 10px 6px 0 0; cursor: pointer; }
+.otherLabel { font-size: 0.88rem; color: var(--tinta-2); font-weight: 600; cursor: pointer;
+              vertical-align: middle; }
+.otherReveal {
+  max-height: 0; opacity: 0; overflow: hidden; margin-top: 0;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
+}
+.otherCheckbox:checked ~ .otherReveal { max-height: 60px; opacity: 1; margin-top: 10px; }
 
 .consent { display: flex; gap: 11px; align-items: flex-start; margin-bottom: 22px; }
 .consent input { margin: 3px 0 0; width: 20px; height: 20px; flex: none; accent-color: var(--azul-700); }
@@ -66,9 +84,18 @@
   width: 100%; padding: 15px 20px; font: inherit; font-size: 1.02rem; font-weight: 700;
   color: var(--branco); background: var(--azul-700);
   border: 0; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 .submit:hover { background: var(--azul-800); }
-.submit:active { background: var(--azul-900); }
+.submit:active { background: var(--azul-900); transform: scale(0.99); }
+.submit:disabled { background: var(--azul-600); cursor: default; opacity: 0.85; }
+
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4); border-top-color: var(--branco);
+  animation: spin 0.7s linear infinite;
+}
 
 .alert {
   padding: 12px 14px; border-radius: 10px; margin: 0 0 20px;
@@ -91,4 +118,24 @@
 .foot {
   margin-top: 48px; padding: 24px 0 40px; border-top: 1px solid var(--linha);
   color: var(--tinta-3); font-size: 0.85rem;
+}
+
+/* Entrance animation and the spinner's spin are the only two @keyframes
+   here — kept out of the reduced-motion guard below since the spinner
+   is meaningful state (something is happening), not decoration. */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes chipPop { 0% { transform: scale(0.94); } 60% { transform: scale(1.03); } 100% { transform: scale(1); } }
+
+/* Decorative only: real content is already in the HTML either way, so a
+   visitor with JS disabled or reduced-motion set simply sees it appear
+   without the fade/slide, never delayed or hidden. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animIn { animation: fadeSlideUp 0.5s ease-out both; }
+  .animDelay1 { animation-delay: 0.08s; }
+  .animDelay2 { animation-delay: 0.16s; }
+  .animDelay3 { animation-delay: 0.24s; }
 }

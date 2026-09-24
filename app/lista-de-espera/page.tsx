@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { CONSENT_TEXT } from '@/lib/newsletter'
 import { joinWaitlist } from '../actions'
+import { SubmitButton } from './SubmitButton'
 import styles from './page.module.css'
 
 /**
@@ -58,21 +59,23 @@ export default async function Waitlist({
     <main>
       <section className={styles.hero}>
         <div className={styles.wrap}>
-          <p className={styles.brand}>NGUEZA</p>
-          <h1 className={styles.wedge}>
+          <p className={`${styles.brand} ${styles.animIn}`}>NGUEZA</p>
+          <h1 className={`${styles.wedge} ${styles.animIn} ${styles.animDelay1}`}>
             Salão de festas em Talatona,
             <br />
             <span className={styles.wedgeQuiet}>disponível a 15 de Dezembro?</span>
           </h1>
-          <p className={styles.sub}>
+          <p className={`${styles.sub} ${styles.animIn} ${styles.animDelay2}`}>
             Em breve poderá ver preços, fotografias e datas livres antes de sair de casa.
           </p>
-          <span className={styles.badge}>Abrimos primeiro em Luanda</span>
+          <span className={`${styles.badge} ${styles.animIn} ${styles.animDelay3}`}>
+            Abrimos primeiro em Luanda
+          </span>
         </div>
       </section>
 
       <div className={styles.wrap}>
-        <div className={styles.card} id="inscrever">
+        <div className={`${styles.card} ${styles.animIn} ${styles.animDelay3}`} id="inscrever">
           <h2 className={styles.cardTitle}>Quero saber quando abrir</h2>
           <p className={styles.cardNote}>
             Diga-nos o que procura e avisamos assim que houver fornecedores disponíveis.
@@ -110,6 +113,17 @@ export default async function Waitlist({
                   </label>
                 ))}
               </div>
+              <input type="checkbox" id="cat-other" className={styles.otherCheckbox} />
+              <label htmlFor="cat-other" className={styles.otherLabel}>+ Outro</label>
+              <div className={styles.otherReveal}>
+                <input
+                  className={styles.input}
+                  type="text"
+                  name="categoryOtherText"
+                  placeholder="Diga-nos o quê"
+                  maxLength={200}
+                />
+              </div>
             </fieldset>
 
             <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: '0 0 20px' }}>
@@ -123,6 +137,17 @@ export default async function Waitlist({
                     <span>{m.name}</span>
                   </label>
                 ))}
+              </div>
+              <input type="checkbox" id="zone-other" className={styles.otherCheckbox} />
+              <label htmlFor="zone-other" className={styles.otherLabel}>+ Outra zona</label>
+              <div className={styles.otherReveal}>
+                <input
+                  className={styles.input}
+                  type="text"
+                  name="zoneOtherText"
+                  placeholder="Qual?"
+                  maxLength={200}
+                />
               </div>
             </fieldset>
 
@@ -138,9 +163,7 @@ export default async function Waitlist({
               <label htmlFor="consent">{CONSENT_TEXT}</label>
             </div>
 
-            <button className={styles.submit} type="submit">
-              Avisem-me
-            </button>
+            <SubmitButton />
           </form>
         </div>
 

@@ -15,6 +15,8 @@ export async function joinWaitlist(formData: FormData): Promise<void> {
     audience: formData.get('audience') ?? 'client',
     categories: formData.getAll('categories').map(String).filter(Boolean),
     locations: formData.getAll('locations').map(String).filter(Boolean),
+    otherCategory: formData.get('categoryOtherText') || undefined,
+    otherLocation: formData.get('zoneOtherText') || undefined,
     eventMonth: formData.get('eventMonth') || undefined,
     source: 'waitlist',
     consent: formData.get('consent') === 'on',
