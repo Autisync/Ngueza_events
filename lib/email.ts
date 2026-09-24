@@ -4,7 +4,8 @@ import 'server-only'
 
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { env } from '@/lib/env'
+import nodemailer from 'nodemailer'
+import { env, optionalEnv } from '@/lib/env'
 
 /**
  * Two sending identities, deliberately separated.
@@ -57,6 +58,36 @@ class ResendMailer implements Mailer {
 }
 
 /**
+ * Any standard SMTP provider — a mail server, not an HTTP API. Every kind
+ * still goes out under its own from-address (`from()`, above); SMTP only
+ * changes how the message is transported, never that separation.
+ */
+class SmtpMailer implements Mailer {
+  private readonly transport: ReturnType<typeof nodemailer.createTransport>
+
+  constructor(config: { host: string; port: number; user?: string; pass?: string }) {
+    this.transport = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      // 465 is SMTPS (implicit TLS); every other port starts in the
+      // clear and upgrades via STARTTLS, which nodemailer does on its
+      // own when the server offers it.
+      secure: config.port === 465,
+      auth: config.user && config.pass ? { user: config.user, pass: config.pass } : undefined,
+    })
+  }
+
+  async send(mail: Mail): Promise<void> {
+    await this.transport.sendMail({
+      from: from(mail.kind),
+      to: mail.to,
+      subject: mail.subject,
+      text: mail.text,
+    })
+  }
+}
+
+/**
  * Development and CI. Appends to a file so the double opt-in flow can be
  * exercised end to end without an API key or a real inbox.
  */
@@ -73,7 +104,24 @@ class OutboxMailer implements Mailer {
   }
 }
 
+/**
+ * Picks the first configured transport: SMTP, then Resend, then the
+ * local outbox file. SMTP is checked first because once it's set, it is
+ * meant to carry every kind of mail this app sends — not just a
+ * fallback alongside a second, half-configured provider.
+ */
 export function mailer(): Mailer {
+  const smtpHost = optionalEnv('SMTP_HOST')
+  if (smtpHost) {
+    const port = Number(env('SMTP_PORT', '587'))
+    return new SmtpMailer({
+      host: smtpHost,
+      port: Number.isFinite(port) ? port : 587,
+      user: optionalEnv('SMTP_USER'),
+      pass: optionalEnv('SMTP_PASS'),
+    })
+  }
+
   const key = process.env.RESEND_API_KEY
   return key
     ? new ResendMailer(key)

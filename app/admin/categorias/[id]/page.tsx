@@ -62,7 +62,7 @@ export default async function EditarCategoria({
             Desactivar remove a categoria das listas de escolha para novos fornecedores. Não afecta
             quem já a usa — os perfis já publicados continuam a aparecer normalmente.
           </p>
-          <form action={doToggleCategory} method="post">
+          <form action={doToggleCategory}>
             <input type="hidden" name="id" value={category.id} />
             <input type="hidden" name="active" value={category.isActive ? 'false' : 'true'} />
             <button className={`${styles.btn} ${category.isActive ? styles.no : styles.go}`} type="submit">
@@ -73,7 +73,7 @@ export default async function EditarCategoria({
 
         <div className={styles.card}>
           <h2>Dados</h2>
-          <form action={doUpdateCategory} method="post">
+          <form action={doUpdateCategory}>
             <input type="hidden" name="id" value={category.id} />
             <div className={styles.two}>
               <label className={styles.field}>

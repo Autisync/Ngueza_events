@@ -174,7 +174,7 @@ export default async function ReservaDetalhe({
         ) : null}
 
         {canCancel ? (
-          <form action={doClientCancel} method="post" style={{ marginBottom: 20 }}>
+          <form action={doClientCancel} style={{ marginBottom: 20 }}>
             <input type="hidden" name="bookingId" value={booking.id} />
             <button className={styles.btn} type="submit">Cancelar reserva</button>
           </form>
@@ -187,7 +187,7 @@ export default async function ReservaDetalhe({
               Como a reserva foi feita através da NGUEZA, a sua avaliação fica marcada como
               «Reserva verificada».
             </p>
-            <form action={doLeaveReview} method="post">
+            <form action={doLeaveReview}>
               <input type="hidden" name="bookingId" value={booking.id} />
               <input type="hidden" name="providerId" value={booking.providerId} />
               <label className={styles.field}>

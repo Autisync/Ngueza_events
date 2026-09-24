@@ -16,19 +16,23 @@ export function Chrome({
   return (
     <section className={styles.top}>
       <div className={styles.wrap}>
-        <a className={styles.mark} href="/">← NGUEZA</a>
-        <h1 className={styles.title}>{title}</h1>
-        <nav className={styles.nav}>
-          {link('/admin', 'inicio', 'Início')}
-          {link('/admin/metricas', 'metricas', 'Métricas')}
-          {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
-          {link('/admin/pagamentos', 'pagamentos', 'Pagamentos', counts?.submittedPayments)}
-          {link('/admin/denuncias', 'denuncias', 'Denúncias', counts?.openReports)}
-          {link('/admin/lista-de-espera', 'espera', 'Lista de espera')}
-          {link('/admin/categorias', 'categorias', 'Categorias')}
-          {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
-          {link('/admin/registo', 'registo', 'Registo')}
-        </nav>
+        <div className={styles.topRow}>
+          <a className={styles.mark} href="/">← NGUEZA</a>
+          <h1 className={styles.title}>{title}</h1>
+        </div>
+        <div className={styles.navScroll}>
+          <nav className={styles.nav}>
+            {link('/admin', 'inicio', 'Início')}
+            {link('/admin/metricas', 'metricas', 'Métricas')}
+            {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
+            {link('/admin/pagamentos', 'pagamentos', 'Pagamentos', counts?.submittedPayments)}
+            {link('/admin/denuncias', 'denuncias', 'Denúncias', counts?.openReports)}
+            {link('/admin/lista-de-espera', 'espera', 'Lista de espera')}
+            {link('/admin/categorias', 'categorias', 'Categorias')}
+            {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
+            {link('/admin/registo', 'registo', 'Registo')}
+          </nav>
+        </div>
       </div>
     </section>
   )

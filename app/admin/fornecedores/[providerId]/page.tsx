@@ -118,13 +118,13 @@ export default async function Rever({
                      href={`/api/admin/documento?id=${d.id}`} target="_blank" rel="noopener">
                     Abrir
                   </a>
-                  <form action={doDecideDocument} method="post">
+                  <form action={doDecideDocument}>
                     <input type="hidden" name="providerId" value={p.id} />
                     <input type="hidden" name="documentId" value={d.id} />
                     <input type="hidden" name="decision" value="accepted" />
                     <button className={`${styles.btn} ${styles.go}`} type="submit">Aceitar</button>
                   </form>
-                  <form action={doDecideDocument} method="post">
+                  <form action={doDecideDocument}>
                     <input type="hidden" name="providerId" value={p.id} />
                     <input type="hidden" name="documentId" value={d.id} />
                     <input type="hidden" name="decision" value="rejected" />
@@ -158,7 +158,7 @@ export default async function Rever({
           </p>
 
           {p.verificationStatus !== 'verified' && p.verificationStatus !== 'suspended' ? (
-            <form action={doVerify} method="post" style={{ marginBottom: 14 }}>
+            <form action={doVerify} style={{ marginBottom: 14 }}>
               <input type="hidden" name="providerId" value={p.id} />
               <button className={`${styles.btn} ${styles.go}`} type="submit">
                 Verificar e publicar
@@ -167,13 +167,13 @@ export default async function Rever({
           ) : null}
 
           {p.verificationStatus === 'suspended' ? (
-            <form action={doReinstate} method="post" style={{ marginBottom: 14 }}>
+            <form action={doReinstate} style={{ marginBottom: 14 }}>
               <input type="hidden" name="providerId" value={p.id} />
               <button className={`${styles.btn} ${styles.go}`} type="submit">Reactivar</button>
             </form>
           ) : null}
 
-          <form action={doReject} method="post" style={{ marginBottom: 14 }}>
+          <form action={doReject} style={{ marginBottom: 14 }}>
             <input type="hidden" name="providerId" value={p.id} />
             <input className={styles.input} name="reason" required
                    placeholder="Motivo — o fornecedor vê este texto" />
@@ -181,7 +181,7 @@ export default async function Rever({
           </form>
 
           {p.verificationStatus !== 'suspended' ? (
-            <form action={doSuspend} method="post">
+            <form action={doSuspend}>
               <input type="hidden" name="providerId" value={p.id} />
               <input className={styles.input} name="reason" required placeholder="Motivo da suspensão" />
               <button className={`${styles.btn} ${styles.no}`} type="submit">Suspender fornecedor</button>
@@ -194,7 +194,7 @@ export default async function Rever({
           <p className={styles.note}>
             Suspender a conta impede o acesso a tudo, não apenas a este negócio.
           </p>
-          <form action={doSetAccountStatus} method="post">
+          <form action={doSetAccountStatus}>
             <input type="hidden" name="providerId" value={p.id} />
             <input type="hidden" name="profileId" value={p.ownerId} />
             <input type="hidden" name="status"

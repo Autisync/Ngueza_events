@@ -61,7 +61,7 @@ export default async function EditarLocalizacao({
             Desactivar remove a localização das listas de escolha para novos fornecedores. Não afecta
             quem já a usa.
           </p>
-          <form action={doToggleLocation} method="post">
+          <form action={doToggleLocation}>
             <input type="hidden" name="id" value={location.id} />
             <input type="hidden" name="active" value={location.isActive ? 'false' : 'true'} />
             <button className={`${styles.btn} ${location.isActive ? styles.no : styles.go}`} type="submit">
@@ -72,7 +72,7 @@ export default async function EditarLocalizacao({
 
         <div className={styles.card}>
           <h2>Dados</h2>
-          <form action={doUpdateLocation} method="post">
+          <form action={doUpdateLocation}>
             <input type="hidden" name="id" value={location.id} />
             <div className={styles.two}>
               <label className={styles.field}>

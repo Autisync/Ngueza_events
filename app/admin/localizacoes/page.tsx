@@ -88,7 +88,7 @@ export default async function Localizacoes({
 
         <div className={styles.card}>
           <h2>Criar localização</h2>
-          <form action={doCreateLocation} method="post">
+          <form action={doCreateLocation}>
             <div className={styles.two}>
               <label className={styles.field}>
                 <span className={styles.label}>Nome</span>

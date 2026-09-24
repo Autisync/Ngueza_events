@@ -41,7 +41,7 @@ export default async function Registar({
       <div className={styles.wrap}>
         {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.dados}</p> : null}
 
-        <form action={doRegisterBusiness} method="post">
+        <form action={doRegisterBusiness}>
           <div className={styles.card}>
             <h2>O negócio</h2>
             <p className={styles.note}>Como os clientes o vão encontrar.</p>

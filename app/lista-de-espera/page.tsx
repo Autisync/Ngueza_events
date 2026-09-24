@@ -87,7 +87,7 @@ export default async function Waitlist({
             </p>
           ) : null}
 
-          <form action={joinWaitlist} method="post">
+          <form action={joinWaitlist}>
             <label className={styles.field}>
               <span className={styles.label}>O seu email</span>
               <input

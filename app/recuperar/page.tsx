@@ -12,7 +12,7 @@ export default function Recuperar() {
       <p className={styles.lede}>
         Escreva o email da sua conta e enviamos-lhe uma ligação para definir uma nova palavra-passe.
       </p>
-      <form action={doRequestReset} method="post">
+      <form action={doRequestReset}>
         <label className={styles.field}>
           <span className={styles.label}>Email</span>
           <input className={styles.input} type="email" name="email" required

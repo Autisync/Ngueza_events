@@ -61,7 +61,7 @@ export default async function PoliticaCancelamento({
             Aplicada a partir de agora — reservas já feitas mantêm os termos que tinham no
             momento do pedido, mesmo que a política mude depois.
           </p>
-          <form action={doSetCancellationPolicy} method="post">
+          <form action={doSetCancellationPolicy}>
             <input type="hidden" name="providerId" value={providerId} />
             <label className={styles.field}>
               <span className={styles.label}>Nome da política</span>

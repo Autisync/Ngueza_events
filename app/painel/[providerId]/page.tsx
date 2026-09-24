@@ -193,7 +193,7 @@ export default async function GerirNegocio({
           </div>
 
           {canSubmit ? (
-            <form action={doSubmitForVerification} method="post">
+            <form action={doSubmitForVerification}>
               <input type="hidden" name="providerId" value={provider.id} />
               <button className={styles.submit} type="submit">Submeter para verificação</button>
             </form>
@@ -222,7 +222,7 @@ export default async function GerirNegocio({
                     </span>
                   </div>
                   <span className={styles.price}>{formatPrice(s.price)}</span>
-                  <form action={doRemoveService} method="post">
+                  <form action={doRemoveService}>
                     <input type="hidden" name="providerId" value={provider.id} />
                     <input type="hidden" name="serviceId" value={s.id} />
                     <button className={styles.inline} type="submit"
@@ -236,7 +236,7 @@ export default async function GerirNegocio({
             </div>
           )}
 
-          <form action={doAddService} method="post">
+          <form action={doAddService}>
             <input type="hidden" name="providerId" value={provider.id} />
             <div className={styles.two}>
               <label className={styles.field}>
@@ -324,7 +324,7 @@ export default async function GerirNegocio({
                 </div>
               ))}
             </div>
-            <form action={doAddResource} method="post">
+            <form action={doAddResource}>
               <input type="hidden" name="providerId" value={provider.id} />
               <div className={styles.two}>
                 <label className={styles.field}>
@@ -347,7 +347,7 @@ export default async function GerirNegocio({
         {/* ---- profile ---- */}
         <div className={styles.card} id="perfil">
           <h2>Dados do negócio</h2>
-          <form action={doUpdateBusiness} method="post">
+          <form action={doUpdateBusiness}>
             <input type="hidden" name="providerId" value={provider.id} />
             <label className={styles.field}>
               <span className={styles.label}>Nome</span>

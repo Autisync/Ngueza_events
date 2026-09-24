@@ -262,7 +262,7 @@ export default async function ProviderPage({
               <a href="/criar-conta">Criar conta</a>.
             </p>
           ) : (
-            <form action={doRequestBooking} method="post">
+            <form action={doRequestBooking}>
               <input type="hidden" name="providerId" value={provider.id} />
               <input type="hidden" name="providerSlug" value={provider.slug} />
               <div style={{ display: 'grid', gap: 14, gridTemplateColumns: '1fr', marginBottom: 14 }}>

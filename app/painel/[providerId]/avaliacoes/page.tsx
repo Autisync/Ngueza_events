@@ -67,7 +67,7 @@ export default async function AvaliacoesFornecedor({
                     <strong>A sua resposta:</strong> {r.providerReply}
                   </p>
                 ) : (
-                  <form action={doReplyToReview} method="post">
+                  <form action={doReplyToReview}>
                     <input type="hidden" name="reviewId" value={r.id} />
                     <input type="hidden" name="providerId" value={providerId} />
                     <label className={styles.field} style={{ marginBottom: 8 }}>
