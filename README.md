@@ -59,6 +59,8 @@ make contact.
 | Database, auth | Supabase, deployed and verified. **Connect through the pooler** — `db.<ref>.supabase.co` is IPv6-only. See [`docs/supabase.md`](docs/supabase.md) |
 | Media | Self-hosted MinIO + imgproxy via Portainer. See [`deploy/media/`](deploy/media/README.md) |
 | Backup, restore | Schema from migrations (proven daily by CI), data from a `pg_dump`. Rehearsed end to end, including exactly how a full schema+data dump fights Supabase's own extension management — see [`docs/backup-restore.md`](docs/backup-restore.md) |
+| Error monitoring | Sentry, server and client. `NEXT_PUBLIC_SENTRY_DSN` unset means it's a no-op everywhere. The client SDK is lazy-loaded (`instrumentation-client.ts`) rather than imported at the top level — it alone gzips to ~140KB, nearly the whole route JS budget, so a static import would blow every route's 180KB limit. Deferred past hydration instead: fetched in parallel, not on the critical path, costs nothing against LCP or the budget. |
+| Security headers | `next.config.ts`: CSP, HSTS (2yr, no `preload` — that's a deliberate call for NGUEZA to make, not a default), plus the pre-existing `X-Content-Type-Options`/`Referrer-Policy`/`X-Frame-Options`. `script-src`/`style-src` carry `'unsafe-inline'` — verified live that a plain `'self'` breaks Next.js's own inline hydration scripts outright; the app has no `dangerouslySetInnerHTML` of user content (one use, JSON-LD, `JSON.stringify`'d) so the real exposure is small. `connect-src`/`img-src` build the media host into the policy dynamically from `MINIO_PUBLIC_URL`/`IMGPROXY_PUBLIC_URL`, so it doesn't need editing per environment. |
 
 Media runs on your own host instead of Cloudflare. The §40 contract is
 unchanged: the app server never handles image bytes, the browser uploads to
@@ -72,8 +74,9 @@ Measured: a 1600×1067 PNG of 139 KB is delivered as a 640×427 WebP of
 
 | Slice | Blocked on |
 |---|---|
-| Real signups at volume | **SMTP for Supabase Auth**, in hand — NGUEZA is setting this up directly (Resend plus complementary tooling). The built-in mailer allows a few messages an hour and lands in spam; the dashboard steps are at [`docs/supabase.md`](docs/supabase.md#point-supabase-auths-mailer-at-resend) if useful. |
-| Deploying slice 19's migration (0026) live, and anything else live | **The Supabase project itself** — `fhwuvicltvyoqgatgwwp.supabase.co` does not resolve at all (checked against two independent DNS resolvers; unrelated hosts resolve fine from here), and the pooler rejects the tenant outright. Looks like the project is paused past auto-resume, or gone. NGUEZA: please check the project's status in the Supabase dashboard — this blocks every live-deploy step this session otherwise does routinely, not only slice 19. |
+| Real signups at volume | **SMTP for Supabase Auth** — a dashboard setting, separate from `lib/email.ts`'s own mailer (which already supports SMTP as of the entry below). The built-in mailer allows a few messages an hour and lands in spam; confirmed live — after 2 real signups in one session this hit "Demasiadas tentativas." Steps are at [`docs/supabase.md`](docs/supabase.md#point-supabase-auths-mailer-at-resend). |
+
+Previously listed here: the Supabase project itself not resolving. Resolved — reachable and fully functional in every session since (live signups, Admin API calls, migrations applied), so removed rather than left as a stale blocker.
 
 Per §45 every one of these is opened in NGUEZA's name, with NGUEZA's email
 and card. Engineers receive access; engineers do not own accounts.
