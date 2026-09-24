@@ -20,12 +20,28 @@
 
 services:
   minio:
-    # MinIO removed both images from Docker Hub's anonymous-pull tier in
-    # 2025 — "pull access denied ... repository does not exist" is that,
-    # not a typo or a rate limit. quay.io/minio/ is MinIO's own registry
-    # and carries the identical tags; confirmed by pulling both by exact
-    # digest before switching.
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Second registry lockout in a row. MinIO pulled both images from
+    # Docker Hub's anonymous tier in 2025 (the quay.io comment this
+    # replaced), then did the same to quay.io/minio/* on 2026-09-24 —
+    # `docker pull quay.io/minio/minio:latest` now 401s anonymously, and
+    # so does quay.io/minio/mc, confirmed directly against the registry
+    # API, not just this stack. Not a rate limit, not this runner: a
+    # fresh CI run against unmodified `main` failed the same way within
+    # hours of a run that had been green, and other projects hit the
+    # identical 401 the same day.
+    #
+    # cgr.dev/chainguard/minio is Chainguard's build of the same
+    # binaries, still anonymously pullable, and bundles `mc` — which is
+    # why minio-init below points at this image too instead of a
+    # separate mc image (Chainguard gates cgr.dev/chainguard/mc behind a
+    # paid tier; the minio image doesn't need it, it already has mc for
+    # its own healthcheck). Pinned by digest rather than `latest`
+    # because Chainguard's free tier doesn't publish stable version
+    # tags — a bare `latest` would mean CI silently pulls a different
+    # build on some future run. Verified end to end before pinning:
+    # full stack healthy, both buckets created with the right anonymous
+    # policy, and `npm run test:media`'s 12 tests green against it.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: ngueza-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -52,7 +68,10 @@ services:
   # Creates the bucket and applies a read-only public policy to it, then
   # exits. Runs on every stack start and is idempotent.
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    # Same image as `minio` above, not a separate mc image — see that
+    # service's comment. The entrypoint override below is what turns
+    # this into a one-shot `mc` job instead of a running server.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: ngueza-minio-init
     depends_on:
       minio:
