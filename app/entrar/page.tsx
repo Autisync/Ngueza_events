@@ -38,7 +38,7 @@ export default async function Entrar({
       </a>
       <div className={styles.divider}>ou</div>
 
-      <form action={doSignIn} method="post">
+      <form action={doSignIn}>
         <input type="hidden" name="next" value={next?.startsWith('/') ? next : '/conta'} />
         <label className={styles.field}>
           <span className={styles.label}>Email</span>

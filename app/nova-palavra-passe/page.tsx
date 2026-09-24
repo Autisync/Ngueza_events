@@ -29,7 +29,7 @@ export default async function NovaPalavraPasse({
           and then gets out of the way. */}
       <Recover />
 
-      <form action={doUpdatePassword} method="post">
+      <form action={doUpdatePassword}>
         <label className={styles.field}>
           <span className={styles.label}>Nova palavra-passe</span>
           <input className={styles.input} type="password" name="password" required

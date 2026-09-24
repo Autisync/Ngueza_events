@@ -77,7 +77,7 @@ export default async function ReservasFornecedor({
               Para quando aceitar uma reserva fora da NGUEZA em pessoa (§27) — impede que a mesma
               data seja pedida aqui.
             </p>
-            <form action={doBlockDate} method="post">
+            <form action={doBlockDate}>
               <input type="hidden" name="providerId" value={providerId} />
               <div className={styles.two}>
                 <label className={styles.field}>

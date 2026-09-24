@@ -45,12 +45,12 @@ export default async function Pagamentos() {
                 </p>
               ) : null}
               <div className={styles.actions}>
-                <form action={doDecidePayment} method="post">
+                <form action={doDecidePayment}>
                   <input type="hidden" name="paymentId" value={p.id} />
                   <input type="hidden" name="decision" value="confirmed" />
                   <button className={`${styles.btn} ${styles.go}`} type="submit">Plausível</button>
                 </form>
-                <form action={doDecidePayment} method="post">
+                <form action={doDecidePayment}>
                   <input type="hidden" name="paymentId" value={p.id} />
                   <input type="hidden" name="decision" value="failed" />
                   <button className={`${styles.btn} ${styles.no}`} type="submit">Rejeitar</button>

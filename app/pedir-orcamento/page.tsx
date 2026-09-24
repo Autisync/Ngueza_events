@@ -39,7 +39,7 @@ export default async function PedirOrcamento({
       <div className={styles.wrap}>
         {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.dados}</p> : null}
 
-        <form action={doPostQuoteRequest} method="post">
+        <form action={doPostQuoteRequest}>
           <div className={styles.card}>
             <h2>O que precisa</h2>
 

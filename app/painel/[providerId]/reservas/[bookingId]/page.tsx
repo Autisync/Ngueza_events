@@ -120,7 +120,7 @@ export default async function ReservaFornecedor({
             <h2>Decisão</h2>
             <div className={styles.actions}>
               {steps.map((step) => (
-                <form action={doSupplierTransition} method="post" key={step.to}>
+                <form action={doSupplierTransition} key={step.to}>
                   <input type="hidden" name="bookingId" value={booking.id} />
                   <input type="hidden" name="providerId" value={providerId} />
                   <input type="hidden" name="to" value={step.to} />

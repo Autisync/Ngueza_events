@@ -79,7 +79,7 @@ export default async function PedidosFornecedor({
                 Publicado em {when(r.createdAt)}
               </p>
 
-              <form action={doSubmitOffer} method="post">
+              <form action={doSubmitOffer}>
                 <input type="hidden" name="providerId" value={providerId} />
                 <input type="hidden" name="quoteRequestId" value={r.id} />
                 <div className={styles.two}>
@@ -112,7 +112,7 @@ export default async function PedidosFornecedor({
                   <strong>{formatMinor(o.priceMinor)}</strong>
                   {o.message ? <span className={styles.meta}>{o.message}</span> : null}
                 </span>
-                <form action={doWithdrawOffer} method="post">
+                <form action={doWithdrawOffer}>
                   <input type="hidden" name="providerId" value={providerId} />
                   <input type="hidden" name="offerId" value={o.id} />
                   <button className={`${styles.btn} ${styles.no}`} type="submit">Retirar</button>

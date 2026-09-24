@@ -95,7 +95,7 @@ export default async function MeusPedidos({
                 ) : null}
 
                 {r.status === 'open' ? (
-                  <form action={doCloseQuoteRequest} method="post" style={{ marginTop: 14 }}>
+                  <form action={doCloseQuoteRequest} style={{ marginTop: 14 }}>
                     <input type="hidden" name="quoteRequestId" value={r.id} />
                     <button className={`${styles.submit} ${styles.ghost}`} type="submit">
                       Encerrar pedido

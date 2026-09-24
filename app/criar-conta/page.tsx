@@ -38,7 +38,7 @@ export default async function CriarConta({
       </a>
       <div className={styles.divider}>ou</div>
 
-      <form action={doSignUp} method="post">
+      <form action={doSignUp}>
         <label className={styles.field}>
           <span className={styles.label}>Nome</span>
           <input className={styles.input} type="text" name="nome" autoComplete="name" maxLength={120} />

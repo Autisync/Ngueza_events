@@ -43,7 +43,7 @@ export default async function Denuncias() {
                 <p style={{ fontSize: '0.94rem', color: 'var(--tinta-2)' }}>{r.detail}</p>
               ) : null}
               <div className={styles.actions}>
-                <form action={doResolveReport} method="post">
+                <form action={doResolveReport}>
                   <input type="hidden" name="reportId" value={r.id} />
                   <input type="hidden" name="outcome" value="upheld" />
                   <input className={styles.input} name="note" placeholder="O que foi feito" />
@@ -51,7 +51,7 @@ export default async function Denuncias() {
                     Confirmar denúncia
                   </button>
                 </form>
-                <form action={doResolveReport} method="post">
+                <form action={doResolveReport}>
                   <input type="hidden" name="reportId" value={r.id} />
                   <input type="hidden" name="outcome" value="dismissed" />
                   <button className={`${styles.btn} ${styles.mute}`} type="submit">

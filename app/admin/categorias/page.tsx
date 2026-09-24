@@ -93,7 +93,7 @@ export default async function Categorias({
 
         <div className={styles.card}>
           <h2>Criar categoria</h2>
-          <form action={doCreateCategory} method="post">
+          <form action={doCreateCategory}>
             <div className={styles.two}>
               <label className={styles.field}>
                 <span className={styles.label}>Nome</span>
