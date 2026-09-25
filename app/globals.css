@@ -16,19 +16,26 @@
   --azul-600: #1266b5;
   --azul-500: #1877d2;
   --azul-300: #7fb5e8;
+  --azul-200: #cfe3f6;
   --azul-100: #e3eef9;
   --azul-050: #f2f7fc;
 
   --branco: #ffffff;
   --tinta: #0c1b2a;
   --tinta-2: #3e5468;
-  --tinta-3: #6b8199;
+  /* #4f6579, not the lighter #6b8199 this replaced — that one measured
+     ~4.02:1 on white, under the 4.5:1 AA floor for normal text, despite
+     being used broadly for real content (timestamps, field labels,
+     hints), not decoration. This clears 6:1 with comfortable margin. */
+  --tinta-3: #4f6579;
   --linha: #d6e2ee;
 
   --bom: #1b6b4e;
   --bom-fundo: #dff0e8;
   --erro: #b3402b;
   --erro-fundo: #f8e7e2;
+  --aviso: #8a5d0e;
+  --aviso-fundo: #f8efdc;
 
   --sombra: 0 1px 2px rgba(12, 27, 42, 0.06), 0 12px 32px -20px rgba(9, 58, 102, 0.4);
   --raio: 6px;

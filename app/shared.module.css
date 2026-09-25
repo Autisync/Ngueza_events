@@ -9,7 +9,7 @@
 }
 .iconOk { background: var(--bom-fundo); color: var(--bom); }
 .iconWarn { background: var(--erro-fundo); color: var(--erro); }
-.iconWait { background: #F8EFDC; color: #8A5D0E; }
+.iconWait { background: var(--aviso-fundo); color: var(--aviso); }
 .title { font-size: 1.55rem; line-height: 1.2; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.015em; }
 .body { color: var(--tinta-2); margin: 0 0 14px; }
 .body strong { color: var(--tinta); }

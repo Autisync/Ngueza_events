@@ -13,7 +13,7 @@ export function SupplierCard({ hit }: { hit: SearchHit }) {
       <div className={styles.thumb}>
         {photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
-          <img className={styles.thumbImg} src={photoUrl} alt="" />
+          <img className={styles.thumbImg} src={photoUrl} alt="" loading="lazy" decoding="async" />
         ) : (
           <svg className={styles.thumbIcon} width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <rect x="3" y="5" width="18" height="14" rx="2" />
