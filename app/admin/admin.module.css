@@ -1,23 +1,69 @@
-.wrap { max-width: 960px; margin: 0 auto; padding: 0 18px; }
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 18px; transition: margin-left 0.2s ease; }
 
-.top {
-  background: linear-gradient(170deg, var(--azul-900) 0%, var(--azul-800) 100%);
-  color: var(--branco); padding: 16px 0 0; margin-bottom: 28px;
-  position: sticky; top: 0; z-index: 10;
-  box-shadow: 0 4px 20px -8px rgba(6, 43, 77, 0.5);
+/* Sidebar (slice 27) — replaces the old horizontal pill nav. Checkbox-
+   driven, same no-JS pattern as the "Outro" reveal on /lista-de-espera:
+   #sidebarToggle:checked means "collapsed" on desktop but "open" on
+   mobile — one checkbox, two meanings, because the two breakpoints
+   default to opposite states (open on desktop, retracted on mobile) and
+   both still need to be toggleable from the same control. */
+.toggleInput { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+
+.backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(6, 15, 26, 0.5);
+  z-index: 30; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
 }
-.topRow { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding-bottom: 14px; }
+
+.sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0; width: 250px; z-index: 40;
+  background: linear-gradient(170deg, var(--azul-900) 0%, var(--azul-800) 100%);
+  padding: 20px 16px; overflow-y: auto;
+  transform: translateX(-100%); transition: transform 0.2s ease;
+  box-shadow: 4px 0 20px -8px rgba(6, 43, 77, 0.5);
+}
+.toggleInput:checked ~ .sidebar { transform: translateX(0); }
+.toggleInput:checked ~ .backdrop { display: block; opacity: 1; pointer-events: auto; }
+
 .mark { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
-        color: var(--azul-300); text-decoration: none; transition: color 0.15s ease; }
+        color: var(--azul-300); text-decoration: none; transition: color 0.15s ease;
+        display: inline-block; margin-bottom: 22px; }
 .mark:hover { color: var(--branco); }
-.title { font-size: clamp(1.3rem,3.6vw,1.6rem); font-weight: 700; margin: 0;
+
+.sidebarNav { display: flex; flex-direction: column; gap: 3px; }
+.sidebarNav a {
+  padding: 10px 13px; border-radius: 8px; font-size: 0.92rem; font-weight: 600;
+  text-decoration: none; color: #cfe3f6;
+  transition: background 0.15s ease, color 0.15s ease;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sidebarNav a:hover { background: rgba(255,255,255,0.1); color: var(--branco); }
+.sidebarNav a.on { background: var(--branco); color: var(--azul-900); }
+
+.pageHeader {
+  display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+  border-bottom: 1px solid var(--linha); margin-bottom: 28px;
+}
+.title { font-size: clamp(1.2rem,3.2vw,1.5rem); font-weight: 700; margin: 0;
          letter-spacing: -0.02em; }
 
-.navScroll {
-  overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
-  border-top: 1px solid rgba(255,255,255,0.08);
+.menuBtn {
+  display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  width: 34px; height: 34px; padding: 8px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--linha); flex: none; transition: background 0.15s ease;
 }
-.navScroll::-webkit-scrollbar { display: none; }
+.menuBtn:hover { background: var(--azul-050); }
+.menuBtn span { display: block; height: 2px; background: var(--tinta); border-radius: 1px; }
+
+@media (min-width: 900px) {
+  .sidebar { transform: translateX(0); }
+  .toggleInput:checked ~ .sidebar { transform: translateX(-100%); }
+  .toggleInput:checked ~ .backdrop { display: none; }
+  .wrap, .pageHeader { margin-left: 250px; }
+  .toggleInput:checked ~ .wrap, .toggleInput:checked ~ .pageHeader { margin-left: 0; }
+  .menuBtn { border-color: transparent; }
+}
+
+/* Fornecedores' own status-filter tabs reuse this for a horizontal pill
+   row — unrelated to the sidebar above, left exactly as it already was. */
 .nav { display: flex; gap: 6px; padding: 10px 0; white-space: nowrap; }
 .nav a {
   padding: 7px 13px; border-radius: 999px; font-size: 0.86rem; font-weight: 600;
