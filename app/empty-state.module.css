@@ -1,0 +1,23 @@
+.wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+.icon {
+  position: relative; width: 56px; height: 56px; border-radius: 50%;
+  background: var(--azul-100); color: var(--azul-700);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 8px;
+}
+.ping {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px solid var(--azul-300);
+  animation: ping 2.6s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+.ping:nth-child(2) { animation-delay: 1.3s; }
+@keyframes ping {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+.title { font-size: 1.1rem; font-weight: 800; margin: 0; text-align: center; }
+.body { text-align: center; color: var(--tinta-2); font-size: 0.95rem; }
+.body p { margin: 0 0 4px; max-width: 42ch; }
+.body a { color: var(--azul-700); font-weight: 700; }

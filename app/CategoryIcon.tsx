@@ -1,19 +1,46 @@
 import type { ReactElement } from 'react'
 import { coverImageUrl } from '@/lib/media'
 
+// Curated Pexels photos (public/categories/<slug>.jpg, Pexels License —
+// free for commercial use, no attribution required), cropped to 192x192
+// and compressed to a few KB each — this is what a category shows until
+// real verified supply exists for it. Presentational lookup, same rule
+// as everything else here: a slug missing from this set is not an
+// error, it just means CategoryIcon's line-art mark instead.
+const STATIC_PHOTO_SLUGS = new Set([
+  'saloes-de-festas',
+  'casas-de-festas',
+  'casas-de-praia',
+  'salas-de-conferencia',
+  'salas-de-workshop',
+  'djs',
+  'fotografia',
+  'video',
+  'buffet',
+  'decoracao',
+  'maquilhagem',
+  'som',
+  'iluminacao',
+])
+
 /**
- * The homepage's Categorias populares rail: a real photo of a verified
- * supplier in that category when one exists (page.tsx queries one
- * representative cover image per category — no new schema, reuses the
- * media table and Cloudflare/imgproxy pipeline SupplierCard.tsx already
- * reads from), falling back to the line-art mark for a category with no
- * live supply yet. Never the other way around — a category is never
- * gated by whether it has a photo (§6, §44).
+ * The homepage's Categorias populares rail. Three tiers, most authentic
+ * first:
+ *   1. A real verified supplier's own cover photo, when one exists
+ *      (page.tsx queries one representative photo per category — no new
+ *      schema, reuses the media table and Cloudflare/imgproxy pipeline
+ *      SupplierCard.tsx already reads from).
+ *   2. A curated static photo for a known category with no supply yet,
+ *      so the rail looks like a real marketplace from day one rather
+ *      than an icon board.
+ *   3. CategoryIcon's line-art mark, only for a category outside both —
+ *      never the other way around, a category is never gated by
+ *      whether it happens to have a photo (§6, §44).
  */
 export function CategoryThumb({ slug, coverImageId }: { slug: string; coverImageId: string | null }) {
-  const photoUrl = coverImageUrl(coverImageId, 'thumb')
+  const photoUrl = coverImageUrl(coverImageId, 'thumb') ?? (STATIC_PHOTO_SLUGS.has(slug) ? `/categories/${slug}.jpg` : null)
   if (!photoUrl) return <CategoryIcon slug={slug} />
-  // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
+  // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL or a static /public asset, neither of which next/image's optimizer adds anything for here
   return <img src={photoUrl} alt="" loading="lazy" decoding="async" />
 }
 
