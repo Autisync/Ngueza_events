@@ -1,4 +1,21 @@
 import type { ReactElement } from 'react'
+import { coverImageUrl } from '@/lib/media'
+
+/**
+ * The homepage's Categorias populares rail: a real photo of a verified
+ * supplier in that category when one exists (page.tsx queries one
+ * representative cover image per category — no new schema, reuses the
+ * media table and Cloudflare/imgproxy pipeline SupplierCard.tsx already
+ * reads from), falling back to the line-art mark for a category with no
+ * live supply yet. Never the other way around — a category is never
+ * gated by whether it has a photo (§6, §44).
+ */
+export function CategoryThumb({ slug, coverImageId }: { slug: string; coverImageId: string | null }) {
+  const photoUrl = coverImageUrl(coverImageId, 'thumb')
+  if (!photoUrl) return <CategoryIcon slug={slug} />
+  // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
+  return <img src={photoUrl} alt="" loading="lazy" decoding="async" />
+}
 
 /**
  * Presentational only, same rule as the emoji lookup it replaces —
@@ -9,7 +26,7 @@ import type { ReactElement } from 'react'
  * Line-art SVGs matching SupplierCard.tsx's placeholder-thumbnail icon
  * (stroke="currentColor", viewBox 24x24) — one icon language across the
  * app rather than emoji, which render inconsistently across platforms
- * and can't take the brand's blue.
+ * and can't take the brand's blue. Also CategoryThumb's fallback above.
  */
 export function CategoryIcon({ slug }: { slug: string }) {
   return (
