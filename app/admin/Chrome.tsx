@@ -14,26 +14,35 @@ export function Chrome({
     </a>
   )
   return (
-    <section className={styles.top}>
-      <div className={styles.wrap}>
-        <div className={styles.topRow}>
-          <a className={styles.mark} href="/">← NGUEZA</a>
-          <h1 className={styles.title}>{title}</h1>
+    <>
+      {/* Checkbox-driven, like the "Outro" reveal on /lista-de-espera — no
+          JavaScript, works with it disabled. Default state differs by
+          breakpoint (admin.module.css): open on desktop, retracted on
+          mobile, both driven off the same :checked. */}
+      <input type="checkbox" id="sidebarToggle" className={styles.toggleInput} />
+      <label htmlFor="sidebarToggle" className={styles.backdrop} aria-hidden="true" />
+
+      <nav className={styles.sidebar}>
+        <a className={styles.mark} href="/">← NGUEZA</a>
+        <div className={styles.sidebarNav}>
+          {link('/admin', 'inicio', 'Início')}
+          {link('/admin/metricas', 'metricas', 'Métricas')}
+          {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
+          {link('/admin/pagamentos', 'pagamentos', 'Pagamentos', counts?.submittedPayments)}
+          {link('/admin/denuncias', 'denuncias', 'Denúncias', counts?.openReports)}
+          {link('/admin/lista-de-espera', 'espera', 'Lista de espera')}
+          {link('/admin/categorias', 'categorias', 'Categorias')}
+          {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
+          {link('/admin/registo', 'registo', 'Registo')}
         </div>
-        <div className={styles.navScroll}>
-          <nav className={styles.nav}>
-            {link('/admin', 'inicio', 'Início')}
-            {link('/admin/metricas', 'metricas', 'Métricas')}
-            {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
-            {link('/admin/pagamentos', 'pagamentos', 'Pagamentos', counts?.submittedPayments)}
-            {link('/admin/denuncias', 'denuncias', 'Denúncias', counts?.openReports)}
-            {link('/admin/lista-de-espera', 'espera', 'Lista de espera')}
-            {link('/admin/categorias', 'categorias', 'Categorias')}
-            {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
-            {link('/admin/registo', 'registo', 'Registo')}
-          </nav>
-        </div>
-      </div>
-    </section>
+      </nav>
+
+      <header className={styles.pageHeader}>
+        <label htmlFor="sidebarToggle" className={styles.menuBtn} aria-label="Menu">
+          <span /><span /><span />
+        </label>
+        <h1 className={styles.title}>{title}</h1>
+      </header>
+    </>
   )
 }
