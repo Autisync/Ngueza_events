@@ -139,6 +139,33 @@ export default async function Home() {
           </div>
         </section>
 
+        <section className={styles.how}>
+          <h2 className={styles.howTitle}>Como funciona</h2>
+          <ol className={styles.steps}>
+            <li className={styles.step}>
+              <span className={styles.stepNum}>1</span>
+              <p>
+                <strong>Procure pela sua data.</strong> Escolha a categoria, a zona e o dia. Só
+                aparecem fornecedores verificados com essa data realmente livre.
+              </p>
+            </li>
+            <li className={styles.step}>
+              <span className={styles.stepNum}>2</span>
+              <p>
+                <strong>Peça a reserva.</strong> Preços, fotografias e contactos na mesma página —
+                sem ter de se deslocar para comparar.
+              </p>
+            </li>
+            <li className={styles.step}>
+              <span className={styles.stepNum}>3</span>
+              <p>
+                <strong>O fornecedor confirma.</strong> Resposta em até 48h. A data só fica
+                garantida depois de confirmada.
+              </p>
+            </li>
+          </ol>
+        </section>
+
         {featured.hits.length > 0 ? (
           <section className={styles.featured}>
             <div className={styles.featuredHead}>
@@ -151,12 +178,32 @@ export default async function Home() {
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <section className={styles.emptyNotice}>
+            <p>
+              Ainda a registar os primeiros fornecedores verificados em Luanda.{' '}
+              <a href="/lista-de-espera">Deixe o seu email</a> e avisamos assim que houver
+              disponibilidade na sua zona ou categoria.
+            </p>
+          </section>
+        )}
+
+        <section className={styles.supplierCta}>
+          <div>
+            <h2 className={styles.supplierCtaTitle}>É fornecedor em Luanda?</h2>
+            <p className={styles.supplierCtaText}>
+              Salões, casas de festas, salas de conferência e serviços para eventos — registe o
+              seu negócio, envie os documentos e fique visível assim que verificado. Sem
+              comissão sobre nenhuma reserva.
+            </p>
+          </div>
+          <a className={styles.supplierCtaBtn} href="/registar-negocio">Registar o meu negócio</a>
+        </section>
 
         <footer className={styles.foot}>
           <p>
-            É fornecedor? Estamos a registar salões, casas de festas e salas de conferência em
-            Luanda. Escreva para fornecedores@ngueza.com.
+            Não encontrou a sua zona ou categoria?{' '}
+            <a href="/lista-de-espera">Entre na lista de espera</a> e avisamos quando abrir.
           </p>
           <p>
             NGUEZA · Luanda, Angola ·{' '}

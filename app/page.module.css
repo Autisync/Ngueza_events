@@ -57,6 +57,45 @@
 .trustNum { display: block; color: var(--branco); font-weight: 800; font-size: 1.1rem; }
 .trustLabel { display: block; color: var(--azul-200); font-size: 0.76rem; margin-top: 3px; }
 
+/* Same pattern as /lista-de-espera's "Como vai funcionar" — one visual
+   language for the same explainer shape, not a second convention. */
+.how { padding: 40px 0 8px; }
+.howTitle { font-size: 1.1rem; font-weight: 800; margin: 0 0 16px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+@media (min-width: 720px) { .steps { grid-template-columns: repeat(3, 1fr); gap: 20px; } }
+.step { display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: start; }
+.stepNum {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--azul-100);
+  color: var(--azul-700); font-size: 0.82rem; font-weight: 700;
+  display: grid; place-items: center;
+}
+.step p { margin: 0; color: var(--tinta-2); font-size: 0.95rem; }
+.step strong { color: var(--tinta); }
+
+.emptyNotice {
+  margin: 30px 0 8px; padding: 20px 22px; border-radius: 16px;
+  background: var(--azul-050); border: 1px dashed var(--azul-300);
+  color: var(--tinta-2); font-size: 0.95rem; text-align: center;
+}
+.emptyNotice a { color: var(--azul-700); font-weight: 700; }
+
+.supplierCta {
+  margin: 34px 0 8px; padding: 26px; border-radius: 16px;
+  background: linear-gradient(170deg, var(--azul-800) 0%, var(--azul-700) 100%);
+  color: var(--branco);
+  display: grid; gap: 18px; align-items: center;
+}
+@media (min-width: 720px) { .supplierCta { grid-template-columns: 1fr auto; } }
+.supplierCtaTitle { font-size: 1.15rem; font-weight: 800; margin: 0 0 8px; }
+.supplierCtaText { margin: 0; color: #d8e8f7; font-size: 0.92rem; max-width: 56ch; }
+.supplierCtaBtn {
+  display: inline-block; padding: 13px 22px; border-radius: 10px;
+  background: var(--branco); color: var(--azul-800); font-weight: 700;
+  font-size: 0.96rem; text-decoration: none; white-space: nowrap;
+  justify-self: start; transition: background 0.15s ease;
+}
+.supplierCtaBtn:hover { background: var(--azul-050); }
+
 .featured { padding: 34px 0 8px; }
 .featuredHead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
 .featuredTitle { font-size: 1.1rem; font-weight: 800; margin: 0; }
