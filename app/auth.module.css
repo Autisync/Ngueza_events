@@ -11,7 +11,7 @@
 .input { width: 100%; padding: 13px 14px; font: inherit; font-size: 1rem; color: var(--tinta);
          background: var(--branco); border: 1px solid var(--linha); border-radius: 9px;
          transition: border-color 0.15s ease; }
-.input:focus { border-color: var(--azul-500); outline: none; }
+.input:focus-visible { border-color: var(--azul-500); outline: 3px solid var(--azul-500); outline-offset: 1px; }
 .hint { display: block; margin-top: 6px; font-size: 0.84rem; color: var(--tinta-3); }
 
 .submit {
@@ -59,16 +59,3 @@
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem;
          font-weight: 700; background: var(--azul-100); color: var(--azul-700); }
 .badgeWarn { background: var(--erro-fundo); color: var(--erro); }
-
-/* Entrance animation for the account dashboard's cards — same language
-   as admin/painel/reservas (slice 25/26), decorative only, respects
-   reduced motion. Auth forms (.page) intentionally sit outside this: a
-   sign-in form appearing instantly reads as more trustworthy than one
-   that animates in. */
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes authFadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .card { animation: authFadeIn 0.35s ease-out both; }
-}

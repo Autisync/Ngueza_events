@@ -9,7 +9,7 @@
 .mark:hover { color: var(--branco); }
 .title { font-size: clamp(1.5rem,4.5vw,1.9rem); font-weight: 700; margin: 16px 0 0;
          letter-spacing: -0.02em; line-height: 1.15; }
-.sub { color: #cfe3f6; margin: 8px 0 0; font-size: 0.95rem; }
+.sub { color: var(--azul-200); margin: 8px 0 0; font-size: 0.95rem; }
 
 .card {
   border: 1px solid var(--linha); border-radius: 12px; background: var(--branco);
@@ -20,7 +20,7 @@
 
 .state { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .pill { font-size: 0.78rem; font-weight: 700; padding: 5px 12px; border-radius: 999px; letter-spacing: 0.01em; }
-.pillWait { background: var(--warm-fundo, #F8EFDC); color: #8A5D0E; }
+.pillWait { background: var(--aviso-fundo); color: var(--aviso); }
 .pillOk { background: var(--bom-fundo); color: var(--bom); }
 .pillOff { background: var(--azul-050); color: var(--tinta-3); border: 1px solid var(--linha); }
 .pillBad { background: var(--erro-fundo); color: var(--erro); }
@@ -35,7 +35,9 @@
   transition: border-color 0.15s ease;
 }
 .area { min-height: 96px; resize: vertical; }
-.input:focus, .select:focus, .area:focus { border-color: var(--azul-500); outline: none; }
+.input:focus-visible, .select:focus-visible, .area:focus-visible {
+  border-color: var(--azul-500); outline: 3px solid var(--azul-500); outline-offset: 1px;
+}
 .hint { display: block; margin-top: 5px; font-size: 0.83rem; color: var(--tinta-3); }
 
 .submit {
@@ -102,13 +104,3 @@
 .audit { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem;
          border-bottom: 1px solid var(--linha); padding: 9px 0; color: var(--tinta-2); }
 .when { color: var(--tinta-3); }
-
-/* Entrance animation — same language as admin.module.css (slice 25/26),
-   decorative only, respects reduced motion. */
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes painelFadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .card { animation: painelFadeIn 0.35s ease-out both; }
-}
