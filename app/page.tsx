@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { search } from '@/lib/search'
-import { CategoryIcon } from './CategoryIcon'
+import { CategoryThumb } from './CategoryIcon'
 import { SupplierCard } from './SupplierCard'
 import styles from './page.module.css'
 
@@ -34,12 +34,31 @@ async function filters() {
     const municipalities = await c.query<{ id: string; name: string }>(
       `select id, name from locations where is_active and level = 'municipality' order by name`,
     )
-    return { categories: categories.rows, municipalities: municipalities.rows }
+    // One representative photo per rail category, straight from a real
+    // verified supplier's own cover image — not a separate admin-managed
+    // asset, so a category only ever shows a photo once real supply
+    // backs it. distinct on picks the newest verified listing per
+    // category; RLS (media_public_read) already scopes this to
+    // published + verified providers for an anonymous visitor.
+    const categoryIds = categories.rows.map((cat) => cat.id)
+    const photos = categoryIds.length
+      ? await c.query<{ category_id: string; cover_image_id: string }>(
+          `select distinct on (p.category_id) p.category_id, m.external_id as cover_image_id
+             from providers p
+             join media m on m.provider_id = p.id and m.is_cover
+            where p.is_published and p.verification_status = 'verified'
+              and p.category_id = any($1::uuid[])
+            order by p.category_id, p.created_at desc`,
+          [categoryIds],
+        )
+      : { rows: [] as { category_id: string; cover_image_id: string }[] }
+    const categoryPhoto = new Map(photos.rows.map((row) => [row.category_id, row.cover_image_id]))
+    return { categories: categories.rows, municipalities: municipalities.rows, categoryPhoto }
   })
 }
 
 export default async function Home() {
-  const [{ categories, municipalities }, featured] = await Promise.all([
+  const [{ categories, municipalities, categoryPhoto }, featured] = await Promise.all([
     filters(),
     search({ limit: 6 }),
   ])
@@ -99,7 +118,7 @@ export default async function Home() {
             {categories.map((c) => (
               <a className={styles.railItem} key={c.id} href={`/procurar?categoria=${c.id}`}>
                 <span className={styles.railIcon}>
-                  <CategoryIcon slug={c.slug} />
+                  <CategoryThumb slug={c.slug} coverImageId={categoryPhoto.get(c.id) ?? null} />
                 </span>
                 <span className={styles.railLabel}>{c.name}</span>
               </a>
