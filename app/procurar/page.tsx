@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { recordSearch, search, type Cursor } from '@/lib/search'
 import { isCrawler, sessionId } from '@/lib/session'
+import { EmptyState } from '@/app/EmptyState'
 import { SupplierCard } from '@/app/SupplierCard'
 import styles from './search.module.css'
 
@@ -132,9 +133,10 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
 
         {results.hits.length === 0 ? (
           <div className={styles.empty}>
-            <h2>Ainda não temos nada aqui</h2>
-            <p>Não encontrámos espaços com estes critérios.</p>
-            <p>Tente outra zona ou outra data — estamos a registar novos espaços todas as semanas.</p>
+            <EmptyState title="Ainda não temos nada aqui">
+              <p>Não encontrámos espaços com estes critérios.</p>
+              <p>Tente outra zona ou outra data — estamos a registar novos espaços todas as semanas.</p>
+            </EmptyState>
           </div>
         ) : (
           <div className={styles.grid}>

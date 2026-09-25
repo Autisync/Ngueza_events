@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { search } from '@/lib/search'
 import { CategoryThumb } from './CategoryIcon'
+import { EmptyState } from './EmptyState'
 import { SupplierCard } from './SupplierCard'
 import styles from './page.module.css'
 
@@ -182,19 +183,13 @@ export default async function Home() {
           </section>
         ) : (
           <section className={styles.emptyNotice}>
-            <div className={styles.emptyIcon} aria-hidden="true">
-              <span className={styles.emptyPing} />
-              <span className={styles.emptyPing} />
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z" />
-                <circle cx="12" cy="9.5" r="2.5" />
-              </svg>
-            </div>
-            <p>
-              Ainda a registar os primeiros fornecedores verificados em Luanda.{' '}
-              <a href="/lista-de-espera">Deixe o seu email</a> e avisamos assim que houver
-              disponibilidade na sua zona ou categoria.
-            </p>
+            <EmptyState>
+              <p>
+                Ainda a registar os primeiros fornecedores verificados em Luanda.{' '}
+                <a href="/lista-de-espera">Deixe o seu email</a> e avisamos assim que houver
+                disponibilidade na sua zona ou categoria.
+              </p>
+            </EmptyState>
           </section>
         )}
 

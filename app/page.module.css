@@ -83,31 +83,6 @@
 .emptyNotice {
   margin: 30px 0 8px; padding: 30px 22px; border-radius: 16px;
   background: var(--azul-050); border: 1px dashed var(--azul-300);
-  color: var(--tinta-2); font-size: 0.95rem; text-align: center;
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
-}
-.emptyNotice p { margin: 0; max-width: 42ch; }
-.emptyNotice a { color: var(--azul-700); font-weight: 700; }
-
-/* A search radar, not a spinner — this is "we're still covering your
-   zona/categoria", not "loading". Pure CSS/SVG so it costs nothing extra
-   over the network regardless of connection speed; the global
-   prefers-reduced-motion rule in globals.css freezes it for anyone who
-   asked for that, so no separate guard is needed here. */
-.emptyIcon {
-  position: relative; width: 56px; height: 56px; border-radius: 50%;
-  background: var(--azul-100); color: var(--azul-700);
-  display: flex; align-items: center; justify-content: center;
-}
-.emptyPing {
-  position: absolute; inset: 0; border-radius: 50%;
-  border: 1.5px solid var(--azul-300);
-  animation: emptyPing 2.6s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-}
-.emptyPing:nth-child(2) { animation-delay: 1.3s; }
-@keyframes emptyPing {
-  0% { transform: scale(0.85); opacity: 0.7; }
-  100% { transform: scale(1.9); opacity: 0; }
 }
 
 .supplierCta {
