@@ -61,24 +61,49 @@ class ResendMailer implements Mailer {
  * Any standard SMTP provider — a mail server, not an HTTP API. Every kind
  * still goes out under its own from-address (`from()`, above); SMTP only
  * changes how the message is transported, never that separation.
+ *
+ * A from-address is only as real as the mailbox that's authenticated to
+ * send it — most SMTP hosts reject or silently rewrite a From that
+ * doesn't match the logged-in account. So transactional and marketing
+ * each get their own authenticated transport when a separate marketing
+ * login is configured; without one, marketing mail still goes out (under
+ * the transactional account's own login) rather than failing outright.
  */
 class SmtpMailer implements Mailer {
-  private readonly transport: ReturnType<typeof nodemailer.createTransport>
+  private readonly transports: Record<MailKind, ReturnType<typeof nodemailer.createTransport>>
 
-  constructor(config: { host: string; port: number; user?: string; pass?: string }) {
-    this.transport = nodemailer.createTransport({
+  constructor(config: {
+    host: string
+    port: number
+    user?: string
+    pass?: string
+    marketingUser?: string
+    marketingPass?: string
+  }) {
+    // 465 is SMTPS (implicit TLS); every other port starts in the clear
+    // and upgrades via STARTTLS, which nodemailer does on its own when
+    // the server offers it.
+    const secure = config.port === 465
+    const transactional = nodemailer.createTransport({
       host: config.host,
       port: config.port,
-      // 465 is SMTPS (implicit TLS); every other port starts in the
-      // clear and upgrades via STARTTLS, which nodemailer does on its
-      // own when the server offers it.
-      secure: config.port === 465,
+      secure,
       auth: config.user && config.pass ? { user: config.user, pass: config.pass } : undefined,
     })
+    const marketing =
+      config.marketingUser && config.marketingPass
+        ? nodemailer.createTransport({
+            host: config.host,
+            port: config.port,
+            secure,
+            auth: { user: config.marketingUser, pass: config.marketingPass },
+          })
+        : transactional
+    this.transports = { transactional, marketing }
   }
 
   async send(mail: Mail): Promise<void> {
-    await this.transport.sendMail({
+    await this.transports[mail.kind].sendMail({
       from: from(mail.kind),
       to: mail.to,
       subject: mail.subject,
@@ -119,6 +144,8 @@ export function mailer(): Mailer {
       port: Number.isFinite(port) ? port : 587,
       user: optionalEnv('SMTP_USER'),
       pass: optionalEnv('SMTP_PASS'),
+      marketingUser: optionalEnv('SMTP_USER_MARKETING'),
+      marketingPass: optionalEnv('SMTP_PASS_MARKETING'),
     })
   }
 
