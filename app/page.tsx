@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { search } from '@/lib/search'
+import { CategoryIcon } from './CategoryIcon'
 import { SupplierCard } from './SupplierCard'
 import styles from './page.module.css'
 
@@ -21,26 +22,6 @@ export const metadata: Metadata = {
   description:
     'Salões de festas, casas de eventos e salas de conferência em Luanda. ' +
     'Veja preços, fotografias e datas disponíveis antes de se deslocar.',
-}
-
-// Presentational only — categories stay rows an administrator manages
-// at runtime (§6, §44); this never gates which categories exist, only
-// which icon a known one gets. Unmapped falls back to a generic mark,
-// same shape as lib/event-tips.ts's category-slug lookups.
-const CATEGORY_ICON: Record<string, string> = {
-  'saloes-de-festas': '🎪',
-  'casas-de-festas': '🏠',
-  'casas-de-praia': '🏖️',
-  'salas-de-conferencia': '💼',
-  'salas-de-workshop': '🛠️',
-  djs: '🎧',
-  fotografia: '📸',
-  video: '🎥',
-  buffet: '🍽️',
-  decoracao: '🎈',
-  maquilhagem: '💄',
-  som: '🔊',
-  iluminacao: '💡',
 }
 
 async function filters() {
@@ -117,7 +98,9 @@ export default async function Home() {
           <div className={styles.railScroll}>
             {categories.map((c) => (
               <a className={styles.railItem} key={c.id} href={`/procurar?categoria=${c.id}`}>
-                <span className={styles.railIcon}>{CATEGORY_ICON[c.slug] ?? '🎉'}</span>
+                <span className={styles.railIcon}>
+                  <CategoryIcon slug={c.slug} />
+                </span>
                 <span className={styles.railLabel}>{c.name}</span>
               </a>
             ))}
@@ -180,6 +163,14 @@ export default async function Home() {
           </section>
         ) : (
           <section className={styles.emptyNotice}>
+            <div className={styles.emptyIcon} aria-hidden="true">
+              <span className={styles.emptyPing} />
+              <span className={styles.emptyPing} />
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z" />
+                <circle cx="12" cy="9.5" r="2.5" />
+              </svg>
+            </div>
             <p>
               Ainda a registar os primeiros fornecedores verificados em Luanda.{' '}
               <a href="/lista-de-espera">Deixe o seu email</a> e avisamos assim que houver
