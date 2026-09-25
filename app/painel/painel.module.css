@@ -1,18 +1,25 @@
 .wrap { max-width: 720px; margin: 0 auto; padding: 0 18px; }
-.top { background: var(--azul-800); color: var(--branco); padding: 16px 0 26px; margin-bottom: 26px; }
-.mark { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
-        color: var(--azul-300); text-decoration: none; }
+.top {
+  background: linear-gradient(170deg, var(--azul-900) 0%, var(--azul-800) 100%);
+  color: var(--branco); padding: 20px 0 30px; margin-bottom: 30px;
+  box-shadow: 0 4px 20px -8px rgba(6, 43, 77, 0.5);
+}
+.mark { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--azul-300); text-decoration: none; transition: color 0.15s ease; }
+.mark:hover { color: var(--branco); }
 .title { font-size: clamp(1.5rem,4.5vw,1.9rem); font-weight: 700; margin: 16px 0 0;
          letter-spacing: -0.02em; line-height: 1.15; }
 .sub { color: #cfe3f6; margin: 8px 0 0; font-size: 0.95rem; }
 
-.card { border: 1px solid var(--linha); border-radius: var(--raio); background: var(--branco);
-        padding: 20px; margin-bottom: 16px; }
-.card h2 { font-size: 1.05rem; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
-.card .note { color: var(--tinta-2); font-size: 0.92rem; margin: 0 0 16px; }
+.card {
+  border: 1px solid var(--linha); border-radius: 12px; background: var(--branco);
+  padding: 22px; margin-bottom: 16px; box-shadow: var(--sombra);
+}
+.card h2 { font-size: 1.08rem; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+.card .note { color: var(--tinta-2); font-size: 0.92rem; margin: 0 0 16px; line-height: 1.5; }
 
 .state { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-.pill { font-size: 0.8rem; font-weight: 600; padding: 5px 11px; border-radius: 999px; }
+.pill { font-size: 0.78rem; font-weight: 700; padding: 5px 12px; border-radius: 999px; letter-spacing: 0.01em; }
 .pillWait { background: var(--warm-fundo, #F8EFDC); color: #8A5D0E; }
 .pillOk { background: var(--bom-fundo); color: var(--bom); }
 .pillOff { background: var(--azul-050); color: var(--tinta-3); border: 1px solid var(--linha); }
@@ -24,53 +31,84 @@
 .label { display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; }
 .input, .select, .area {
   width: 100%; padding: 11px 12px; font: inherit; font-size: 0.98rem; color: var(--tinta);
-  background: var(--branco); border: 1px solid var(--linha); border-radius: var(--raio);
+  background: var(--branco); border: 1px solid var(--linha); border-radius: 9px;
+  transition: border-color 0.15s ease;
 }
 .area { min-height: 96px; resize: vertical; }
-.input:focus, .select:focus, .area:focus { border-color: var(--azul-500); }
+.input:focus, .select:focus, .area:focus { border-color: var(--azul-500); outline: none; }
 .hint { display: block; margin-top: 5px; font-size: 0.83rem; color: var(--tinta-3); }
 
-.submit { padding: 12px 22px; font: inherit; font-size: 0.98rem; font-weight: 700;
-          color: var(--branco); background: var(--azul-700); border: 0;
-          border-radius: var(--raio); cursor: pointer; }
-.submit:hover { background: var(--azul-800); }
-.ghost { background: var(--branco); color: var(--azul-700); border: 1px solid var(--azul-500); }
+.submit {
+  padding: 12px 22px; font: inherit; font-size: 0.98rem; font-weight: 700;
+  color: var(--branco); background: var(--azul-700); border: 0;
+  border-radius: 9px; cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+.submit:hover { background: var(--azul-800); box-shadow: 0 4px 14px -6px rgba(11, 79, 143, 0.5); }
+.submit:active { transform: scale(0.98); }
+.ghost {
+  background: var(--branco); color: var(--azul-700); border: 1px solid var(--azul-500);
+  transition: background 0.15s ease;
+}
+.ghost:hover { background: var(--azul-050); }
 
-.list { border: 1px solid var(--linha); border-radius: var(--raio); margin-bottom: 14px; }
+.list { border: 1px solid var(--linha); border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
 .item { display: flex; justify-content: space-between; gap: 14px; align-items: baseline;
-        padding: 12px 14px; border-bottom: 1px solid var(--linha); flex-wrap: wrap; }
+        padding: 13px 15px; border-bottom: 1px solid var(--linha); flex-wrap: wrap;
+        transition: background 0.15s ease; }
 .item:last-child { border-bottom: 0; }
+.item:hover { background: var(--azul-050); }
 .item strong { font-weight: 600; }
 .item .meta { font-size: 0.84rem; color: var(--tinta-3); display: block; margin-top: 2px; }
 .item .price { font-weight: 700; color: var(--azul-700); white-space: nowrap; }
-.empty { color: var(--tinta-3); font-size: 0.92rem; padding: 14px; border: 1px dashed var(--linha);
-         border-radius: var(--raio); margin-bottom: 14px; }
+.empty { color: var(--tinta-3); font-size: 0.92rem; padding: 22px 14px; text-align: center;
+         border: 1px dashed var(--linha); border-radius: 10px; margin-bottom: 14px;
+         background: var(--azul-050); }
 
-.alert { padding: 12px 14px; border-radius: var(--raio); margin: 0 0 18px; font-size: 0.93rem;
+.alert { padding: 12px 14px; border-radius: 9px; margin: 0 0 18px; font-size: 0.93rem;
          background: var(--erro-fundo); color: var(--erro); border: 1px solid rgba(179,64,43,0.3); }
 .ok { background: var(--bom-fundo); color: var(--bom); border-color: rgba(27,107,78,0.3); }
 
-.link { display: block; padding: 14px; border: 1px solid var(--linha); border-radius: var(--raio);
-        text-decoration: none; color: inherit; margin-bottom: 10px; }
-.link:hover { border-color: var(--azul-300); }
+.link {
+  display: block; padding: 15px; border: 1px solid var(--linha); border-radius: 10px;
+  text-decoration: none; color: inherit; margin-bottom: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+.link:hover { border-color: var(--azul-300); box-shadow: 0 4px 14px -8px rgba(9, 58, 102, 0.3); transform: translateY(-1px); }
 .link strong { display: block; font-size: 1.02rem; }
 .inline { display: inline-block; margin-left: 10px; font-size: 0.86rem; }
 
-/* Decision buttons and audit history — added for slice 08's booking
-   screens, matching admin.module.css's equivalent pattern for the same
-   "review and decide" shape, so the two feel like one product rather
-   than two different stylesheets that happened to end up similar. */
-.row { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0;
+/* Decision buttons and audit history — matching admin.module.css's
+   equivalent pattern for the same "review and decide" shape, so the two
+   feel like one product rather than two different stylesheets that
+   happened to end up similar. */
+.row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0;
        font-size: 0.93rem; border-bottom: 1px solid var(--linha); }
 .row:last-child { border-bottom: 0; }
 .row span:first-child { color: var(--tinta-3); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
-.btn { padding: 11px 18px; font: inherit; font-size: 0.94rem; font-weight: 700;
-       border-radius: var(--raio); cursor: pointer; border: 0; }
+.btn {
+  padding: 11px 18px; font: inherit; font-size: 0.94rem; font-weight: 700;
+  border-radius: 9px; cursor: pointer; border: 0;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+.btn:active { transform: scale(0.98); }
 .go { background: var(--bom); color: var(--branco); }
+.go:hover { box-shadow: 0 4px 14px -6px rgba(27, 107, 78, 0.5); }
 .no { background: var(--branco); color: var(--erro); border: 1px solid var(--erro); }
+.no:hover { background: var(--erro-fundo); }
 
 .audit { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem;
          border-bottom: 1px solid var(--linha); padding: 9px 0; color: var(--tinta-2); }
 .when { color: var(--tinta-3); }
+
+/* Entrance animation — same language as admin.module.css (slice 25/26),
+   decorative only, respects reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes painelFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card { animation: painelFadeIn 0.35s ease-out both; }
+}
