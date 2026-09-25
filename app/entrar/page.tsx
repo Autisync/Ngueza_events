@@ -33,10 +33,14 @@ export default async function Entrar({
 
       {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
 
-      <a className={styles.google} href={googleUrl}>
-        <GoogleMark /> Continuar com Google
-      </a>
-      <div className={styles.divider}>ou</div>
+      {googleUrl ? (
+        <>
+          <a className={styles.google} href={googleUrl}>
+            <GoogleMark /> Continuar com Google
+          </a>
+          <div className={styles.divider}>ou</div>
+        </>
+      ) : null}
 
       <form action={doSignIn}>
         <input type="hidden" name="next" value={next?.startsWith('/') ? next : '/conta'} />
