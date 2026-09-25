@@ -28,6 +28,13 @@ function contentSecurityPolicy(): string {
   const images = origin(process.env.IMGPROXY_PUBLIC_URL)
   const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN
   const sentryIngest = sentryDsn ? origin(`https://${new URL(sentryDsn).host}`) : null
+  // @vercel/analytics and @vercel/speed-insights are same-origin in
+  // production (/_vercel/insights/script.js, proxied by the platform)
+  // but load their script from va.vercel-scripts.com in dev mode only
+  // (isDevelopment() in their own source) — without this, every local
+  // page load throws two CSP violations for a script that was never
+  // going to report real events from a developer's machine anyway.
+  const vercelDevScripts = process.env.NODE_ENV !== 'production' ? 'https://va.vercel-scripts.com' : null
 
   const connectSrc = ["'self'", media, sentryIngest].filter(Boolean).join(' ')
   const imgSrc = ["'self'", 'data:', images].filter(Boolean).join(' ')
@@ -46,7 +53,7 @@ function contentSecurityPolicy(): string {
     // exactly one use (JSON-LD structured data, JSON.stringify'd, not
     // raw user HTML), so there is no real path for attacker-controlled
     // markup to become an executable inline <script> in the first place.
-    "script-src 'self' 'unsafe-inline'",
+    `script-src 'self' 'unsafe-inline'${vercelDevScripts ? ` ${vercelDevScripts}` : ''}`,
     // Same reasoning as script-src: Next.js and React both set inline
     // `style=""` attributes for dynamic styling (this codebase's admin
     // pages do it directly too), and style-src's real XSS surface is

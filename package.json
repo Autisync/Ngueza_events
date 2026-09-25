@@ -23,6 +23,8 @@
   },
   "dependencies": {
     "@sentry/nextjs": "^11.0.0",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "jose": "^6.2.10",
     "next": "^16.3.3",
     "nodemailer": "^10.0.10",
