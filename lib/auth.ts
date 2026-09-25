@@ -200,8 +200,20 @@ export async function revoke(accessToken: string): Promise<void> {
  * same shape app/nova-palavra-passe/Recover.tsx already uses for a
  * password-recovery link.
  */
-export function googleAuthorizeUrl(redirectTo: string): string {
-  const { url } = publicConfig()
+/**
+ * Null, not a throw, when Supabase's public config is missing — a
+ * decorative "Continuar com Google" shortcut must never be able to take
+ * the entire /entrar or /criar-conta page down with it. Both callers
+ * render the form either way; this only decides whether the Google
+ * button appears above it.
+ */
+export function googleAuthorizeUrl(redirectTo: string): string | null {
+  let url: string
+  try {
+    ;({ url } = publicConfig())
+  } catch {
+    return null
+  }
   return `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
 }
 
