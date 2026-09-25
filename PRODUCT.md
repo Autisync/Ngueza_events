@@ -4,7 +4,7 @@
 
 product
 
-Primary register is product — the majority of the surface (admin dashboards, the provider/painel panel, booking flows, auth) is workflow-driven, and design there serves the task rather than performing a brand. The public homepage (`/`, `/procurar`) is the one place brand-level polish is explicitly in scope too — it's the front door before someone commits to the workflow, so it earns more visual ambition than a settings screen, without tipping into a marketing-campaign register the rest of the product doesn't share.
+Primary register is product — the majority of the surface (admin dashboards, the provider/painel panel, booking flows, auth) is workflow-driven, and design there serves the task rather than performing a brand. The public homepage (`/` only — `/procurar` is a filtered results page, task-driven like the rest of the product register, not a brand surface) is the one place brand-level polish is explicitly in scope too: it's simultaneously the front door (hero, trust strip, category rail) and a business display (a "Fornecedores verificados" section rendering real, live, verified suppliers via the same `SupplierCard` component `/procurar` uses, not curated placeholders). It earns more visual ambition than a settings screen, without tipping into a marketing-campaign register the rest of the product doesn't share.
 
 ## Users
 
