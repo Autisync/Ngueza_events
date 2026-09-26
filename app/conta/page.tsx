@@ -44,6 +44,30 @@ export default async function Conta({
         </div>
       </div>
 
+      {/* Role-gated on profile.role alone — never on anything fetched for
+          another account — so a client can never see a path to /painel or
+          /admin, and the two are mutually exclusive since role is a single
+          column (§ profiles_guard_role only an admin can ever change it). */}
+      {profile.role === 'provider' ? (
+        <div className={styles.card}>
+          <h2>O meu negócio</h2>
+          <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
+            Gira os seus espaços ou serviços, preços, documentos e pedidos recebidos.
+          </p>
+          <a href="/painel">Ir para o painel do fornecedor</a>
+        </div>
+      ) : null}
+
+      {profile.role === 'admin' ? (
+        <div className={styles.card}>
+          <h2>Administração</h2>
+          <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
+            Verificação de fornecedores, denúncias, pagamentos e o resto da fila de decisões.
+          </p>
+          <a href="/admin">Ir para a administração</a>
+        </div>
+      ) : null}
+
       <div className={styles.card}>
         <h2>Reservas</h2>
         <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
