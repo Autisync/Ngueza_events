@@ -35,6 +35,11 @@ function contentSecurityPolicy(): string {
   // page load throws two CSP violations for a script that was never
   // going to report real events from a developer's machine anyway.
   const vercelDevScripts = process.env.NODE_ENV !== 'production' ? 'https://va.vercel-scripts.com' : null
+  // Next/Turbopack's own dev-mode tooling (HMR's error overlay
+  // reconstructing stack traces across environments) calls eval() —
+  // React's own warning is explicit that production never does. Dev-only,
+  // so production keeps the tighter policy.
+  const devEval = process.env.NODE_ENV !== 'production' ? "'unsafe-eval'" : null
 
   const connectSrc = ["'self'", media, sentryIngest].filter(Boolean).join(' ')
   const imgSrc = ["'self'", 'data:', images].filter(Boolean).join(' ')
@@ -53,7 +58,7 @@ function contentSecurityPolicy(): string {
     // exactly one use (JSON-LD structured data, JSON.stringify'd, not
     // raw user HTML), so there is no real path for attacker-controlled
     // markup to become an executable inline <script> in the first place.
-    `script-src 'self' 'unsafe-inline'${vercelDevScripts ? ` ${vercelDevScripts}` : ''}`,
+    `script-src 'self' 'unsafe-inline'${vercelDevScripts ? ` ${vercelDevScripts}` : ''}${devEval ? ` ${devEval}` : ''}`,
     // Same reasoning as script-src: Next.js and React both set inline
     // `style=""` attributes for dynamic styling (this codebase's admin
     // pages do it directly too), and style-src's real XSS surface is
