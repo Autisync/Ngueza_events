@@ -18,7 +18,8 @@
   width: 100%; padding: 14px 20px; font: inherit; font-size: 1rem; font-weight: 700;
   color: var(--branco); background: var(--azul-700); border: 0;
   border-radius: 9px; cursor: pointer; margin-top: 4px;
-  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition: background 0.2s var(--ease-out), transform 0.2s var(--ease-out),
+              box-shadow 0.2s var(--ease-out);
 }
 .submit:hover { background: var(--azul-800); box-shadow: 0 4px 14px -6px rgba(11, 79, 143, 0.5); }
 .submit:active { transform: scale(0.99); }
@@ -28,7 +29,8 @@
   color: var(--tinta); background: var(--branco); border: 1px solid var(--linha);
   border-radius: 9px; cursor: pointer; display: flex; align-items: center;
   justify-content: center; gap: 10px; text-decoration: none;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  transition: border-color 0.2s var(--ease-out), background 0.2s var(--ease-out),
+              transform 0.2s var(--ease-out);
 }
 .google:hover { border-color: var(--azul-300); background: var(--azul-050); }
 .google:active { transform: scale(0.99); }

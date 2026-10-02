@@ -52,9 +52,14 @@
 
 .contact { display: grid; gap: 9px; }
 .btn { display: block; text-align: center; padding: 13px 18px; font-weight: 700;
-       border-radius: 10px; text-decoration: none; }
+       border-radius: 10px; text-decoration: none;
+       transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out),
+                   transform 0.2s var(--ease-out); }
+.btn:active { transform: scale(0.98); }
 .btnMain { background: var(--azul-700); color: var(--branco); }
+.btnMain:hover { background: var(--azul-800); }
 .btnAlt { background: var(--branco); color: var(--azul-700); border: 1px solid var(--azul-500); }
+.btnAlt:hover { background: var(--azul-050); border-color: var(--azul-700); }
 
 .empty { border: 1px dashed var(--linha); border-radius: 16px; padding: 18px;
          color: var(--tinta-3); font-size: 0.9rem; }

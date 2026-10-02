@@ -85,7 +85,7 @@
   color: var(--branco); background: var(--azul-700);
   border: 0; border-radius: 10px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.2s var(--ease-out), transform 0.2s var(--ease-out);
 }
 .submit:hover { background: var(--azul-800); }
 .submit:active { background: var(--azul-900); transform: scale(0.99); }

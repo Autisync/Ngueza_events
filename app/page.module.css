@@ -37,8 +37,10 @@
        background: var(--branco); color: var(--tinta); }
 .go { padding: 13px 22px; font: inherit; font-size: 0.98rem; font-weight: 700;
       background: var(--azul-700); color: var(--branco); border: 0;
-      border-radius: 10px; cursor: pointer; white-space: nowrap; }
+      border-radius: 10px; cursor: pointer; white-space: nowrap;
+      transition: background 0.2s var(--ease-out), transform 0.2s var(--ease-out); }
 .go:hover { background: var(--azul-800); }
+.go:active { transform: scale(0.98); }
 
 .rail { padding: 30px 0 8px; }
 .railTitle { font-size: 1.05rem; font-weight: 800; margin: 0 0 14px; }
@@ -48,7 +50,8 @@
 .railIcon { width: 64px; height: 64px; border-radius: 18px; background: var(--azul-050);
             border: 1px solid var(--linha); display: flex; align-items: center; justify-content: center;
             overflow: hidden; color: var(--azul-700);
-            transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease; }
+            transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out),
+                        transform 0.2s var(--ease-out); }
 .railItem:hover .railIcon, .railItem:focus-visible .railIcon {
   background: var(--azul-100); border-color: var(--azul-300); transform: translateY(-2px);
 }
@@ -98,9 +101,11 @@
   display: inline-block; padding: 13px 22px; border-radius: 10px;
   background: var(--branco); color: var(--azul-800); font-weight: 700;
   font-size: 0.96rem; text-decoration: none; white-space: nowrap;
-  justify-self: start; transition: background 0.15s ease;
+  justify-self: start;
+  transition: background 0.2s var(--ease-out), transform 0.2s var(--ease-out);
 }
 .supplierCtaBtn:hover { background: var(--azul-050); }
+.supplierCtaBtn:active { transform: scale(0.98); }
 
 .featured { padding: 34px 0 8px; }
 .featuredHead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
