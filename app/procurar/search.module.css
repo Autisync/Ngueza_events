@@ -14,8 +14,10 @@
        background: var(--branco); color: var(--tinta); }
 .go { padding: 11px 22px; font: inherit; font-size: 0.98rem; font-weight: 700;
       background: var(--azul-500); color: var(--branco); border: 0;
-      border-radius: 10px; cursor: pointer; white-space: nowrap; }
+      border-radius: 10px; cursor: pointer; white-space: nowrap;
+      transition: background 0.2s var(--ease-out), transform 0.2s var(--ease-out); }
 .go:hover { background: var(--azul-600); }
+.go:active { transform: scale(0.98); }
 
 .head { padding: 24px 0 4px; }
 .count { font-size: 0.92rem; color: var(--tinta-2); margin: 0; }
@@ -32,4 +34,6 @@
          padding: 32px 22px; margin: 20px 0 32px; }
 .more { display: inline-block; margin: 0 0 40px; padding: 11px 20px; font-weight: 700;
         border: 1px solid var(--azul-500); color: var(--azul-700);
-        border-radius: 10px; text-decoration: none; }
+        border-radius: 10px; text-decoration: none;
+        transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out); }
+.more:hover { background: var(--azul-050); border-color: var(--azul-700); }
