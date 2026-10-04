@@ -13,6 +13,7 @@ grant execute on all functions in schema public, auth to app_user;
 select tests_user('11112000-0000-0000-0000-000000000001', 'match.dono@qr.ao',    'provider');
 select tests_user('11112000-0000-0000-0000-000000000002', 'nomatch.dono@qr.ao',  'provider');
 select tests_user('11112000-0000-0000-0000-000000000003', 'pending.dono@qr.ao',  'provider');
+select tests_user('11112000-0000-0000-0000-000000000004', 'match2.dono@qr.ao',   'provider');
 select tests_user('22112000-0000-0000-0000-000000000001', 'requester@qr.ao',     'client');
 select tests_user('22112000-0000-0000-0000-000000000002', 'bystander@qr.ao',     'client');
 select tests_user('99112000-0000-0000-0000-000000000001', 'admin@qr.ao',         'admin');
@@ -38,7 +39,10 @@ insert into providers (id, owner_id, supplier_type, slug, name, category_id, loc
   'bbbb2000-0000-0000-0000-000000000002', 'verified', true),
  ('cccc2000-0000-0000-0000-00000000000c', '11112000-0000-0000-0000-000000000003', 'venue',
   'qr-salao-pending', 'Salão Pending', 'aaaa2000-0000-0000-0000-000000000001',
-  'bbbb2000-0000-0000-0000-000000000001', 'pending', false);
+  'bbbb2000-0000-0000-0000-000000000001', 'pending', false),
+ ('cccc2000-0000-0000-0000-00000000000d', '11112000-0000-0000-0000-000000000004', 'venue',
+  'qr-salao-match2', 'Salão Match 2', 'aaaa2000-0000-0000-0000-000000000001',
+  'bbbb2000-0000-0000-0000-000000000001', 'verified', true);
 
 set role app_user;
 
@@ -250,6 +254,99 @@ begin
     raise exception 'FAIL: admin sees %/1 requests, %/1 offers', v_q, v_o;
   end if;
   raise notice 'PASS: administrator sees all quote requests and offers';
+end $$;
+
+-- ---- 11. accepting (0029): a fresh request + two competing offers -----
+-- Deliberately a new request, not reusing #1's — that one's offer from
+-- provider 'a' was already withdrawn in step 7, and re-offering here
+-- would entangle this section with that one's state.
+select tests_login_as('22112000-0000-0000-0000-000000000001');
+do $$
+begin
+  insert into quote_requests (client_id, category_id, location_id, description)
+  values ('22112000-0000-0000-0000-000000000001', 'aaaa2000-0000-0000-0000-000000000001',
+          'bbbb2000-0000-0000-0000-000000000001', 'Segundo pedido, para testar aceitação.');
+end $$;
+
+select tests_login_as('11112000-0000-0000-0000-000000000001');
+do $$
+begin
+  insert into quote_offers (quote_request_id, provider_id, price_minor)
+  select id, 'cccc2000-0000-0000-0000-00000000000a', 60000000 from quote_requests
+   where description = 'Segundo pedido, para testar aceitação.';
+end $$;
+
+select tests_login_as('11112000-0000-0000-0000-000000000004');
+do $$
+begin
+  insert into quote_offers (quote_request_id, provider_id, price_minor)
+  select id, 'cccc2000-0000-0000-0000-00000000000d', 55000000 from quote_requests
+   where description = 'Segundo pedido, para testar aceitação.';
+end $$;
+
+-- ---- 12. a bystander cannot touch an offer on someone else's request --
+select tests_login_as('22112000-0000-0000-0000-000000000002');
+do $$
+declare v_rows int;
+begin
+  update quote_offers set status = 'accepted'
+   where provider_id = 'cccc2000-0000-0000-0000-00000000000a' and status = 'submitted';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then raise exception 'FAIL: a bystander accepted an offer that was not theirs to decide'; end if;
+  raise notice 'PASS: a bystander''s accept touches zero rows — RLS hides the offer from them entirely';
+end $$;
+
+-- ---- 13. a supplier cannot accept their own offer, only withdraw it ---
+select tests_login_as('11112000-0000-0000-0000-000000000001');
+do $$
+begin
+  update quote_offers set status = 'accepted'
+   where provider_id = 'cccc2000-0000-0000-0000-00000000000a' and status = 'submitted';
+  raise exception 'FAIL: a supplier accepted their own offer';
+exception
+  when insufficient_privilege then
+    raise notice 'PASS: a supplier may withdraw their own offer, not accept it';
+end $$;
+
+-- ---- 14. the requester accepts one offer; the other is withdrawn as --
+--          a side effect, and the request closes, all in one statement
+select tests_login_as('22112000-0000-0000-0000-000000000001');
+do $$
+begin
+  update quote_offers
+     set status = case when provider_id = 'cccc2000-0000-0000-0000-00000000000a'
+                        then 'accepted' else 'withdrawn' end
+   where quote_request_id = (
+     select id from quote_requests where description = 'Segundo pedido, para testar aceitação.'
+   ) and status = 'submitted';
+
+  update quote_requests set status = 'closed', closed_at = now()
+   where description = 'Segundo pedido, para testar aceitação.';
+end $$;
+
+do $$
+declare v_accepted text; v_declined text; v_req_status text;
+begin
+  select status into v_accepted from quote_offers where provider_id = 'cccc2000-0000-0000-0000-00000000000a'
+   and quote_request_id = (select id from quote_requests where description = 'Segundo pedido, para testar aceitação.');
+  select status into v_declined from quote_offers where provider_id = 'cccc2000-0000-0000-0000-00000000000d';
+  select status into v_req_status from quote_requests where description = 'Segundo pedido, para testar aceitação.';
+
+  if v_accepted <> 'accepted' then raise exception 'FAIL: the chosen offer is %, expected accepted', v_accepted; end if;
+  if v_declined <> 'withdrawn' then raise exception 'FAIL: the other offer is %, expected withdrawn', v_declined; end if;
+  if v_req_status <> 'closed' then raise exception 'FAIL: the request is %, expected closed', v_req_status; end if;
+  raise notice 'PASS: accepting one offer withdraws the other and closes the request, atomically';
+end $$;
+
+-- An accepted offer's terms are still immutable — accepting is a status
+-- transition, not a door back open to renegotiating the price.
+do $$
+begin
+  update quote_offers set price_minor = 1 where provider_id = 'cccc2000-0000-0000-0000-00000000000a';
+  raise exception 'FAIL: an accepted offer''s price was edited';
+exception
+  when insufficient_privilege then
+    raise notice 'PASS: an accepted offer''s price remains immutable';
 end $$;
 
 reset role;

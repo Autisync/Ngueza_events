@@ -44,7 +44,7 @@ export default async function ProviderPage({
   params, searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ erro?: string }>
+  searchParams: Promise<{ erro?: string; proposta?: string }>
 }) {
   const { slug } = await params
   const [provider, flags, profile] = await Promise.all([
@@ -242,6 +242,15 @@ export default async function ProviderPage({
 
         <section className={styles.sec} id="reservar">
           <h2 className={styles.h}>Solicitar reserva</h2>
+          {flags.proposta ? (
+            <p className={styles.svcPriceQuiet} style={{
+              color: 'var(--bom)', background: 'var(--bom-fundo)',
+              padding: '10px 14px', borderRadius: 'var(--raio)', marginBottom: 14,
+            }}>
+              Proposta aceite — {flags.proposta}. Agora é só escolher a data e
+              confirmar os detalhes da reserva abaixo, com o fornecedor já à sua espera.
+            </p>
+          ) : null}
           {flags.erro ? (
             <p className={styles.svcPriceQuiet} style={{
               color: 'var(--erro)', background: 'var(--erro-fundo)',

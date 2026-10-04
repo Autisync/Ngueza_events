@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { formatMinor } from '@/lib/money'
 import { myQuoteRequests, offersOnRequest, type QuoteRequest } from '@/lib/quotes'
-import { doCloseQuoteRequest } from '../../quote-actions'
+import { doAcceptOffer, doCloseQuoteRequest } from '../../quote-actions'
 import styles from '../../painel/painel.module.css'
 
 export const metadata: Metadata = { title: 'Os meus pedidos de orçamento', robots: { index: false } }
@@ -22,11 +22,11 @@ function when(dateStr: string): string {
 
 export default async function MeusPedidos({
   searchParams,
-}: { searchParams: Promise<{ enviado?: string }> }) {
+}: { searchParams: Promise<{ enviado?: string; erro?: string }> }) {
   const profile = await currentProfile()
   if (!profile) redirect('/entrar?next=/conta/pedidos')
 
-  const [requests, { enviado }] = await Promise.all([myQuoteRequests(profile.id), searchParams])
+  const [requests, { enviado, erro }] = await Promise.all([myQuoteRequests(profile.id), searchParams])
   const offersByRequest = await Promise.all(
     requests.map((r) => offersOnRequest(profile.id, r.id)),
   )
@@ -42,6 +42,11 @@ export default async function MeusPedidos({
 
       <div className={styles.wrap}>
         {enviado ? <p className={`${styles.alert} ${styles.ok}`}>Pedido enviado aos fornecedores.</p> : null}
+        {erro === 'proposta' ? (
+          <p className={styles.alert}>
+            Não foi possível aceitar essa proposta — pode já ter sido decidida. Actualize a página.
+          </p>
+        ) : null}
 
         <p style={{ marginBottom: 18 }}>
           <a className={styles.submit} href="/pedir-orcamento"
@@ -80,16 +85,31 @@ export default async function MeusPedidos({
                 {offers.length > 0 ? (
                   <div className={styles.list} style={{ marginTop: 8 }}>
                     {offers.map((o) => (
-                      <a className={styles.item} key={o.id} href={`/fornecedor/${o.providerSlug}`}>
-                        <span>
-                          <strong>{o.providerName}</strong>
-                          {o.message ? <span className={styles.meta}>{o.message}</span> : null}
-                          {o.status === 'withdrawn' ? (
-                            <span className={styles.meta}>Proposta retirada</span>
-                          ) : null}
-                        </span>
-                        <span className={styles.price}>{formatMinor(o.priceMinor)}</span>
-                      </a>
+                      <div key={o.id} style={{ borderBottom: '1px solid var(--linha)' }}>
+                        <a className={styles.item} style={{ border: 0 }} href={`/fornecedor/${o.providerSlug}`}>
+                          <span>
+                            <strong>{o.providerName}</strong>
+                            {o.message ? <span className={styles.meta}>{o.message}</span> : null}
+                            {o.status === 'withdrawn' ? (
+                              <span className={styles.meta}>Proposta retirada</span>
+                            ) : null}
+                            {o.status === 'accepted' ? (
+                              <span className={styles.meta}>Proposta aceite</span>
+                            ) : null}
+                          </span>
+                          <span className={styles.price}>{formatMinor(o.priceMinor)}</span>
+                        </a>
+                        {o.status === 'submitted' && r.status === 'open' ? (
+                          <form action={doAcceptOffer} style={{ padding: '0 16px 12px' }}>
+                            <input type="hidden" name="offerId" value={o.id} />
+                            <input type="hidden" name="providerSlug" value={o.providerSlug} />
+                            <input type="hidden" name="priceMinor" value={o.priceMinor.toString()} />
+                            <button className={styles.submit} type="submit">
+                              Aceitar esta proposta
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
                     ))}
                   </div>
                 ) : null}

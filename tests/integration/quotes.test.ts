@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { asSystem } from '@/lib/db'
 import { myNotifications, myUnreadNotificationCount, markNotificationRead } from '@/lib/notifications'
 import {
-  closeQuoteRequest, matchingOpenRequests, myQuoteRequests, offersBySupplier,
+  acceptOffer, closeQuoteRequest, matchingOpenRequests, myQuoteRequests, offersBySupplier,
   offersOnRequest, postQuoteRequest, quoteRequestDetail, submitOffer, withdrawOffer,
 } from '@/lib/quotes'
 
@@ -128,6 +128,63 @@ describe('offering and being notified', () => {
       quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 42_000_00n,
     })
     expect(second.ok).toBe(true)
+  })
+})
+
+describe('accepting an offer', () => {
+  it('accepting closes the request and marks the offer accepted', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+
+    const offer = await submitOffer(OWNER, {
+      quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 45_000_00n,
+    })
+    if (!offer.ok) throw new Error('offer failed')
+
+    const result = await acceptOffer(ANA, offer.id)
+    expect(result).toEqual({ ok: true })
+
+    const offers = await offersOnRequest(ANA, posted.id)
+    expect(offers.find((o) => o.id === offer.id)?.status).toBe('accepted')
+
+    const detail = await quoteRequestDetail(ANA, posted.id)
+    expect(detail?.status).toBe('closed')
+  })
+
+  it('refuses to accept an offer that is not this client\'s own request', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+
+    const offer = await submitOffer(OWNER, {
+      quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 45_000_00n,
+    })
+    if (!offer.ok) throw new Error('offer failed')
+
+    const BYSTANDER = '40000000-0000-0000-0000-000000000091'
+    const result = await acceptOffer(BYSTANDER, offer.id)
+    expect(result).toEqual({ ok: false, reason: 'forbidden' })
+  })
+
+  it('refuses to accept an offer twice', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+
+    const offer = await submitOffer(OWNER, {
+      quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 45_000_00n,
+    })
+    if (!offer.ok) throw new Error('offer failed')
+
+    const first = await acceptOffer(ANA, offer.id)
+    expect(first).toEqual({ ok: true })
+
+    const second = await acceptOffer(ANA, offer.id)
+    expect(second).toEqual({ ok: false, reason: 'forbidden' })
   })
 })
 
