@@ -41,7 +41,7 @@ export interface QuoteOffer {
   providerSlug: string
   priceMinor: Minor
   message: string | null
-  status: 'submitted' | 'withdrawn'
+  status: 'submitted' | 'withdrawn' | 'accepted'
   createdAt: string
 }
 
@@ -253,6 +253,50 @@ export async function withdrawOffer(ownerId: string, offerId: string): Promise<W
       c.query(`update quote_offers set status = 'withdrawn' where id = $1`, [offerId]),
     )
     return { ok: true }
+  } catch (error) {
+    if (isInsufficientPrivilege(error)) return { ok: false, reason: 'forbidden' }
+    throw error
+  }
+}
+
+export type AcceptOfferOutcome = { ok: true } | { ok: false; reason: 'forbidden' }
+
+/**
+ * The requester taking one live offer: it becomes 'accepted', every
+ * other still-live offer on the same request becomes 'withdrawn', and
+ * the request itself closes — one statement per table, inside one
+ * transaction, so there's no window where a second offer could still
+ * be accepted on a request that already has a winner.
+ *
+ * Deliberately does not create a booking. See 0029's own migration
+ * comment: a quote request never captured which specific resource or
+ * service the offer was for, so this records the decision and sends
+ * the client to the supplier's own booking flow with that decision
+ * already made, rather than guessing.
+ */
+export async function acceptOffer(clientId: string, offerId: string): Promise<AcceptOfferOutcome> {
+  try {
+    const accepted = await asUser(clientId, async (c) => {
+      const { rows } = await c.query<{ quote_request_id: string }>(
+        `select quote_request_id from quote_offers where id = $1 and status = 'submitted'`,
+        [offerId],
+      )
+      const quoteRequestId = rows[0]?.quote_request_id
+      if (!quoteRequestId) return false
+
+      await c.query(
+        `update quote_offers
+            set status = case when id = $1 then 'accepted' else 'withdrawn' end
+          where quote_request_id = $2 and status = 'submitted'`,
+        [offerId, quoteRequestId],
+      )
+      await c.query(
+        `update quote_requests set status = 'closed', closed_at = now() where id = $1`,
+        [quoteRequestId],
+      )
+      return true
+    })
+    return accepted ? { ok: true } : { ok: false, reason: 'forbidden' }
   } catch (error) {
     if (isInsufficientPrivilege(error)) return { ok: false, reason: 'forbidden' }
     throw error

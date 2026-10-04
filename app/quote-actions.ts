@@ -3,9 +3,9 @@
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
-import { parseMajor } from '@/lib/money'
+import { formatMinor, parseMajor } from '@/lib/money'
 import {
-  closeQuoteRequest, postQuoteRequest, submitOffer, withdrawOffer,
+  acceptOffer, closeQuoteRequest, postQuoteRequest, submitOffer, withdrawOffer,
 } from '@/lib/quotes'
 
 /** Plain server actions, so every screen works without JavaScript —
@@ -76,4 +76,20 @@ export async function doWithdrawOffer(formData: FormData): Promise<void> {
   const providerId = String(formData.get('providerId') ?? '')
   await withdrawOffer(profile.id, String(formData.get('offerId') ?? ''))
   redirect(`/painel/${providerId}/pedidos`)
+}
+
+export async function doAcceptOffer(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const offerId = String(formData.get('offerId') ?? '')
+  const providerSlug = String(formData.get('providerSlug') ?? '')
+  const priceMinorRaw = str(formData, 'priceMinor')
+
+  const result = await acceptOffer(profile.id, offerId)
+  if (!result.ok) redirect('/conta/pedidos?erro=proposta')
+
+  // The price travels through the redirect already formatted — the
+  // destination page has no reason to re-read the offer or re-derive
+  // money formatting just to show the banner.
+  const priceLabel = priceMinorRaw ? formatMinor(BigInt(priceMinorRaw)) : ''
+  redirect(`/fornecedor/${providerSlug}?proposta=${encodeURIComponent(priceLabel)}`)
 }
