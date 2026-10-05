@@ -25,7 +25,10 @@ export async function doVerify(formData: FormData): Promise<void> {
 export async function doReject(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const providerId = id(formData, 'providerId')
-  const reason = text(formData, 'reason')
+  // A canned reason (its own submit button, see the review page) wins if
+  // the free-text field was left blank — the common case needs zero
+  // typing, the unusual one still gets a real explanation.
+  const reason = text(formData, 'reasonText') ?? text(formData, 'reasonCanned')
   // A rejection the supplier cannot act on just produces a support email.
   if (!reason) redirect(`/admin/fornecedores/${providerId}?erro=motivo`)
   await rejectProvider(admin.id, providerId, reason)
@@ -52,7 +55,8 @@ export async function doDecideDocument(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const providerId = id(formData, 'providerId')
   const decision = id(formData, 'decision') === 'accepted' ? 'accepted' : 'rejected'
-  await decideDocument(admin.id, id(formData, 'documentId'), decision, text(formData, 'note'))
+  const note = text(formData, 'noteText') ?? text(formData, 'noteCanned')
+  await decideDocument(admin.id, id(formData, 'documentId'), decision, note)
   redirect(`/admin/fornecedores/${providerId}#documentos`)
 }
 
