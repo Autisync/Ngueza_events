@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { subscribe, subscribeSchema } from '@/lib/newsletter'
+import { confirm, subscribe, subscribeSchema, unsubscribe } from '@/lib/newsletter'
 
 /**
  * A plain server action bound to <form action={...}>, so the waitlist works
@@ -35,4 +35,21 @@ export async function joinWaitlist(formData: FormData): Promise<void> {
   })
 
   redirect('/lista-de-espera/obrigado')
+}
+
+/**
+ * Confirming and unsubscribing happen on a button press, not on opening
+ * the link: mail scanners and link previews GET every URL in an email,
+ * which used to confirm (or unsubscribe) people who never clicked.
+ */
+export async function doConfirmNewsletter(formData: FormData): Promise<void> {
+  const token = String(formData.get('token') ?? '')
+  const result = /^[0-9a-f]{48}$/.test(token) ? await confirm(token) : 'unknown'
+  redirect(`/confirmar/${encodeURIComponent(token)}?r=${result}`)
+}
+
+export async function doUnsubscribe(formData: FormData): Promise<void> {
+  const token = String(formData.get('token') ?? '')
+  const result = /^[0-9a-f]{48}$/.test(token) ? await unsubscribe(token) : 'unknown'
+  redirect(`/cancelar/${encodeURIComponent(token)}?r=${result}`)
 }

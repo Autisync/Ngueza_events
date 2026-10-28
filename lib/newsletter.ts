@@ -141,6 +141,12 @@ export async function subscribe(input: SubscribeInput, ctx: RequestContext): Pro
       return rows[0]!
     })
     await recordConsent(created.id, 'subscribed', ctx)
+    // The dashboard counts sign-ups from events; nothing ever wrote one.
+    await asSystem((c) =>
+      c.query(`insert into events (name, props) values ('newsletter_subscribed', $1)`, [
+        { audience: input.audience, source: input.source },
+      ]),
+    )
     await sendConfirmation(input.email, confirmToken)
     await asSystem((c) =>
       c.query(`update newsletter_subscribers set last_sent_at = now() where id = $1`, [created.id]),

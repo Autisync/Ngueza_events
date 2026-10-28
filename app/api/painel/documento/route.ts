@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
+import { isSameOriginRequest } from '@/lib/safe'
 import { asUser } from '@/lib/db'
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES, documentStore } from '@/lib/media'
 import { recordDocument } from '@/lib/onboarding'
@@ -47,6 +48,7 @@ async function owns(userId: string, providerId: string): Promise<boolean> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   let profile
   try {
     profile = await requireProfile()

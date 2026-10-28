@@ -2,18 +2,13 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { ownedProviders } from '@/lib/painel'
+import { VERIFICATION_STATUS } from '@/lib/painel-labels'
 import styles from './painel.module.css'
 
 export const metadata: Metadata = { title: 'Painel do fornecedor', robots: { index: false } }
 export const dynamic = 'force-dynamic'
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  unverified: { label: 'Por submeter', cls: 'pillOff' },
-  pending: { label: 'Em análise', cls: 'pillWait' },
-  verified: { label: 'Verificado', cls: 'pillOk' },
-  rejected: { label: 'Rejeitado', cls: 'pillBad' },
-  suspended: { label: 'Suspenso', cls: 'pillBad' },
-}
+const STATUS = VERIFICATION_STATUS
 
 export default async function Painel() {
   const profile = await currentProfile()

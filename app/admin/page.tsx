@@ -38,7 +38,7 @@ export default async function Admin() {
         <div className={styles.card}>
           <h2>Últimas alterações</h2>
           <p className={styles.note}>
-            Quem alterou o quê, e quando (§38). Este registo não pode ser editado nem apagado.
+            Quem alterou o quê, e quando. Este registo não pode ser editado nem apagado.
           </p>
           {audit.length === 0 ? (
             <p className={styles.empty}>Ainda sem alterações registadas.</p>

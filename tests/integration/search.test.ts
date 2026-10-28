@@ -1,3 +1,4 @@
+import { Client } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { asSystem, asVisitor } from '@/lib/db'
 import { search } from '@/lib/search'
@@ -133,21 +134,39 @@ describe('rating and categoryNames on a hit (modern marketplace UI)', () => {
     expect(before?.reviewCount).toBe(0)
     expect(before?.categoryNames).toEqual(['Salões de festas'])
 
-    const reviewId = await asSystem(async (c) => {
+    // An unverified review (no completed booking behind it) is listed on
+    // the profile but does not move the public score (0031 review).
+    const unverified = await asSystem(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         `insert into reviews (provider_id, author_id, rating_overall, status)
-         values ($1, $2, 5, 'published') returning id`,
+         values ($1, $2, 1, 'published') returning id`,
         [HORIZONTE, ANA],
       )
       return rows[0]!.id
     })
+    // A verified one, written as a superuser with triggers off so the
+    // fixture does not need a whole completed-booking history.
+    const raw = new Client({ connectionString: process.env.DATABASE_URL })
+    await raw.connect()
+    let verified: string
+    try {
+      await raw.query(`set session_replication_role = replica`)
+      const { rows } = await raw.query<{ id: string }>(
+        `insert into reviews (provider_id, author_id, rating_overall, status, is_verified)
+         values ($1, $2, 5, 'published', true) returning id`,
+        [HORIZONTE, ANA],
+      )
+      verified = rows[0]!.id
+    } finally {
+      await raw.end()
+    }
 
     try {
       const after = (await search({})).hits.find((h) => h.id === HORIZONTE)
       expect(after?.ratingAverage).toBe(5)
       expect(after?.reviewCount).toBe(1)
     } finally {
-      await asSystem((c) => c.query(`delete from reviews where id = $1`, [reviewId]))
+      await asSystem((c) => c.query(`delete from reviews where id = any($1)`, [[unverified, verified]]))
     }
   })
 })

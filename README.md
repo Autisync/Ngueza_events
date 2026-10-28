@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 28 migrations from empty · 232 tests · 44 database assertions |
+| Verified | 31 migrations from empty · 289 tests · 56 database assertions |
 
 ### Done
 
@@ -51,6 +51,7 @@ make contact.
 | 23 | The marketplace redesign — image-forward cards, real photo rendering (wired up for the first time), rating badges — on `/procurar` and `/fornecedor/[slug]`; see `spec/slices/23-marketplace-ui.md` |
 | 24 | The real homepage at `/`, replacing the pre-launch waitlist once there was enough live, verified supply to show instead of promise |
 | 25 | Free-text "Outro" on the waitlist's category/zone fields, entrance and selection animation, and `/admin/lista-de-espera` — the read-only admin view of who asked for what, so recruitment and a future campaign know where to go; see `spec/slices/25-waitlist-admin-and-other.md` |
+| 26 | Competitive-review fixes — 53 verified defects: a stored XSS, open redirects and on-domain scam text, fakeable verified reviews, paid dates that could expire, rewritable booking terms, 500s on mistyped links; see `spec/slices/26-review-fixes.md` |
 
 ### Infrastructure
 
@@ -60,7 +61,7 @@ make contact.
 | Media | Self-hosted MinIO + imgproxy via Portainer. See [`deploy/media/`](deploy/media/README.md) |
 | Backup, restore | Schema from migrations (proven daily by CI), data from a `pg_dump`. Rehearsed end to end, including exactly how a full schema+data dump fights Supabase's own extension management — see [`docs/backup-restore.md`](docs/backup-restore.md) |
 | Error monitoring | Sentry, server and client. `NEXT_PUBLIC_SENTRY_DSN` unset means it's a no-op everywhere. The client SDK is lazy-loaded (`instrumentation-client.ts`) rather than imported at the top level — it alone gzips to ~140KB, nearly the whole route JS budget, so a static import would blow every route's 180KB limit. Deferred past hydration instead: fetched in parallel, not on the critical path, costs nothing against LCP or the budget. |
-| Security headers | `next.config.ts`: CSP, HSTS (2yr, no `preload` — that's a deliberate call for NGUEZA to make, not a default), plus the pre-existing `X-Content-Type-Options`/`Referrer-Policy`/`X-Frame-Options`. `script-src`/`style-src` carry `'unsafe-inline'` — verified live that a plain `'self'` breaks Next.js's own inline hydration scripts outright; the app has no `dangerouslySetInnerHTML` of user content (one use, JSON-LD, `JSON.stringify`'d) so the real exposure is small. `connect-src`/`img-src` build the media host into the policy dynamically from `MINIO_PUBLIC_URL`/`IMGPROXY_PUBLIC_URL`, so it doesn't need editing per environment. |
+| Security headers | `next.config.ts`: CSP, HSTS (2yr, no `preload` — that's a deliberate call for NGUEZA to make, not a default), plus the pre-existing `X-Content-Type-Options`/`Referrer-Policy`/`X-Frame-Options`. `script-src`/`style-src` carry `'unsafe-inline'` — verified live that a plain `'self'` breaks Next.js's own inline hydration scripts outright; which makes every inline script trusted, so the one inline script carrying user text (the supplier page's JSON-LD) is serialised with `jsonForScript()` from `lib/safe.ts`; per-request nonces would remove the need and are still the better end state. `connect-src`/`img-src` build the media host into the policy dynamically from `MEDIA_S3_PUBLIC_ENDPOINT`/`IMGPROXY_PUBLIC_URL`, so it doesn't need editing per environment. |
 
 Media runs on your own host instead of Cloudflare. The §40 contract is
 unchanged: the app server never handles image bytes, the browser uploads to

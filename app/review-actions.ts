@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { isUuid } from '@/lib/safe'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { createReview, replyToReview } from '@/lib/reviews'
@@ -36,6 +37,7 @@ const str = (f: FormData, k: string) => {
 export async function doLeaveReview(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const bookingId = String(formData.get('bookingId') ?? '')
+  if (!isUuid(bookingId)) redirect('/reservas')
   const parsed = reviewForm.safeParse({
     providerId: str(formData, 'providerId'),
     bookingId,
@@ -78,6 +80,7 @@ const replyForm = z.object({
 export async function doReplyToReview(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const parsed = replyForm.safeParse({
     reviewId: str(formData, 'reviewId'),
     providerId,

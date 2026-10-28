@@ -1,12 +1,15 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { coverImageUrl } from '@/lib/media'
-import { formatPrice } from '@/lib/money'
+import { formatMinor, formatPrice } from '@/lib/money'
 import { availability, getProvider, recordProviderView } from '@/lib/provider'
 import { providerReviews } from '@/lib/reviews'
+import { acceptedOfferPrice } from '@/lib/quotes'
 import { isCrawler, sessionId } from '@/lib/session'
 import { currentProfile } from '@/lib/auth'
 import { doRequestBooking } from '@/app/booking-actions'
+import { jsonForScript, todayInLuanda } from '@/lib/safe'
+import { formatRating, reviewCountLabel } from '@/lib/booking-labels'
 import { PhoneLink } from './PhoneLink'
 import styles from './provider.module.css'
 
@@ -44,7 +47,7 @@ export default async function ProviderPage({
   params, searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ erro?: string; proposta?: string }>
+  searchParams: Promise<{ erro?: string; oferta?: string }>
 }) {
   const { slug } = await params
   const [provider, flags, profile] = await Promise.all([
@@ -53,6 +56,9 @@ export default async function ProviderPage({
   if (!provider) notFound()
 
   const reviews = await providerReviews(provider.id)
+  const acceptedPrice = profile && flags.oferta
+    ? await acceptedOfferPrice(profile.id, flags.oferta, provider.id)
+    : null
 
   // Crawlers must reach this page (§50) but must not inflate a supplier's
   // view count, which is a business signal rather than a traffic number.
@@ -60,10 +66,13 @@ export default async function ProviderPage({
     await recordProviderView(provider.id, await sessionId())
   }
 
-  const today = new Date()
-  const days = await availability(provider.id, today, 28)
-  const firstResource = provider.resources[0]
-  const calendar = firstResource ? days.filter((d) => d.resourceId === firstResource.id) : []
+  const days = await availability(provider.id, todayInLuanda(), 28)
+  // One calendar per space: a two-salão venue used to show only the first,
+  // so a free second room looked unavailable.
+  const calendars = provider.resources.map((r) => ({
+    resource: r,
+    days: days.filter((d) => d.resourceId === r.id),
+  }))
   const heroPhoto = provider.photos[0]
   const heroUrl = coverImageUrl(heroPhoto?.externalId ?? null, 'hero')
 
@@ -98,7 +107,7 @@ export default async function ProviderPage({
     <main>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonForScript(jsonLd) }}
       />
 
       <div className={styles.hero}>
@@ -156,7 +165,7 @@ export default async function ProviderPage({
             ) : null}
             {provider.reviewCount > 0 ? (
               <span className={styles.seal}>
-                ★ {provider.ratingAverage} · {provider.reviewCount} avaliações
+                ★ {formatRating(provider.ratingAverage ?? 0)} · {reviewCountLabel(provider.reviewCount)}
               </span>
             ) : (
               <span className={`${styles.seal} ${styles.sealQuiet}`}>Ainda sem avaliações</span>
@@ -210,23 +219,29 @@ export default async function ProviderPage({
           )}
         </section>
 
-        {provider.supplierType === 'venue' && firstResource ? (
+        {provider.supplierType === 'venue' && calendars.length > 0 ? (
           <section className={styles.sec}>
-            <h2 className={styles.h}>
-              Disponibilidade — {firstResource.name}
-              {firstResource.capacity ? ` (até ${firstResource.capacity} pessoas)` : ''}
-            </h2>
-            <div className={styles.cal}>
-              {calendar.map((d) => (
-                <span
-                  key={d.date}
-                  className={`${styles.day} ${d.free ? styles.free : styles.busy}`}
-                  title={d.date}
-                >
-                  {d.date.slice(-2)}
-                </span>
-              ))}
-            </div>
+            <h2 className={styles.h}>Disponibilidade nos próximos 28 dias</h2>
+            {calendars.map(({ resource, days: cal }) => (
+              <div key={resource.id} style={{ marginBottom: 18 }}>
+                {calendars.length > 1 || resource.capacity ? (
+                  <p className={styles.p} style={{ margin: '0 0 8px', fontWeight: 600 }}>
+                    {resource.name}{resource.capacity ? ` — até ${resource.capacity} pessoas` : ''}
+                  </p>
+                ) : null}
+                <div className={styles.cal}>
+                  {cal.map((d) => (
+                    <span
+                      key={d.date}
+                      className={`${styles.day} ${d.free ? styles.free : styles.busy}`}
+                      title={`${d.date.split('-').reverse().join('/')} — ${d.free ? 'livre' : 'ocupado'}`}
+                    >
+                      {d.date.slice(-2)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
             <p className={styles.legend}>
               <span>
                 <i className={styles.dot} style={{ background: 'var(--bom)' }} />
@@ -242,13 +257,13 @@ export default async function ProviderPage({
 
         <section className={styles.sec} id="reservar">
           <h2 className={styles.h}>Solicitar reserva</h2>
-          {flags.proposta ? (
+          {acceptedPrice !== null ? (
             <p className={styles.svcPriceQuiet} style={{
               color: 'var(--bom)', background: 'var(--bom-fundo)',
               padding: '10px 14px', borderRadius: 'var(--raio)', marginBottom: 14,
             }}>
-              Proposta aceite — {flags.proposta}. Agora é só escolher a data e
-              confirmar os detalhes da reserva abaixo, com o fornecedor já à sua espera.
+              Proposta aceite — {formatMinor(acceptedPrice)}. Agora é só escolher a data e
+              confirmar os detalhes da reserva abaixo.
             </p>
           ) : null}
           {flags.erro ? (
@@ -258,9 +273,11 @@ export default async function ProviderPage({
             }}>
               {flags.erro === 'data_indisponivel'
                 ? 'Essa data já não está disponível. Escolha outra.'
-                : flags.erro === 'horario'
-                  ? 'A hora de fim tem de ser depois da hora de início.'
-                  : 'Verifique os dados introduzidos.'}
+                : flags.erro === 'passado'
+                  ? 'Essa data já passou. Escolha uma data a partir de hoje.'
+                  : flags.erro === 'indisponivel'
+                    ? 'Não é possível pedir uma reserva a este fornecedor neste momento.'
+                    : 'Verifique os dados introduzidos.'}
             </p>
           ) : null}
 
@@ -268,7 +285,7 @@ export default async function ProviderPage({
             <p className={styles.p}>
               <a href={`/entrar?next=/fornecedor/${provider.slug}%23reservar`}>Entre na sua conta</a>{' '}
               para solicitar uma reserva. Ainda não tem conta?{' '}
-              <a href="/criar-conta">Criar conta</a>.
+              <a href={`/criar-conta?next=/fornecedor/${provider.slug}%23reservar`}>Criar conta</a>.
             </p>
           ) : (
             <form action={doRequestBooking}>
@@ -301,7 +318,7 @@ export default async function ProviderPage({
                       Data
                     </span>
                     <input type="date" name="date" required
-                           min={new Date().toISOString().slice(0, 10)}
+                           min={todayInLuanda()}
                            style={{ width: '100%', padding: '11px 12px', font: 'inherit',
                                     border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
                   </label>
@@ -406,7 +423,7 @@ export default async function ProviderPage({
               // JavaScript disabled.
               <a
                 className={`${styles.btn} ${styles.btnAlt}`}
-                href={`/api/contacto/${provider.id}?canal=whatsapp&para=${encodeURIComponent(provider.whatsapp)}`}
+                href={`/api/contacto/${provider.id}?canal=whatsapp`}
                 rel="nofollow noopener"
               >
                 WhatsApp

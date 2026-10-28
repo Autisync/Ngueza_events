@@ -40,6 +40,9 @@ export default async function PedidosFornecedor({
     searchParams,
   ])
   const liveOffers = myOffers.filter((o) => o.status === 'submitted')
+  // Decided offers stay visible: a won offer is the supplier's lead to
+  // follow up, and a declined one should not look self-withdrawn.
+  const decidedOffers = myOffers.filter((o) => o.status === 'accepted' || o.status === 'declined')
 
   return (
     <main>
@@ -121,6 +124,25 @@ export default async function PedidosFornecedor({
             ))}
           </div>
         )}
+
+        {decidedOffers.length > 0 ? (
+          <>
+            <h2 style={{ fontSize: '1rem', margin: '28px 0 10px' }}>Propostas decididas</h2>
+            <div className={styles.list}>
+              {decidedOffers.map((o) => (
+                <div className={styles.item} key={o.id}>
+                  <span>
+                    <strong>{formatMinor(o.priceMinor)}</strong>
+                    {o.message ? <span className={styles.meta}>{o.message}</span> : null}
+                  </span>
+                  <span className={`${styles.pill} ${o.status === 'accepted' ? styles.pillOk : styles.pillOff}`}>
+                    {o.status === 'accepted' ? 'Aceite pelo cliente' : 'O cliente escolheu outra proposta'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     </main>
   )

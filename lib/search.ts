@@ -114,9 +114,9 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
              join categories cat2 on cat2.id = sv2.category_id
             where sv2.provider_id = p.id and sv2.is_active) as extra_category_names,
           (select round(avg(rv.rating_overall), 1) from reviews rv
-            where rv.provider_id = p.id and rv.status = 'published') as rating_average,
+            where rv.provider_id = p.id and rv.status = 'published' and rv.is_verified) as rating_average,
           (select count(*) from reviews rv
-            where rv.provider_id = p.id and rv.status = 'published')::int as review_count,
+            where rv.provider_id = p.id and rv.status = 'published' and rv.is_verified)::int as review_count,
           s.price_mode, s.price_minor, s.price_max_minor
         from providers p
         join categories cat on cat.id = p.category_id
@@ -147,7 +147,10 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
                     and sv.category_id in (select id from category_descendants($1))
                ))
           and ($2::uuid is null or p.location_id in (select id from location_descendants($2)))
-          and ($3::int  is null or r.capacity is null or r.capacity >= $3)
+          -- A venue space with no stated capacity no longer matches every
+          -- party size; it matches only when nobody asked for a number.
+          -- Service suppliers have no spaces (r.id is null) and still pass.
+          and ($3::int  is null or r.id is null or r.capacity >= $3)
           and ($4::bigint is null or s.price_minor is null or s.price_minor <= $4)
           -- Availability, via resource_is_free (0014).
           --

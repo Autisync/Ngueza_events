@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege, isSlotTaken } from '@/lib/db'
+import { isUuid } from '@/lib/safe'
 
 /**
  * The booking loop (§10, §26, §27).
@@ -31,7 +32,7 @@ export interface BookingRequest {
 
 export type RequestOutcome =
   | { ok: true; bookingId: string }
-  | { ok: false; reason: 'slot_taken' }
+  | { ok: false; reason: 'slot_taken' | 'not_allowed' | 'invalid' }
 
 /**
  * A client asks for a date.
@@ -109,6 +110,10 @@ export async function requestBooking(
     // 23P01 covers both paths: the exclusion constraint for venues and the
     // concurrency trigger for services. One code path, both supplier types.
     if (isSlotTaken(error)) return { ok: false, reason: 'slot_taken' }
+    // RLS refusing the row (0031): a past date, the supplier's own
+    // listing, or a supplier that is not public.
+    if (isInsufficientPrivilege(error)) return { ok: false, reason: 'not_allowed' }
+    if (isCheckViolation(error)) return { ok: false, reason: 'invalid' }
     throw error
   }
 }
@@ -168,6 +173,8 @@ export async function blockDate(
     return { ok: true, bookingId }
   } catch (error) {
     if (isSlotTaken(error)) return { ok: false, reason: 'slot_taken' }
+    if (isInsufficientPrivilege(error)) return { ok: false, reason: 'not_allowed' }
+    if (isCheckViolation(error)) return { ok: false, reason: 'invalid' }
     throw error
   }
 }
@@ -176,6 +183,16 @@ export async function blockDate(
  * §26: a pending request must never hold a date indefinitely. Runs every
  * five minutes; returns how many dates it released.
  */
+/** Moves confirmed bookings to completed a day after they end (0031), so
+ *  verified reviews and supplier health no longer wait on the supplier
+ *  to click "concluída". */
+export async function completePastBookings(): Promise<number> {
+  return asSystem(async (c) => {
+    const { rows } = await c.query<{ n: number }>(`select complete_past_bookings() as n`)
+    return rows[0]!.n
+  })
+}
+
 export async function expireStaleBookings(): Promise<number> {
   return asSystem(async (c) => {
     const { rows } = await c.query<{ expired: number }>(`select expire_stale_bookings() as expired`)
@@ -274,6 +291,7 @@ export interface BookingDetail extends BookingSummary {
  *  to see (§38) — never returns someone else's booking, indistinguishable
  *  from it not existing, for the same reason transition() does. */
 export async function bookingDetail(actorId: string, bookingId: string): Promise<BookingDetail | null> {
+  if (!isUuid(bookingId)) return null
   return asUser(actorId, async (c) => {
     const { rows } = await c.query<any>(
       `select b.*, p.name as provider_name, p.slug as provider_slug,

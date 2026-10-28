@@ -1,9 +1,11 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { isUuid } from '@/lib/safe'
 import { requireProfile } from '@/lib/auth'
 import {
-  addResource, addService, createProvider, providerInput, resourceInput,
+  addResource, addService, createProvider, providerInput, removeResource, resourceInput,
+  updateResource,
   serviceInput, removeService, submitForVerification, updateProvider,
 } from '@/lib/onboarding'
 
@@ -39,6 +41,7 @@ export async function doRegisterBusiness(formData: FormData): Promise<void> {
 export async function doUpdateBusiness(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const parsed = providerInput.safeParse({
     name: str(formData, 'name') ?? '',
     description: str(formData, 'description'),
@@ -60,6 +63,7 @@ export async function doUpdateBusiness(formData: FormData): Promise<void> {
 export async function doAddService(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const parsed = serviceInput.safeParse({
     name: str(formData, 'name') ?? '',
     description: str(formData, 'description'),
@@ -81,13 +85,16 @@ export async function doAddService(formData: FormData): Promise<void> {
 export async function doRemoveService(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
-  await removeService(profile.id, String(formData.get('serviceId') ?? ''))
+  if (!isUuid(providerId)) redirect('/painel')
+  const serviceId = String(formData.get('serviceId') ?? '')
+  if (isUuid(serviceId)) await removeService(profile.id, serviceId)
   redirect(`/painel/${providerId}#servicos`)
 }
 
 export async function doAddResource(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const parsed = resourceInput.safeParse({
     name: str(formData, 'name') ?? '',
     capacity: str(formData, 'capacity'),
@@ -97,9 +104,35 @@ export async function doAddResource(formData: FormData): Promise<void> {
   redirect(`/painel/${providerId}?guardado=1#espacos`)
 }
 
+export async function doUpdateResource(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const providerId = String(formData.get('providerId') ?? '')
+  const resourceId = String(formData.get('resourceId') ?? '')
+  if (!isUuid(providerId) || !isUuid(resourceId)) redirect('/painel')
+  const parsed = resourceInput.safeParse({
+    name: str(formData, 'name') ?? '',
+    capacity: str(formData, 'capacity'),
+  })
+  if (!parsed.success || parsed.data.capacity === undefined) redirect(`/painel/${providerId}?erro=espaco#espacos`)
+  await updateResource(profile.id, providerId, resourceId, parsed.data)
+  redirect(`/painel/${providerId}?guardado=1#espacos`)
+}
+
+export async function doRemoveResource(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const providerId = String(formData.get('providerId') ?? '')
+  const resourceId = String(formData.get('resourceId') ?? '')
+  if (!isUuid(providerId) || !isUuid(resourceId)) redirect('/painel')
+  const result = await removeResource(profile.id, providerId, resourceId)
+  redirect(result === 'removed'
+    ? `/painel/${providerId}?guardado=1#espacos`
+    : `/painel/${providerId}?erro=ultimo_espaco#espacos`)
+}
+
 export async function doSubmitForVerification(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const result = await submitForVerification(profile.id, providerId)
   redirect(
     result === 'no_documents'

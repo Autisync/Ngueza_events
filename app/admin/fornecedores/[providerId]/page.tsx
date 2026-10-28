@@ -154,7 +154,7 @@ export default async function Rever({
         <div className={styles.card}>
           <h2>Decisão</h2>
           <p className={styles.note}>
-            Verificar publica o perfil imediatamente. Fica registado quem decidiu (§38).
+            Verificar publica o perfil imediatamente. Fica registado quem decidiu.
           </p>
 
           {p.verificationStatus !== 'verified' && p.verificationStatus !== 'suspended' ? (

@@ -39,12 +39,24 @@ export interface SendResult {
  */
 export async function claimAndSend(limit = 25): Promise<SendResult> {
   const claimed = await asSystem(async (c) => {
+    // A worker that died between claiming and marking (a deploy, a
+    // timeout) left rows in 'sending' forever. Ten minutes is far longer
+    // than any send; such rows go back to pending and count an attempt.
+    // A rare duplicate email is the accepted price over a silent loss.
+    await c.query(
+      `update notification_outbox
+          set status = case when attempts + 1 >= $1 then 'failed' else 'pending' end,
+              attempts = attempts + 1,
+              last_error = coalesce(last_error, 'reclaimed after a stalled send')
+        where status = 'sending' and claimed_at < now() - interval '10 minutes'`,
+      [MAX_ATTEMPTS],
+    )
     const { rows } = await c.query<{
       id: number; kind: string; to_email: string
       context: Record<string, unknown>; attempts: number
     }>(
       `update notification_outbox
-          set status = 'sending'
+          set status = 'sending', claimed_at = now()
         where id in (
           select id from notification_outbox
            where status = 'pending'
@@ -142,11 +154,14 @@ export async function myNotifications(actorId: string, limit = 30): Promise<MyNo
       id: number; kind: string; context: Record<string, unknown>
       created_at: string; read_at: string | null
     }>(
+      // RLS scopes non-admins to their own rows; the explicit filter keeps
+      // an administrator's own inbox from listing everyone's mail.
       `select id, kind, context, created_at, read_at
          from notification_outbox
+        where recipient_id = $2
         order by created_at desc
         limit $1`,
-      [limit],
+      [limit, actorId],
     )
     return rows.map((r) => ({
       id: r.id, kind: r.kind, context: r.context, createdAt: r.created_at, readAt: r.read_at,
@@ -157,7 +172,8 @@ export async function myNotifications(actorId: string, limit = 30): Promise<MyNo
 export async function myUnreadNotificationCount(actorId: string): Promise<number> {
   return asUser(actorId, async (c) => {
     const { rows } = await c.query<{ n: string }>(
-      `select count(*)::text as n from notification_outbox where read_at is null`,
+      `select count(*)::text as n from notification_outbox where read_at is null and recipient_id = $1`,
+      [actorId],
     )
     return Number(rows[0]!.n)
   })
@@ -165,6 +181,9 @@ export async function myUnreadNotificationCount(actorId: string): Promise<number
 
 export async function markNotificationRead(actorId: string, id: number): Promise<void> {
   await asUser(actorId, (c) =>
-    c.query(`update notification_outbox set read_at = now() where id = $1 and read_at is null`, [id]),
+    c.query(
+      `update notification_outbox set read_at = now() where id = $1 and recipient_id = $2 and read_at is null`,
+      [id, actorId],
+    ),
   )
 }

@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { requireProfile } from '@/lib/auth'
+import { isUuid } from '@/lib/safe'
 import {
   decideDocument, decidePayment, rejectProvider, reinstateProvider, resolveReport,
   setAccountStatus, suspendProvider, verifyProvider,
@@ -10,6 +11,13 @@ import {
 /** Plain server actions, so the queue works without JavaScript. */
 
 const id = (f: FormData, k: string) => String(f.get(k) ?? '')
+/** An id from a hidden field, or back to the dashboard: a tampered value
+ *  must not reach a uuid cast and surface as a 500. */
+const uuid = (f: FormData, k: string): string => {
+  const v = id(f, k)
+  if (!isUuid(v)) redirect('/admin')
+  return v
+}
 const text = (f: FormData, k: string) => {
   const v = String(f.get(k) ?? '').trim()
   return v === '' ? undefined : v.slice(0, 1000)
@@ -17,14 +25,14 @@ const text = (f: FormData, k: string) => {
 
 export async function doVerify(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
-  const providerId = id(formData, 'providerId')
+  const providerId = uuid(formData, 'providerId')
   await verifyProvider(admin.id, providerId)
   redirect(`/admin/fornecedores/${providerId}?feito=verificado`)
 }
 
 export async function doReject(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
-  const providerId = id(formData, 'providerId')
+  const providerId = uuid(formData, 'providerId')
   const reason = text(formData, 'reason')
   // A rejection the supplier cannot act on just produces a support email.
   if (!reason) redirect(`/admin/fornecedores/${providerId}?erro=motivo`)
@@ -34,7 +42,7 @@ export async function doReject(formData: FormData): Promise<void> {
 
 export async function doSuspend(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
-  const providerId = id(formData, 'providerId')
+  const providerId = uuid(formData, 'providerId')
   const reason = text(formData, 'reason')
   if (!reason) redirect(`/admin/fornecedores/${providerId}?erro=motivo`)
   await suspendProvider(admin.id, providerId, reason)
@@ -43,32 +51,32 @@ export async function doSuspend(formData: FormData): Promise<void> {
 
 export async function doReinstate(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
-  const providerId = id(formData, 'providerId')
+  const providerId = uuid(formData, 'providerId')
   await reinstateProvider(admin.id, providerId)
   redirect(`/admin/fornecedores/${providerId}?feito=reactivado`)
 }
 
 export async function doDecideDocument(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
-  const providerId = id(formData, 'providerId')
+  const providerId = uuid(formData, 'providerId')
   const decision = id(formData, 'decision') === 'accepted' ? 'accepted' : 'rejected'
-  await decideDocument(admin.id, id(formData, 'documentId'), decision, text(formData, 'note'))
+  await decideDocument(admin.id, uuid(formData, 'documentId'), decision, text(formData, 'note'))
   redirect(`/admin/fornecedores/${providerId}#documentos`)
 }
 
 export async function doSetAccountStatus(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
-  const providerId = id(formData, 'providerId')
+  const providerId = uuid(formData, 'providerId')
   const status = id(formData, 'status') === 'suspended' ? 'suspended' : 'active'
-  await setAccountStatus(admin.id, id(formData, 'profileId'), status)
+  await setAccountStatus(admin.id, uuid(formData, 'profileId'), status)
   redirect(`/admin/fornecedores/${providerId}?feito=conta`)
 }
 
 export async function doResolveReport(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const outcome = id(formData, 'outcome') === 'upheld' ? 'upheld' : 'dismissed'
-  await resolveReport(admin.id, id(formData, 'reportId'), outcome, text(formData, 'note'))
-  redirect('/admin/denuncias')
+  const decided = await resolveReport(admin.id, uuid(formData, 'reportId'), outcome, text(formData, 'note'))
+  redirect(decided ? '/admin/denuncias' : '/admin/denuncias?erro=ja_decidida')
 }
 
 /** Marks a submission reviewed. Never moves money and never decides
@@ -77,6 +85,6 @@ export async function doResolveReport(formData: FormData): Promise<void> {
 export async function doDecidePayment(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const decision = id(formData, 'decision') === 'confirmed' ? 'confirmed' : 'failed'
-  await decidePayment(admin.id, id(formData, 'paymentId'), decision)
-  redirect('/admin/pagamentos')
+  const decided = await decidePayment(admin.id, uuid(formData, 'paymentId'), decision)
+  redirect(decided ? '/admin/pagamentos' : '/admin/pagamentos?erro=ja_decidido')
 }

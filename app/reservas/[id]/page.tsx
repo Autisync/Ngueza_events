@@ -157,6 +157,17 @@ export default async function ReservaDetalhe({
           </div>
         ) : null}
 
+        {booking.status === 'cancelled_provider' ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Cancelada pelo fornecedor</h2>
+            <p style={{ margin: 0, color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Os prazos de cancelamento da política aplicam-se quando é o cliente a cancelar,
+              por isso não se aplicam aqui. Se já tinha pago, combine a devolução com o
+              fornecedor ou contacte a NGUEZA — a NGUEZA não guarda nem transfere dinheiro.
+            </p>
+          </div>
+        ) : null}
+
         {entitlement ? (
           <div className={styles.card}>
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>
@@ -190,17 +201,21 @@ export default async function ReservaDetalhe({
             <form action={doLeaveReview}>
               <input type="hidden" name="bookingId" value={booking.id} />
               <input type="hidden" name="providerId" value={booking.providerId} />
-              <label className={styles.field}>
-                <span className={styles.label}>Avaliação geral</span>
-                <span className={styles.stars} role="radiogroup" aria-label="Avaliação geral">
+              {/* A fieldset, not a label wrapping labels; no star pre-selected,
+                  so the score is the client's choice rather than a default
+                  they forgot to change. */}
+              <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: '0 0 18px' }}>
+                <legend className={styles.label}>Avaliação geral</legend>
+                <span className={styles.stars}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <label className={styles.star} key={n}>
-                      <input type="radio" name="ratingOverall" value={n} required defaultChecked={n === 5} />
-                      ★
+                      <input type="radio" name="ratingOverall" value={n} required
+                             aria-label={n === 1 ? '1 estrela' : `${n} estrelas`} />
+                      <span aria-hidden="true">★</span>
                     </label>
                   ))}
                 </span>
-              </label>
+              </fieldset>
               <label className={styles.field}>
                 <span className={styles.label}>Comentário <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span></span>
                 <textarea className={styles.area} name="comment" maxLength={2000} rows={3} />

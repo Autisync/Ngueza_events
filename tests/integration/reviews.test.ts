@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createReview, providerReviews, replyToReview, reviewExistsForBooking } from '@/lib/reviews'
-import { asSystem } from '@/lib/db'
+import { asSystem, asUser } from '@/lib/db'
 
 /**
  * Reviews (§14, §30). The verified seal, the one-per-booking rule and the
@@ -88,19 +88,26 @@ describe('reviews', () => {
     expect(review?.isVerified).toBe(false)
   })
 
-  it('derives unverified for a booking that belongs to someone else', async () => {
-    // The FK only requires the booking to exist, not that the caller was
-    // its client — RLS lets Ana insert with author_id = herself
-    // regardless of whose booking_id she names. reviews_derive_verified
-    // is what actually checks b.client_id = author_id.
-    const result = await createReview(ANA, {
+  it('refuses a review that names someone else\'s booking (0031)', async () => {
+    // It used to succeed as unverified — and, because booking_id is
+    // unique, it also blocked João from ever reviewing his own booking.
+    expect(await createReview(ANA, {
       providerId: HORIZONTE, bookingId: SOMEONE_ELSES, // João's completed booking
       ratings: { overall: 5 },
-    })
-    expect(result.ok).toBe(true)
-    const reviews = await providerReviews(HORIZONTE)
-    const mine = reviews.find((r) => r.comment === null && r.ratingOverall === 5)
-    expect(mine?.isVerified).toBe(false)
+    })).toEqual({ ok: false, reason: 'not_allowed' })
+  })
+
+  it('refuses a business reviewing itself (0031)', async () => {
+    expect(await createReview('40000000-0000-0000-0000-000000000001', {
+      providerId: HORIZONTE, bookingId: COMPLETED, ratings: { overall: 5 },
+    })).toEqual({ ok: false, reason: 'not_allowed' })
+  })
+
+  it('refuses an author rewriting the moderation status or the reply (0031)', async () => {
+    await createReview(ANA, { providerId: HORIZONTE, bookingId: COMPLETED, ratings: { overall: 4 } })
+    await expect(asUser(ANA, (c) =>
+      c.query(`update reviews set provider_reply = 'Obrigado!' where author_id = $1`, [ANA]),
+    )).rejects.toMatchObject({ code: '42501' })
   })
 
   it('refuses a second review on the same booking', async () => {

@@ -213,6 +213,17 @@ describe('provider decisions enqueue the right notification', () => {
 })
 
 describe('claiming and sending', () => {
+  // Other test files leave hundreds of pending rows behind (every seeded
+  // confirmation, every booking they walk through). claimAndSend takes
+  // the oldest first, so without this the row a test is watching can sit
+  // past any batch limit. These tests are about the claim mechanism, not
+  // about draining someone else's backlog.
+  beforeEach(async () => {
+    await asSystem((c) =>
+      c.query(`update notification_outbox set status = 'sent', sent_at = now() where status in ('pending', 'sending')`),
+    )
+  })
+
   it('sends a pending row and marks it sent', async () => {
     const result = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,

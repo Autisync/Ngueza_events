@@ -59,12 +59,20 @@ describe('booking notifications', () => {
     expect(mail.text).not.toContain('/procurar')
   })
 
+  it('says whose deadline passed when a booking expires', () => {
+    const unanswered = render('booking_expired', { ...BOOKING_CONTEXT, from_status: 'requested' })
+    expect(unanswered.text).toContain('sem resposta do fornecedor')
+    const unpaid = render('booking_expired', { ...BOOKING_CONTEXT, from_status: 'awaiting_payment' })
+    expect(unpaid.text).toContain('prazo para avançar com o pagamento')
+    expect(unpaid.text).not.toContain('sem resposta do fornecedor')
+  })
+
   it('renders every booking kind without throwing', () => {
     const kinds = [
       'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
       'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
       'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
-      'booking_completed', 'booking_no_show',
+      'booking_completed', 'booking_no_show', 'booking_payment_submitted', 'booking_released_provider',
     ]
     for (const kind of kinds) {
       const mail = render(kind, BOOKING_CONTEXT)
@@ -131,6 +139,15 @@ describe('quote request notifications (slice 20)', () => {
   it('omits the capacity line when none was given', () => {
     const mail = render('quote_request_new', { ...REQUEST_CONTEXT, capacity: null })
     expect(mail.text).not.toContain('Capacidade:')
+  })
+
+  it('tells the winning supplier their offer was accepted', () => {
+    const mail = render('quote_offer_accepted', {
+      quote_request_id: 'q', offer_id: 'o', provider_id: 'p1', provider_name: 'Salão X',
+      price_minor: 18000000, event_date: '2026-12-15', category_name: 'Salões', location_name: 'Talatona',
+    })
+    expect(mail.subject).toContain('Proposta aceite')
+    expect(mail.text).toContain('/painel/p1/reservas')
   })
 
   it('tells the requester about a new offer, with the price in Kz', () => {

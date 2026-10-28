@@ -111,7 +111,8 @@ export async function updateCategory(
     await asUser(adminId, (c) =>
       c.query(
         `update categories
-            set parent_id = $2, slug = $3, name = $4, description = $5, icon = $6,
+            -- The edit form has no icon field; a blank must not erase it.
+            set parent_id = $2, slug = $3, name = $4, description = $5, icon = coalesce($6, icon),
                 default_supplier_type = $7, sort_order = $8
           where id = $1`,
         [id, input.parentId, input.slug, input.name, input.description ?? null,

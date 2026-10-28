@@ -4,9 +4,11 @@ import { currentProfile } from '@/lib/auth'
 import { formatPrice } from '@/lib/money'
 import { formOptions, ownedDocuments, ownedProvider, ownedResources, ownedServices } from '@/lib/painel'
 import {
-  doAddResource, doAddService, doRemoveService, doSubmitForVerification, doUpdateBusiness,
+  doAddResource, doAddService, doRemoveResource, doRemoveService, doSubmitForVerification,
+  doUpdateBusiness, doUpdateResource,
 } from '../actions'
 import { DocumentUpload } from './DocumentUpload'
+import { verificationLabel } from '@/lib/painel-labels'
 import styles from '../painel.module.css'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
@@ -15,10 +17,15 @@ export const dynamic = 'force-dynamic'
 const ERRORS: Record<string, string> = {
   name: 'O nome precisa de pelo menos 3 caracteres.',
   website: 'O endereço do site não parece válido.',
-  espaco: 'Dê um nome ao espaço.',
+  phone: 'O telefone não parece válido. Use, por exemplo, 923 456 789.',
+  whatsapp: 'O número de WhatsApp não parece válido. Use, por exemplo, 923 456 789.',
+  espaco: 'Indique o nome e a capacidade do espaço (até 100 000 pessoas).',
+  ultimo_espaco: 'Um local precisa de pelo menos um espaço activo.',
   sem_documentos: 'Anexe pelo menos um documento antes de submeter.',
   servico_name: 'O nome do serviço precisa de pelo menos 3 caracteres.',
   servico_price: 'Indique um preço válido, por exemplo 180.000',
+  servico_minCapacity: 'A capacidade mínima tem de estar entre 1 e 100 000.',
+  servico_maxCapacity: 'A capacidade máxima tem de estar entre 1 e 100 000.',
   servico_priceMax: 'O valor máximo não pode ser inferior ao mínimo.',
   dados: 'Verifique os dados introduzidos.',
 }
@@ -57,7 +64,9 @@ export default async function GerirNegocio({
     searchParams,
   ])
 
-  const canSubmit = provider.verificationStatus === 'unverified'
+  // After a rejection the supplier fixes what was asked and re-queues;
+  // the decision itself is still an administrator's.
+  const canSubmit = provider.verificationStatus === 'unverified' || provider.verificationStatus === 'rejected'
 
   return (
     <main>
@@ -94,7 +103,7 @@ export default async function GerirNegocio({
           <h2>Reservas</h2>
           <p className={styles.note}>
             Pedidos por responder, reservas confirmadas, e o bloqueio manual de datas para quem
-            reservou fora da NGUEZA (§27).
+            reservou fora da NGUEZA.
           </p>
           <a className={styles.submit} href={`/painel/${provider.id}/reservas`}
              style={{ display: 'inline-block', textDecoration: 'none' }}>
@@ -106,7 +115,7 @@ export default async function GerirNegocio({
         <div className={styles.card}>
           <h2>Avaliações</h2>
           <p className={styles.note}>
-            O que os clientes dizem, e o seu direito de resposta (§30).
+            O que os clientes dizem, e o seu direito de resposta.
           </p>
           <a className={styles.submit} href={`/painel/${provider.id}/avaliacoes`}
              style={{ display: 'inline-block', textDecoration: 'none' }}>
@@ -142,16 +151,11 @@ export default async function GerirNegocio({
         <div className={styles.card} id="verificacao">
           <h2>Estado</h2>
           <p className={styles.note}>
-            Um perfil só fica visível para clientes depois de verificado (§25).
+            Um perfil só fica visível para clientes depois de verificado.
           </p>
           <div className={styles.state}>
-            <span className={`${styles.pill} ${
-              provider.verificationStatus === 'verified' ? styles.pillOk
-              : provider.verificationStatus === 'pending' ? styles.pillWait
-              : provider.verificationStatus === 'rejected' ? styles.pillBad : styles.pillOff}`}>
-              {provider.verificationStatus === 'verified' ? 'Verificado'
-                : provider.verificationStatus === 'pending' ? 'Em análise'
-                : provider.verificationStatus === 'rejected' ? 'Rejeitado' : 'Por submeter'}
+            <span className={`${styles.pill} ${styles[verificationLabel(provider.verificationStatus).cls]}`}>
+              {verificationLabel(provider.verificationStatus).label}
             </span>
             <span className={`${styles.pill} ${provider.isPublished ? styles.pillOk : styles.pillOff}`}>
               {provider.isPublished ? 'Visível no site' : 'Não visível'}
@@ -195,7 +199,9 @@ export default async function GerirNegocio({
           {canSubmit ? (
             <form action={doSubmitForVerification}>
               <input type="hidden" name="providerId" value={provider.id} />
-              <button className={styles.submit} type="submit">Submeter para verificação</button>
+              <button className={styles.submit} type="submit">
+                {provider.verificationStatus === 'rejected' ? 'Voltar a submeter para verificação' : 'Submeter para verificação'}
+              </button>
             </form>
           ) : null}
         </div>
@@ -314,13 +320,38 @@ export default async function GerirNegocio({
             </p>
             <div className={styles.list}>
               {resources.map((r) => (
-                <div className={styles.item} key={r.id}>
-                  <div>
-                    <strong>{r.name}</strong>
-                    <span className={styles.meta}>
-                      {r.capacity ? `até ${r.capacity} pessoas` : 'capacidade não indicada'}
-                    </span>
-                  </div>
+                <div className={styles.item} key={r.id} style={{ display: 'block' }}>
+                  {/* Editable in place: the space created at registration
+                      had no capacity and no way to set one, so it matched
+                      every party size in search. */}
+                  <form action={doUpdateResource}>
+                    <input type="hidden" name="providerId" value={provider.id} />
+                    <input type="hidden" name="resourceId" value={r.id} />
+                    <div className={styles.two}>
+                      <label className={styles.field}>
+                        <span className={styles.label}>Nome do espaço</span>
+                        <input className={styles.input} name="name" required maxLength={80} defaultValue={r.name} />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.label}>Capacidade (pessoas)</span>
+                        <input className={styles.input} name="capacity" type="number" min={1} max={100000}
+                               inputMode="numeric" defaultValue={r.capacity ?? ''} required />
+                      </label>
+                    </div>
+                    {r.capacity ? null : (
+                      <p className={styles.hint} style={{ marginTop: -6, marginBottom: 10 }}>
+                        Indique a capacidade — sem ela este espaço não aparece em procuras por número de pessoas.
+                      </p>
+                    )}
+                    <button className={`${styles.btn} ${styles.go}`} type="submit">Guardar espaço</button>
+                  </form>
+                  {resources.length > 1 ? (
+                    <form action={doRemoveResource} style={{ marginTop: 8 }}>
+                      <input type="hidden" name="providerId" value={provider.id} />
+                      <input type="hidden" name="resourceId" value={r.id} />
+                      <button className={`${styles.btn} ${styles.no}`} type="submit">Retirar espaço</button>
+                    </form>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -333,8 +364,8 @@ export default async function GerirNegocio({
                          placeholder="Jardim" />
                 </label>
                 <label className={styles.field}>
-                  <span className={styles.label}>Capacidade</span>
-                  <input className={styles.input} name="capacity" type="number" min={1} />
+                  <span className={styles.label}>Capacidade (pessoas)</span>
+                  <input className={styles.input} name="capacity" type="number" min={1} max={100000} required />
                 </label>
               </div>
               <button className={`${styles.submit} ${styles.ghost}`} type="submit">

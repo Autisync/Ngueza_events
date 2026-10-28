@@ -38,3 +38,11 @@ export const TRANSITION_ERROR: Record<string, string> = {
   already_reviewed: 'Esta reserva já tem uma avaliação.',
   dados: 'Verifique os dados introduzidos.',
 }
+
+const RATING = new Intl.NumberFormat('pt-AO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+/** "4,5" — pt-AO decimals, not the JavaScript "4.5". */
+export const formatRating = (n: number) => RATING.format(n)
+
+/** "1 avaliação", "3 avaliações". */
+export const reviewCountLabel = (n: number) => `${n} ${n === 1 ? 'avaliação' : 'avaliações'}`

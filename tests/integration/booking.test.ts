@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { blockDate, expireStaleBookings, requestBooking, transition } from '@/lib/booking'
+import { blockDate, completePastBookings, expireStaleBookings, requestBooking, transition } from '@/lib/booking'
+import { asUser } from '@/lib/db'
 import { asSystem } from '@/lib/db'
 
 /**
@@ -275,7 +276,7 @@ describe('who may drive a transition (0021)', () => {
     })
   })
 
-  it('lets the supplier walk the whole accept -> confirm -> complete path', async () => {
+  it('lets the supplier walk the whole accept -> confirm -> complete path, completing only after it ends', async () => {
     const created = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
       startsAt: at('2027-09-15T09:00:00Z'), endsAt: at('2027-09-15T22:00:00Z'),
@@ -283,6 +284,13 @@ describe('who may drive a transition (0021)', () => {
     const id = (created as { bookingId: string }).bookingId
     expect(await transition(OWNER, id, 'accepted')).toEqual({ ok: true })
     expect(await transition(OWNER, id, 'confirmed')).toEqual({ ok: true })
+    // 0031: completing next year's booking today is how a supplier could
+    // mint a "Reserva verificada" review of their own listing.
+    expect(await transition(OWNER, id, 'completed')).toEqual({ ok: false, reason: 'illegal_transition' })
+
+    await asSystem((c) => c.query(
+      `update bookings set starts_at = now() - interval '2 days', ends_at = now() - interval '1 day' where id = $1`, [id],
+    ))
     expect(await transition(OWNER, id, 'completed')).toEqual({ ok: true })
   })
 
@@ -432,5 +440,108 @@ describe('reading bookings', () => {
     if (!created.ok) throw new Error('setup failed')
     const stranger = '40000000-0000-0000-0000-000000000002' // Quinta das Palmeiras' owner
     expect(await bookingDetail(stranger, created.bookingId)).toBeNull()
+  })
+})
+
+describe('integrity guards (0031)', () => {
+  const PALMEIRAS = '50000000-0000-0000-0000-000000000002'
+  const JARDIM = '60000000-0000-0000-0000-000000000002'
+  const COBERTA = '60000000-0000-0000-0000-000000000003'
+  const PALMEIRAS_OWNER = '40000000-0000-0000-0000-000000000002'
+
+  it('refuses a supplier booking their own listing', async () => {
+    const result = await requestBooking(OWNER, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-05-01T09:00:00Z'), endsAt: at('2027-05-01T22:00:00Z'),
+    })
+    expect(result).toEqual({ ok: false, reason: 'not_allowed' })
+  })
+
+  it('refuses a request for a date that has passed', async () => {
+    const result = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2025-05-01T09:00:00Z'), endsAt: at('2025-05-01T22:00:00Z'),
+    })
+    expect(result).toEqual({ ok: false, reason: 'not_allowed' })
+  })
+
+  it('ignores a client-supplied policy snapshot and total', async () => {
+    const id = await asUser(JOAO, async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at, policy_snapshot, total_minor)
+         values ($1, $2, $3, 'requested', '2027-06-01 09:00+01', '2027-06-01 22:00+01',
+                 '{"name":"tudo devolvido","tiers":[{"days_before":0,"refund_pct":100}]}', 1)
+         returning id`,
+        [HORIZONTE, JOAO, SALAO],
+      )
+      return rows[0]!.id
+    })
+    const row = await asSystem(async (c) =>
+      (await c.query(`select policy_snapshot->>'name' as name, total_minor from bookings where id = $1`, [id])).rows[0])
+    expect(row.name).not.toBe('tudo devolvido')
+    expect(row.total_minor).toBeNull()
+  })
+
+  it('refuses a party rewriting the dates or terms of a booking', async () => {
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-07-01T09:00:00Z'), endsAt: at('2027-07-01T22:00:00Z'),
+    })
+    const id = (created as { bookingId: string }).bookingId
+    await expect(asUser(JOAO, (c) =>
+      c.query(`update bookings set starts_at = starts_at + interval '1 day' where id = $1`, [id]),
+    )).rejects.toMatchObject({ code: '42501' })
+    await expect(asUser(OWNER, (c) =>
+      c.query(`update bookings set policy_snapshot = null where id = $1`, [id]),
+    )).rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('lets a multi-room venue block one room while another is held (trigger order)', async () => {
+    await asSystem((c) => c.query(
+      `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+       values ($1, $2, $3, 'confirmed', '2027-08-01 10:00+01', '2027-08-01 23:00+01')`,
+      [PALMEIRAS, ANA, JARDIM],
+    ))
+    const block = await blockDate(PALMEIRAS_OWNER, {
+      providerId: PALMEIRAS, resourceId: COBERTA,
+      startsAt: at('2027-08-01T09:00:00Z'), endsAt: at('2027-08-01T22:00:00Z'),
+    })
+    expect(block.ok).toBe(true)
+  })
+
+  it('completes confirmed bookings a day after they end', async () => {
+    const id = await asSystem(async (c) => (await c.query<{ id: string }>(
+      `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+       values ($1, $2, $3, 'confirmed', now() - interval '3 days', now() - interval '2 days') returning id`,
+      [HORIZONTE, JOAO, SALAO],
+    )).rows[0]!.id)
+    expect(await completePastBookings()).toBeGreaterThanOrEqual(1)
+    const status = await asSystem(async (c) =>
+      (await c.query(`select status from bookings where id = $1`, [id])).rows[0].status)
+    expect(status).toBe('completed')
+  })
+
+  it('does not release a date while a payment proof is under review', async () => {
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-01T09:00:00Z'), endsAt: at('2027-10-01T22:00:00Z'),
+    })
+    const id = (created as { bookingId: string }).bookingId
+    expect(await transition(OWNER, id, 'accepted')).toEqual({ ok: true })
+    expect(await transition(OWNER, id, 'awaiting_payment')).toEqual({ ok: true })
+
+    await asSystem((c) => c.query(
+      `insert into payments (booking_id, provider_key, amount_minor, status) values ($1, 'manual_proof', 5000000, 'submitted')`, [id],
+    ))
+    const held = await asSystem(async (c) =>
+      (await c.query(`select expires_at > now() + interval '60 hours' as held from bookings where id = $1`, [id])).rows[0].held)
+    expect(held).toBe(true)
+
+    // Even if the hold lapses, the sweep leaves it alone while the proof is pending.
+    await asSystem((c) => c.query(`update bookings set expires_at = now() - interval '1 minute' where id = $1`, [id]))
+    await expireStaleBookings()
+    const status = await asSystem(async (c) =>
+      (await c.query(`select status from bookings where id = $1`, [id])).rows[0].status)
+    expect(status).toBe('awaiting_payment')
   })
 })

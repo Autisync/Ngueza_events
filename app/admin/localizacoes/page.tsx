@@ -63,7 +63,7 @@ export default async function Localizacoes({
         <div className={styles.card}>
           <h2>Árvore de localizações</h2>
           <p className={styles.note}>
-            País → Província → Município → Bairro (§43). Esta estrutura é o que permitirá no futuro
+            País → Província → Município → Bairro. Esta estrutura é o que permitirá no futuro
             pesquisas como «maquilhadoras perto de mim» e a expansão para outras províncias.
           </p>
           {ordered.map(({ node, depth }) => (

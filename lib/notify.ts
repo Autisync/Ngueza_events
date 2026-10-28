@@ -17,7 +17,8 @@ export type NotificationKind =
   | 'booking_expired' | 'booking_cancelled_client' | 'booking_cancelled_provider'
   | 'booking_completed' | 'booking_no_show'
   | 'provider_verified' | 'provider_rejected' | 'provider_suspended' | 'provider_reinstated'
-  | 'quote_request_new' | 'quote_offer_received'
+  | 'quote_request_new' | 'quote_offer_received' | 'quote_offer_accepted'
+  | 'booking_payment_submitted' | 'booking_released_provider'
 
 export interface RenderedMail {
   subject: string
@@ -47,6 +48,17 @@ interface QuoteRequestContext {
   event_date?: string | null
   capacity?: number | null
   description: string
+}
+
+interface QuoteAcceptedContext {
+  quote_request_id: string
+  offer_id: string
+  provider_id: string
+  provider_name: string
+  price_minor: number | string
+  event_date?: string | null
+  category_name?: string | null
+  location_name?: string | null
 }
 
 interface QuoteOfferContext {
@@ -140,16 +152,22 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           `${siteUrl()}/procurar`,
         ].join('\n'),
       }
-    case 'booking_expired':
+    case 'booking_expired': {
+      // from_status says whose deadline passed. Blaming the supplier for a
+      // client who never paid was wrong half the time.
+      const supplierSilent = !c.from_status || c.from_status === 'requested'
       return {
         subject: `O seu pedido expirou — ${c.provider_name}`,
         text: [
-          `O seu pedido para ${c.provider_name}, em ${when(c)}, expirou sem resposta a tempo.`,
+          supplierSilent
+            ? `O seu pedido para ${c.provider_name}, em ${when(c)}, expirou sem resposta do fornecedor a tempo.`
+            : `A sua reserva com ${c.provider_name}, em ${when(c)}, expirou porque o prazo para avançar com o pagamento terminou.`,
           '',
           'A data voltou a ficar disponível para outros clientes. Pode pedir novamente:',
           publicPage(c.provider_slug),
         ].join('\n'),
       }
+    }
     case 'booking_cancelled_client':
       return {
         subject: `Reserva cancelada pelo cliente — ${c.provider_name}`,
@@ -180,11 +198,36 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
         ].join('\n'),
       }
     case 'booking_no_show':
+      // Sent to the CLIENT (0031): the supplier set the status themselves
+      // and does not need telling; the client does, and needs a way to say
+      // it is wrong.
       return {
-        subject: `Cliente não compareceu — ${c.provider_name}`,
+        subject: `Reserva marcada como não comparecida — ${c.provider_name}`,
         text: [
-          `Uma reserva para ${c.provider_name}, em ${when(c)}, foi marcada como não comparecida.`,
-          dashboard(c.provider_id),
+          `${c.provider_name} marcou a sua reserva de ${when(c)} como não comparecida.`,
+          '',
+          'Se esteve presente ou se isto não está certo, responda a este email ou contacte a NGUEZA.',
+        ].join('\n'),
+      }
+    case 'booking_payment_submitted':
+      return {
+        subject: `Comprovativo de pagamento recebido — ${c.provider_name}`,
+        text: [
+          `O cliente enviou o comprovativo de pagamento da reserva de ${when(c)}.`,
+          '',
+          'Confirme no seu painel depois de verificar que o valor entrou na sua conta.',
+          'Enquanto o comprovativo estiver em análise, a data continua reservada para este cliente.',
+          `${dashboard(c.provider_id)}/reservas`,
+        ].join('\n'),
+      }
+    case 'booking_released_provider':
+      return {
+        subject: `Data libertada — ${c.provider_name}`,
+        text: [
+          `A reserva de ${when(c)} expirou porque o cliente não avançou com o pagamento a tempo.`,
+          '',
+          'A data voltou a ficar disponível no seu calendário.',
+          `${dashboard(c.provider_id)}/reservas`,
         ].join('\n'),
       }
     default:
@@ -278,6 +321,24 @@ function quoteMail(kind: NotificationKind, context: unknown): RenderedMail {
         ].filter((line): line is string => line !== null).join('\n'),
       }
     }
+    case 'quote_offer_accepted': {
+      const c = context as QuoteAcceptedContext
+      const when = c.event_date
+        ? new Date(c.event_date).toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda', dateStyle: 'long' })
+        : null
+      return {
+        subject: `Proposta aceite — ${c.provider_name}`,
+        text: [
+          `Um cliente aceitou a sua proposta de ${formatMinor(BigInt(c.price_minor))}.`,
+          '',
+          c.category_name && c.location_name ? `Pedido: ${c.category_name} em ${c.location_name}` : null,
+          when ? `Data do evento: ${when}` : null,
+          '',
+          'O cliente vai agora pedir a reserva na sua página. Acompanhe os pedidos no seu painel:',
+          `${dashboard(c.provider_id)}/reservas`,
+        ].filter((line): line is string => line !== null).join('\n'),
+      }
+    }
     default:
       throw new Error(`quoteMail: unhandled kind ${String(kind)}`)
   }
@@ -287,10 +348,10 @@ const BOOKING_KINDS = new Set<NotificationKind>([
   'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
   'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
   'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
-  'booking_completed', 'booking_no_show',
+  'booking_completed', 'booking_no_show', 'booking_payment_submitted', 'booking_released_provider',
 ])
 
-const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received'])
+const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received', 'quote_offer_accepted'])
 
 /** Turns one outbox row's `kind` and `context` into a subject and body. */
 export function render(kind: string, context: Record<string, unknown>): RenderedMail {
