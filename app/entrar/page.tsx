@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { doSignIn } from '../auth-actions'
-import { currentUser, googleAuthorizeUrl } from '@/lib/auth'
+import { currentProfile, currentUser, googleAuthorizeUrl } from '@/lib/auth'
+import { safeNext } from '@/lib/safe'
 import { siteUrl } from '@/lib/env'
 import { GoogleMark } from '../GoogleMark'
 import styles from '../auth.module.css'
@@ -21,8 +22,26 @@ export default async function Entrar({
   searchParams,
 }: { searchParams: Promise<{ erro?: string; next?: string }> }) {
   const { erro, next } = await searchParams
-  if (await currentUser()) redirect(next?.startsWith('/') ? next : '/conta')
-  const target = next?.startsWith('/') ? next : '/conta'
+  const target = safeNext(next)
+  // A valid session whose profile is not active (suspended, deleted, not
+  // yet provisioned): every signed-in page sends it here, so redirecting
+  // back would loop forever between /conta and /entrar.
+  const user = await currentUser()
+  if (user && !(await currentProfile())) {
+    return (
+      <main className={styles.page}>
+        <a className={styles.mark} href="/">NGUEZA</a>
+        <h1 className={styles.title}>Conta indisponível</h1>
+        <p className={styles.lede}>
+          Esta conta não está ativa neste momento. Se acha que é um engano, contacte a NGUEZA.
+        </p>
+        <form action="/sair" method="post">
+          <button className={styles.submit} type="submit">Sair e entrar com outra conta</button>
+        </form>
+      </main>
+    )
+  }
+  if (user) redirect(target)
   const googleUrl = googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent(target)}`)
 
   return (
@@ -43,7 +62,7 @@ export default async function Entrar({
       ) : null}
 
       <form action={doSignIn}>
-        <input type="hidden" name="next" value={next?.startsWith('/') ? next : '/conta'} />
+        <input type="hidden" name="next" value={target} />
         <label className={styles.field}>
           <span className={styles.label}>Email</span>
           <input className={styles.input} type="email" name="email" required
@@ -58,7 +77,8 @@ export default async function Entrar({
       </form>
 
       <p className={styles.alt}>
-        Ainda não tem conta? <a href="/criar-conta">Criar conta</a>
+        Ainda não tem conta?{' '}
+        <a href={target === '/conta' ? '/criar-conta' : `/criar-conta?next=${encodeURIComponent(target)}`}>Criar conta</a>
         <a className={styles.small} href="/recuperar">Esqueceu-se da palavra-passe?</a>
       </p>
     </main>

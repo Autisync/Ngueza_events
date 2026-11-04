@@ -2,6 +2,7 @@ import { coverImageUrl } from '@/lib/media'
 import { formatPrice } from '@/lib/money'
 import type { SearchHit } from '@/lib/search'
 import styles from './supplier-card.module.css'
+import { formatRating } from '@/lib/booking-labels'
 
 /** Used by /procurar's results grid and the homepage's featured-suppliers
  *  rail — one definition of what a supplier card looks like. */
@@ -26,7 +27,7 @@ export function SupplierCard({ hit }: { hit: SearchHit }) {
             signal on every card rather than a differentiator within results. */}
         <span className={styles.pillTopLeft}>✓ Verificado</span>
         {hit.reviewCount > 0 ? (
-          <span className={styles.pillBottomRight}>★ {hit.ratingAverage}</span>
+          <span className={styles.pillBottomRight}>★ {formatRating(hit.ratingAverage ?? 0)} ({hit.reviewCount})</span>
         ) : null}
       </div>
       <div className={styles.body}>

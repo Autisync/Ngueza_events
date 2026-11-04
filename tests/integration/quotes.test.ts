@@ -1,8 +1,9 @@
+import { Client } from 'pg'
 import { afterEach, describe, expect, it } from 'vitest'
 import { asSystem } from '@/lib/db'
 import { myNotifications, myUnreadNotificationCount, markNotificationRead } from '@/lib/notifications'
 import {
-  acceptOffer, closeQuoteRequest, matchingOpenRequests, myQuoteRequests, offersBySupplier,
+  acceptOffer, acceptedOfferPrice, closeQuoteRequest, expireStaleQuoteRequests, matchingOpenRequests, myQuoteRequests, offersBySupplier,
   offersOnRequest, postQuoteRequest, quoteRequestDetail, submitOffer, withdrawOffer,
 } from '@/lib/quotes'
 
@@ -144,7 +145,8 @@ describe('accepting an offer', () => {
     if (!offer.ok) throw new Error('offer failed')
 
     const result = await acceptOffer(ANA, offer.id)
-    expect(result).toEqual({ ok: true })
+    // The slug comes from the offer's own row, not the client's form.
+    expect(result).toEqual({ ok: true, providerSlug: 'salao-horizonte-talatona' })
 
     const offers = await offersOnRequest(ANA, posted.id)
     expect(offers.find((o) => o.id === offer.id)?.status).toBe('accepted')
@@ -181,10 +183,94 @@ describe('accepting an offer', () => {
     if (!offer.ok) throw new Error('offer failed')
 
     const first = await acceptOffer(ANA, offer.id)
-    expect(first).toEqual({ ok: true })
+    expect(first.ok).toBe(true)
 
     const second = await acceptOffer(ANA, offer.id)
     expect(second).toEqual({ ok: false, reason: 'forbidden' })
+  })
+})
+
+describe('after an offer is accepted (0030)', () => {
+  it('marks the other live offers declined, not withdrawn', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+    const winner = await submitOffer(OWNER, {
+      quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 45_000_00n,
+    })
+    if (!winner.ok) throw new Error('offer failed')
+    const loser = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into quote_offers (quote_request_id, provider_id, price_minor)
+         select $1, id, 5000000 from providers where id <> $2 and is_published limit 1
+         returning id`,
+        [posted.id, HORIZONTE],
+      )
+      return rows[0]!.id
+    })
+
+    expect((await acceptOffer(ANA, winner.id)).ok).toBe(true)
+    const offers = await offersOnRequest(ANA, posted.id)
+    expect(offers.find((o) => o.id === loser)?.status).toBe('declined')
+  })
+
+  it('tells the winning supplier', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+    const offer = await submitOffer(OWNER, {
+      quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 45_000_00n,
+    })
+    if (!offer.ok) throw new Error('offer failed')
+    await acceptOffer(ANA, offer.id)
+
+    const queued = await asSystem(async (c) => {
+      const { rows } = await c.query<{ recipient_id: string }>(
+        `select recipient_id from notification_outbox
+          where kind = 'quote_offer_accepted' and source_id = $1`,
+        [offer.id],
+      )
+      return rows
+    })
+    expect(queued).toEqual([{ recipient_id: OWNER }])
+  })
+
+  it('shows the accepted price only to the requester, read from the database', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+    const offer = await submitOffer(OWNER, {
+      quoteRequestId: posted.id, providerId: HORIZONTE, priceMinor: 45_000_00n,
+    })
+    if (!offer.ok) throw new Error('offer failed')
+    expect(await acceptedOfferPrice(ANA, offer.id, HORIZONTE)).toBeNull() // not accepted yet
+    await acceptOffer(ANA, offer.id)
+    expect(await acceptedOfferPrice(ANA, offer.id, HORIZONTE)).toBe(45_000_00n)
+    expect(await acceptedOfferPrice('40000000-0000-0000-0000-000000000091', offer.id, HORIZONTE)).toBeNull()
+  })
+
+  it('expires requests past their deadline, and they stop matching', async () => {
+    const posted = await postQuoteRequest(ANA, {
+      categoryId: SALOES, locationId: TALATONA, description: 'Um evento em Talatona.',
+    })
+    if (!posted.ok) throw new Error('post failed')
+    // expires_at is immutable to everyone but an admin
+    // (quote_requests_guard_immutable), so age the fixture as a superuser
+    // with triggers off.
+    const raw = new Client({ connectionString: process.env.DATABASE_URL })
+    await raw.connect()
+    try {
+      await raw.query(`set session_replication_role = replica`)
+      await raw.query(`update quote_requests set expires_at = now() - interval '1 minute' where id = $1`, [posted.id])
+    } finally {
+      await raw.end()
+    }
+    expect((await matchingOpenRequests(OWNER, HORIZONTE)).map((r) => r.id)).not.toContain(posted.id)
+    expect(await expireStaleQuoteRequests()).toBeGreaterThanOrEqual(1)
+    expect((await quoteRequestDetail(ANA, posted.id))?.status).toBe('expired')
   })
 })
 

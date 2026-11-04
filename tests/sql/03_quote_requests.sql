@@ -308,14 +308,15 @@ exception
     raise notice 'PASS: a supplier may withdraw their own offer, not accept it';
 end $$;
 
--- ---- 14. the requester accepts one offer; the other is withdrawn as --
---          a side effect, and the request closes, all in one statement
+-- ---- 14. the requester accepts one offer; the other is declined as ---
+--          a side effect (0030: not 'withdrawn', which read as if the
+--          supplier had pulled out), and the request closes
 select tests_login_as('22112000-0000-0000-0000-000000000001');
 do $$
 begin
   update quote_offers
      set status = case when provider_id = 'cccc2000-0000-0000-0000-00000000000a'
-                        then 'accepted' else 'withdrawn' end
+                        then 'accepted' else 'declined' end
    where quote_request_id = (
      select id from quote_requests where description = 'Segundo pedido, para testar aceitação.'
    ) and status = 'submitted';
@@ -333,9 +334,9 @@ begin
   select status into v_req_status from quote_requests where description = 'Segundo pedido, para testar aceitação.';
 
   if v_accepted <> 'accepted' then raise exception 'FAIL: the chosen offer is %, expected accepted', v_accepted; end if;
-  if v_declined <> 'withdrawn' then raise exception 'FAIL: the other offer is %, expected withdrawn', v_declined; end if;
+  if v_declined <> 'declined' then raise exception 'FAIL: the other offer is %, expected declined', v_declined; end if;
   if v_req_status <> 'closed' then raise exception 'FAIL: the request is %, expected closed', v_req_status; end if;
-  raise notice 'PASS: accepting one offer withdraws the other and closes the request, atomically';
+  raise notice 'PASS: accepting one offer declines the other and closes the request, atomically';
 end $$;
 
 -- An accepted offer's terms are still immutable — accepting is a status

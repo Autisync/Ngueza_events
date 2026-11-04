@@ -18,7 +18,10 @@ const REASONS: Record<string, string> = {
   other: 'Outro',
 }
 
-export default async function Denuncias() {
+export default async function Denuncias({
+  searchParams,
+}: { searchParams: Promise<{ erro?: string }> }) {
+  const { erro } = await searchParams
   const profile = (await currentProfile())!
   const [counts, reports] = await Promise.all([queueCounts(profile.id), reportQueue(profile.id)])
 
@@ -26,6 +29,7 @@ export default async function Denuncias() {
     <main>
       <Chrome title="Denúncias" active="denuncias" counts={counts} />
       <div className={styles.wrap}>
+        {erro === 'ja_decidida' ? <p className={styles.alert} role="status">Esta denúncia já tinha sido decidida por outro administrador.</p> : null}
         {reports.length === 0 ? (
           <p className={styles.empty}>Nenhuma denúncia aberta.</p>
         ) : (

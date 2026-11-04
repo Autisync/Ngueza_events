@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { unsubscribe } from '@/lib/newsletter'
+import { doUnsubscribe } from '@/app/actions'
 import styles from '../../shared.module.css'
 
 export const metadata: Metadata = {
@@ -10,12 +10,30 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 /**
- * One click, no sign-in. Requiring someone to authenticate in order to
- * leave a mailing list is how a list turns into spam complaints.
+ * One button, no sign-in. Requiring someone to authenticate in order to
+ * leave a mailing list is how a list turns into spam complaints — but the
+ * change happens on the press, not on opening the link (doUnsubscribe).
  */
-export default async function Cancelar({ params }: { params: Promise<{ token: string }> }) {
+export default async function Cancelar({
+  params, searchParams,
+}: { params: Promise<{ token: string }>; searchParams: Promise<{ r?: string }> }) {
   const { token } = await params
-  const result = await unsubscribe(token)
+  const { r } = await searchParams
+  const result = r === 'unsubscribed' || r === 'unknown' ? r : null
+
+  if (result === null) {
+    return (
+      <main className={styles.page}>
+        <p className={styles.mark}>NGUEZA</p>
+        <h1 className={styles.title}>Cancelar subscrição</h1>
+        <p className={styles.body}>Deixa de receber as novidades da NGUEZA. Os emails sobre reservas continuam.</p>
+        <form action={doUnsubscribe}>
+          <input type="hidden" name="token" value={token} />
+          <button className={styles.button} type="submit">Cancelar subscrição</button>
+        </form>
+      </main>
+    )
+  }
 
   return (
     <main className={styles.page}>

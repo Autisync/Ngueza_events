@@ -84,7 +84,13 @@ function toPrice(row: {
 export async function getProvider(slug: string): Promise<PublicProvider | null> {
   return asVisitor(async (c) => {
     const { rows } = await c.query<Record<string, never> & any>(
-      `select p.*, cat.name as category_name,
+      // Display columns only: anon has column-level SELECT on exactly
+      // these (0031), so `p.*` would be refused — and should be, since it
+      // included the owner's email and the rejection reason.
+      `select p.id, p.slug, p.name, p.description, p.supplier_type, p.category_id,
+              p.location_id, p.address_line, p.lat, p.lng, p.phone, p.whatsapp,
+              p.website, p.years_active_declared, p.verified_at,
+              cat.name as category_name,
               (select array_agg(l.name order by depth desc)
                  from (
                    with recursive up as (
@@ -95,10 +101,13 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
                    )
                    select name, depth from up
                  ) l) as location_path,
+              -- Only reviews tied to a completed booking count towards the
+              -- public score. Unverified ones are still listed, but cannot
+              -- move the number anyone compares suppliers by.
               (select count(*) from reviews rv
-                where rv.provider_id = p.id and rv.status = 'published')::int as review_count,
+                where rv.provider_id = p.id and rv.status = 'published' and rv.is_verified)::int as review_count,
               (select round(avg(rv.rating_overall), 1) from reviews rv
-                where rv.provider_id = p.id and rv.status = 'published') as rating_average
+                where rv.provider_id = p.id and rv.status = 'published' and rv.is_verified) as rating_average
          from providers p
          join categories cat on cat.id = p.category_id
         where p.slug = $1`,
@@ -188,10 +197,15 @@ export async function planningContext(providerId: string): Promise<PlanningConte
   })
 }
 
-/** The next N days for each bookable space, for the profile calendar (§9). */
+/** The next N days for each bookable space, for the profile calendar (§9).
+ *
+ *  Days are Luanda days. Both the start date and each day's bounds used to
+ *  come from the server's clock and the database session's time zone
+ *  (UTC), so between 00:00 and 01:00 in Luanda the calendar showed
+ *  yesterday, and each day's window was an hour off from /procurar's. */
 export async function availability(
   providerId: string,
-  from: Date,
+  fromDate: string,
   days: number,
 ): Promise<Array<{ resourceId: string; date: string; free: boolean }>> {
   return asVisitor(async (c) => {
@@ -200,14 +214,15 @@ export async function availability(
               to_char(d.day, 'YYYY-MM-DD') as date,
               resource_is_free(
                 r.id,
-                d.day::timestamptz,
-                (d.day + interval '1 day' - interval '1 second')::timestamptz
+                (d.day::timestamp at time zone 'Africa/Luanda'),
+                ((d.day + 1)::timestamp at time zone 'Africa/Luanda') - interval '1 second'
               ) as free
          from resources r
-         cross join generate_series($2::date, $2::date + ($3::int - 1), interval '1 day') as d(day)
+         cross join generate_series($2::date, $2::date + ($3::int - 1), interval '1 day') as g(day_ts)
+         cross join lateral (select g.day_ts::date as day) d
         where r.provider_id = $1 and r.is_active
-        order by r.sort_order, d.day`,
-      [providerId, from.toISOString().slice(0, 10), days],
+        order by r.sort_order, r.name, d.day`,
+      [providerId, fromDate, days],
     )
     return rows.map((r) => ({ resourceId: r.resource_id, date: r.date, free: r.free }))
   })
@@ -227,6 +242,21 @@ export async function recordProviderView(
       providerId,
     ]),
   )
+}
+
+/** A published, verified supplier's contact numbers, or null when the
+ *  supplier is not public. RLS (providers_public_read) does the "is it
+ *  public" part, so an unpublished id reads as no row. */
+export async function publicContact(
+  providerId: string,
+): Promise<{ phone: string | null; whatsapp: string | null } | null> {
+  return asVisitor(async (c) => {
+    const { rows } = await c.query<{ phone: string | null; whatsapp: string | null }>(
+      `select phone, whatsapp from providers where id = $1`,
+      [providerId],
+    )
+    return rows[0] ?? null
+  })
 }
 
 /** Contact reveals are the §32 leakage numerator. In v1 contacts stay

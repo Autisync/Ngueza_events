@@ -5,6 +5,7 @@ import 'server-only'
 import { z } from 'zod'
 import { asUser, isAlreadyExists } from '@/lib/db'
 import { parseMajor } from '@/lib/money'
+import { normalizePhone } from '@/lib/safe'
 
 /**
  * Supplier onboarding (§7, §13, §25).
@@ -21,14 +22,27 @@ import { parseMajor } from '@/lib/money'
 // constraint exactly — the database refuses a bad combination either way,
 // but a form should say which field is wrong rather than surfacing 23514.
 // ---------------------------------------------------------------------
+// Stored as E.164 (+244…), so the WhatsApp button and tel: links work no
+// matter how the supplier typed it. A local "923 456 789" used to become
+// wa.me/923456789 — country code 92, Pakistan.
+const phoneField = z.string().trim().max(40).optional().transform((v, ctx) => {
+  if (!v) return undefined
+  const e164 = normalizePhone(v)
+  if (!e164) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'número de telefone inválido' })
+    return z.NEVER
+  }
+  return e164
+})
+
 export const providerInput = z.object({
   name: z.string().trim().min(3).max(120),
   description: z.string().trim().max(2000).optional(),
   categoryId: z.string().uuid(),
   locationId: z.string().uuid(),
   addressLine: z.string().trim().max(200).optional(),
-  phone: z.string().trim().max(40).optional(),
-  whatsapp: z.string().trim().max(40).optional(),
+  phone: phoneField,
+  whatsapp: phoneField,
   website: z.string().trim().url().max(200).optional().or(z.literal('')),
   yearsActiveDeclared: z.coerce.number().int().min(0).max(120).optional(),
 })
@@ -41,7 +55,9 @@ export const resourceInput = z.object({
 
 const kwanza = z.string().trim().min(1).transform((v, ctx) => {
   try {
-    return parseMajor(v)
+    const minor = parseMajor(v)
+    if (minor < 0n) throw new Error('negative')
+    return minor
   } catch {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'valor inválido' })
     return z.NEVER
@@ -57,8 +73,8 @@ export const serviceInput = z
     price: kwanza.optional(),
     priceMax: kwanza.optional(),
     priceUnit: z.enum(['event', 'hour', 'day', 'person']).default('event'),
-    minCapacity: z.coerce.number().int().positive().optional(),
-    maxCapacity: z.coerce.number().int().positive().optional(),
+    minCapacity: z.coerce.number().int().positive().max(100000).optional(),
+    maxCapacity: z.coerce.number().int().positive().max(100000).optional(),
   })
   .superRefine((v, ctx) => {
     const needsPrice = v.priceMode !== 'on_request'
@@ -197,12 +213,38 @@ export async function addResource(
   )
 }
 
-export async function removeResource(ownerId: string, resourceId: string): Promise<void> {
-  // Soft: a resource with history cannot vanish from bookings that
-  // reference it, and `on delete restrict` would refuse anyway.
+export async function updateResource(
+  ownerId: string,
+  providerId: string,
+  resourceId: string,
+  input: z.infer<typeof resourceInput>,
+): Promise<void> {
   await asUser(ownerId, (c) =>
-    c.query(`update resources set is_active = false where id = $1`, [resourceId]),
+    c.query(
+      `update resources set name = $3, capacity = $4 where id = $1 and provider_id = $2`,
+      [resourceId, providerId, input.name, input.capacity ?? null],
+    ),
   )
+}
+
+/** Soft: a resource with history cannot vanish from bookings that
+ *  reference it, and `on delete restrict` would refuse anyway. A venue
+ *  keeps at least one active space — without one it cannot be booked. */
+export async function removeResource(
+  ownerId: string, providerId: string, resourceId: string,
+): Promise<'removed' | 'last_resource'> {
+  return asUser(ownerId, async (c) => {
+    const { rows } = await c.query<{ n: number }>(
+      `select count(*)::int as n from resources where provider_id = $1 and is_active`,
+      [providerId],
+    )
+    if ((rows[0]?.n ?? 0) <= 1) return 'last_resource'
+    await c.query(
+      `update resources set is_active = false where id = $1 and provider_id = $2`,
+      [resourceId, providerId],
+    )
+    return 'removed'
+  })
 }
 
 export async function addService(
@@ -268,9 +310,12 @@ export async function submitForVerification(
     )
     if (Number(rows[0]?.n ?? '0') === 0) return 'no_documents'
 
+    // A rejected supplier re-queues the same way; the old reason is
+    // cleared so the next reviewer reads the listing fresh (the audit log
+    // keeps it).
     await c.query(
-      `update providers set verification_status = 'pending'
-        where id = $1 and verification_status = 'unverified'`,
+      `update providers set verification_status = 'pending', rejection_reason = null
+        where id = $1 and verification_status in ('unverified', 'rejected')`,
       [providerId],
     )
     return 'submitted'

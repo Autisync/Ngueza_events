@@ -66,7 +66,7 @@ export default async function Categorias({
           <h2>Árvore de categorias</h2>
           <p className={styles.note}>
             O tipo de fornecedor decide como funciona a agenda: «espaço» reserva a data inteira,
-            «serviço» pode atender vários clientes no mesmo dia (§44).
+            «serviço» pode atender vários clientes no mesmo dia.
           </p>
           {ordered.map(({ node, depth }) => (
             <div key={node.id} className={styles.item} style={{ paddingLeft: 14 + depth * 20 }}>

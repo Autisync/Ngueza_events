@@ -38,6 +38,11 @@ const NEXT_STEPS: Partial<Record<BookingStatus, Array<{ to: BookingStatus; label
     { to: 'no_show', label: 'Cliente não compareceu', tone: 'no' },
     { to: 'cancelled_provider', label: 'Cancelar', tone: 'no' },
   ],
+  // A manual block (§27) used to be permanent: nothing offered the one
+  // transition spec/states.md allows out of it.
+  blocked: [
+    { to: 'cancelled_provider', label: 'Desbloquear data', tone: 'no' },
+  ],
 }
 
 export default async function ReservaFornecedor({
@@ -56,9 +61,15 @@ export default async function ReservaFornecedor({
   const [booking, flags] = await Promise.all([bookingDetail(profile.id, bookingId), searchParams])
   if (!booking || booking.providerId !== providerId) notFound()
 
-  const steps = NEXT_STEPS[booking.status] ?? []
-  const showEntitlement = steps.length > 0
-    || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+  // 'Concluída' and 'não compareceu' only make sense once the event has
+  // started; the database refuses completion before it ends (0031).
+  const started = new Date(booking.startsAt) <= new Date()
+  const ended = new Date(booking.endsAt) <= new Date()
+  const steps = (NEXT_STEPS[booking.status] ?? []).filter((step) =>
+    step.to === 'completed' ? ended : step.to === 'no_show' ? started : true,
+  )
+  const showEntitlement = booking.status !== 'blocked'
+    && (steps.length > 0 || booking.status === 'cancelled_client')
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
 
   return (
@@ -102,7 +113,7 @@ export default async function ReservaFornecedor({
         {entitlement ? (
           <div className={styles.card}>
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>
-              {entitlement.isFinal ? 'Reembolso devido ao cliente' : 'Se cancelar hoje'}
+              {entitlement.isFinal ? 'Reembolso devido ao cliente' : 'Se o cliente cancelar hoje'}
             </h2>
             <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
               Segundo a política «{entitlement.policyName}». O reembolso em si é combinado

@@ -146,7 +146,15 @@ export async function refundEntitlement(actorId: string, bookingId: string): Pro
     const booking = rows[0]
     if (!booking || !booking.policy_snapshot) return null
 
-    const isCancelled = booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+    // The tiers describe what a CLIENT gets back for cancelling with N
+    // days' notice. They say nothing about a supplier cancelling, and
+    // applying them there told clients they were owed 0% when the
+    // supplier walked away. What a supplier owes on their own
+    // cancellation is a policy NGUEZA has to set; until it does, there is
+    // no number to show.
+    if (booking.status === 'cancelled_provider') return null
+
+    const isCancelled = booking.status === 'cancelled_client'
     let decidedAt: string | null = null
 
     if (isCancelled) {

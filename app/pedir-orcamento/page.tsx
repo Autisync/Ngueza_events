@@ -4,6 +4,7 @@ import { currentProfile } from '@/lib/auth'
 import { formOptions } from '@/lib/painel'
 import { doPostQuoteRequest } from '../quote-actions'
 import styles from '../painel/painel.module.css'
+import { todayInLuanda, uuidOrUndefined } from '@/lib/safe'
 
 export const metadata: Metadata = { title: 'Pedir orçamento', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -12,16 +13,21 @@ const ERRORS: Record<string, string> = {
   categoryId: 'Escolha uma categoria.',
   locationId: 'Escolha o município.',
   description: 'Descreva o que precisa, em pelo menos 10 caracteres.',
+  eventDate: 'Escolha uma data a partir de hoje.',
   dados: 'Verifique os dados introduzidos.',
 }
 
 export default async function PedirOrcamento({
   searchParams,
-}: { searchParams: Promise<{ erro?: string }> }) {
+}: { searchParams: Promise<{ erro?: string; categoria?: string }> }) {
   const profile = await currentProfile()
-  if (!profile) redirect('/entrar?next=/pedir-orcamento')
+  const { erro, categoria } = await searchParams
+  const preset = uuidOrUndefined(categoria)
+  if (!profile) {
+    redirect(`/entrar?next=${encodeURIComponent(preset ? `/pedir-orcamento?categoria=${preset}` : '/pedir-orcamento')}`)
+  }
 
-  const [{ categories, locations }, { erro }] = await Promise.all([formOptions(), searchParams])
+  const { categories, locations } = await formOptions()
 
   return (
     <main>
@@ -46,7 +52,8 @@ export default async function PedirOrcamento({
             <div className={styles.two}>
               <label className={styles.field}>
                 <span className={styles.label}>Categoria</span>
-                <select className={styles.select} name="categoryId" required defaultValue="">
+                <select className={styles.select} name="categoryId" required
+                        defaultValue={preset && categories.some((c) => c.id === preset) ? preset : ''}>
                   <option value="" disabled>Escolha…</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -70,7 +77,7 @@ export default async function PedirOrcamento({
                 <span className={styles.label}>
                   Data do evento <span className={styles.hint}>(opcional)</span>
                 </span>
-                <input className={styles.input} name="eventDate" type="date" />
+                <input className={styles.input} name="eventDate" type="date" min={todayInLuanda()} />
               </label>
               <label className={styles.field}>
                 <span className={styles.label}>

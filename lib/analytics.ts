@@ -89,8 +89,10 @@ export async function dashboardMetrics(adminId: string): Promise<DashboardMetric
          select date_trunc('month', now() at time zone 'Africa/Luanda') at time zone 'Africa/Luanda' as month_start
        )
        select
-         count(*)::text as requested,
-         count(*) filter (where status in ('awaiting_payment','confirmed','completed'))::text as confirmed_since
+         -- Manual blocks are not requests, and 'awaiting_payment' is not
+         -- paid: the KPI is labelled "já pagos".
+         count(*) filter (where status <> 'blocked')::text as requested,
+         count(*) filter (where status in ('confirmed','completed'))::text as confirmed_since
        from bookings, bounds
        where created_at >= month_start`,
     )

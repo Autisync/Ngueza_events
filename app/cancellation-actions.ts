@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { isUuid } from '@/lib/safe'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { setOwnPolicy } from '@/lib/cancellation-policy'
@@ -27,6 +28,7 @@ const str = (f: FormData, k: string) => {
 export async function doSetCancellationPolicy(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const name = str(formData, 'name') ?? 'Política própria'
   const notes = str(formData, 'notes')
 

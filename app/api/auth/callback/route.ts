@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { storeSession, verifyAccessToken } from '@/lib/auth'
+import { isSameOriginRequest } from '@/lib/safe'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,9 @@ export const dynamic = 'force-dynamic'
  * hands it over, so it is not trusted just because it arrived.
  */
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isSameOriginRequest(request) || !request.headers.get('content-type')?.includes('application/json')) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
   const body = await request.json().catch(() => null)
   const accessToken = typeof body?.accessToken === 'string' ? body.accessToken : ''
   const refreshToken = typeof body?.refreshToken === 'string' ? body.refreshToken : ''

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { safeNext } from '@/lib/safe'
 import { GoogleCallback } from './GoogleCallback'
 import styles from '../../auth.module.css'
 
@@ -9,7 +10,7 @@ export default async function GoogleAuth({
   searchParams,
 }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams
-  const target = next?.startsWith('/') ? next : '/conta'
+  const target = safeNext(next)
 
   return (
     <main className={styles.page}>

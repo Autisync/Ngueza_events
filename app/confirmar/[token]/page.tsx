@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { confirm } from '@/lib/newsletter'
+import { doConfirmNewsletter } from '@/app/actions'
 import styles from '../../shared.module.css'
 
 export const metadata: Metadata = {
@@ -10,13 +10,29 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 /**
- * Idempotent by design: opening this link a second time succeeds and shows
- * the same page, rather than writing a duplicate consent event or erroring
- * at someone who simply clicked twice.
+ * Opening the link shows a button; pressing it confirms (doConfirmNewsletter).
+ * Still idempotent: confirming twice shows the same page.
  */
-export default async function Confirmar({ params }: { params: Promise<{ token: string }> }) {
+export default async function Confirmar({
+  params, searchParams,
+}: { params: Promise<{ token: string }>; searchParams: Promise<{ r?: string }> }) {
   const { token } = await params
-  const result = await confirm(token)
+  const { r } = await searchParams
+  const result = r === 'confirmed' || r === 'unknown' ? r : null
+
+  if (result === null) {
+    return (
+      <main className={styles.page}>
+        <p className={styles.mark}>NGUEZA</p>
+        <h1 className={styles.title}>Confirmar o seu email</h1>
+        <p className={styles.body}>Carregue no botão para confirmar a inscrição na lista da NGUEZA.</p>
+        <form action={doConfirmNewsletter}>
+          <input type="hidden" name="token" value={token} />
+          <button className={styles.button} type="submit">Confirmar email</button>
+        </form>
+      </main>
+    )
+  }
 
   if (result === 'unknown') {
     return (
