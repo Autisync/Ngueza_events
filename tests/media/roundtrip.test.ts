@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { imgproxyUrl, presignGet, presignPut } from '@/lib/media'
+import { imgproxyUrl, presignDelete, presignGet, presignPut } from '@/lib/media'
 
 /**
  * The media stack, end to end, against real MinIO and real imgproxy.
@@ -98,6 +98,36 @@ describe('media round-trip', () => {
       method: 'PUT', headers: { 'content-type': 'text/html' }, body: '<script>x</script>',
     })
     expect(response.ok).toBe(false)
+  })
+})
+
+describe('size-bound uploads and removal (slice 27)', () => {
+  const sizedKey = `test/sized-${Date.now()}.png`
+
+  it('accepts a body of exactly the signed length', async () => {
+    const url = presignPut({
+      ...CFG, objectKey: sizedKey, contentType: 'image/png',
+      contentLength: source.length, expiresInSeconds: 300,
+    })
+    const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'image/png' }, body: source })
+    expect(r.ok).toBe(true)
+  })
+
+  it('refuses a body larger than the signed length — the size limit is real', async () => {
+    const url = presignPut({
+      ...CFG, objectKey: `test/oversized-${Date.now()}.png`, contentType: 'image/png',
+      contentLength: 1000, expiresInSeconds: 300,
+    })
+    const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'image/png' }, body: source })
+    expect(r.ok).toBe(false)
+  })
+
+  it('deletes a removed photo, so its public address stops answering', async () => {
+    const naked = `${CFG.endpoint}/${CFG.bucket}/${sizedKey}`
+    expect((await fetch(naked)).status).toBe(200)
+    const del = await fetch(presignDelete({ ...CFG, objectKey: sizedKey, expiresInSeconds: 60 }), { method: 'DELETE' })
+    expect(del.ok).toBe(true)
+    expect((await fetch(naked)).ok).toBe(false)
   })
 })
 

@@ -42,8 +42,13 @@ export interface PresignedUpload {
 }
 
 export interface MediaStore {
-  presignUpload(input: { contentType: string; providerId: string }): Promise<PresignedUpload>
+  /** byteSize, when given, is signed into the URL: storage refuses a
+   *  body of any other length, so the size limit checked on the way in
+   *  is the size that actually lands. */
+  presignUpload(input: { contentType: string; providerId: string; byteSize?: number }): Promise<PresignedUpload>
   url(objectId: string, variant: Variant): string
+  /** Removes the original from storage. Best effort: false on failure. */
+  deleteObject(objectId: string): Promise<boolean>
 }
 
 /** Identity papers arrive as a photo or a scan. */
@@ -118,10 +123,28 @@ export function presignPut(opts: {
   accessKeyId: string
   secretAccessKey: string
   contentType: string
+  /** Signed as content-length, so a different-sized body is refused. */
+  contentLength?: number
   expiresInSeconds: number
   now?: Date
 }): string {
   return presign({ ...opts, method: 'PUT' })
+}
+
+/** A short-lived DELETE URL, used server-side when a supplier removes a
+ *  photograph — the media bucket is anonymously readable, so a removed
+ *  photo must not stay reachable at its old address. */
+export function presignDelete(opts: {
+  endpoint: string
+  bucket: string
+  objectKey: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  expiresInSeconds: number
+  now?: Date
+}): string {
+  return presign({ ...opts, method: 'DELETE' })
 }
 
 /**
@@ -152,8 +175,9 @@ function presign(opts: {
   accessKeyId: string
   secretAccessKey: string
   contentType?: string
+  contentLength?: number
   expiresInSeconds: number
-  method: 'PUT' | 'GET'
+  method: 'PUT' | 'GET' | 'DELETE'
   now?: Date
 }): string {
   const now = opts.now ?? new Date()
@@ -170,9 +194,17 @@ function presign(opts: {
   const scope = `${dateStamp}/${opts.region}/s3/aws4_request`
   const host = url.host
 
-  // GET has no body, so there is no content-type to bind. PUT signs it,
-  // which is what stops a .png upload URL being used to store HTML.
-  const signedHeaders = opts.method === 'PUT' ? 'content-type;host' : 'host'
+  // GET and DELETE have no body, so there is no content-type to bind. PUT
+  // signs it, which is what stops a .png upload URL being used to store
+  // HTML — and, when a length is given, signs that too, which is what
+  // makes a size limit real rather than a promise the browser made.
+  const signLength = opts.method === 'PUT' && opts.contentLength !== undefined
+  if (signLength && !(Number.isInteger(opts.contentLength) && opts.contentLength! > 0)) {
+    throw new Error('contentLength must be a positive integer')
+  }
+  const signedHeaders = opts.method === 'PUT'
+    ? (signLength ? 'content-length;content-type;host' : 'content-type;host')
+    : 'host'
 
   const query = new URLSearchParams({
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -188,7 +220,7 @@ function presign(opts: {
     .join('&')
 
   const canonicalHeaders = opts.method === 'PUT'
-    ? `content-type:${opts.contentType}\nhost:${host}\n`
+    ? `${signLength ? `content-length:${opts.contentLength}\n` : ''}content-type:${opts.contentType}\nhost:${host}\n`
     : `host:${host}\n`
 
   const canonicalRequest = [
@@ -232,9 +264,12 @@ class MinioImgproxyStore implements MediaStore {
     },
   ) {}
 
-  async presignUpload(input: { contentType: string; providerId: string }): Promise<PresignedUpload> {
+  async presignUpload(input: { contentType: string; providerId: string; byteSize?: number }): Promise<PresignedUpload> {
     if (!ALLOWED_IMAGE_TYPES.has(input.contentType)) {
       throw new Error(`unsupported image type: ${input.contentType}`)
+    }
+    if (input.byteSize !== undefined && input.byteSize > MAX_UPLOAD_BYTES) {
+      throw new Error(`image larger than ${MAX_UPLOAD_BYTES} bytes`)
     }
     // Sharded by provider so a listing's media is easy to find and remove.
     const objectId = `${input.providerId}/${randomUUID()}`
@@ -249,12 +284,33 @@ class MinioImgproxyStore implements MediaStore {
         accessKeyId: this.cfg.accessKeyId,
         secretAccessKey: this.cfg.secretAccessKey,
         contentType: input.contentType,
+        contentLength: input.byteSize,
         expiresInSeconds,
       }),
       objectId,
       method: 'PUT',
       headers: { 'content-type': input.contentType },
       expiresInSeconds,
+    }
+  }
+
+  async deleteObject(objectId: string): Promise<boolean> {
+    // Server to storage over the internal endpoint: no image bytes pass
+    // through the app, only the request to forget them.
+    const url = presignDelete({
+      endpoint: this.cfg.s3Endpoint,
+      bucket: this.cfg.bucket,
+      objectKey: objectId,
+      region: this.cfg.region,
+      accessKeyId: this.cfg.accessKeyId,
+      secretAccessKey: this.cfg.secretAccessKey,
+      expiresInSeconds: 60,
+    })
+    try {
+      const response = await fetch(url, { method: 'DELETE', signal: AbortSignal.timeout(5000) })
+      return response.ok || response.status === 404
+    } catch {
+      return false
     }
   }
 
@@ -334,7 +390,7 @@ export interface DocumentStore {
   // (§25), a booking for proof of payment (§28). Whatever it is, the
   // caller must have already checked the signed-in user owns it; this
   // store only ever prefixes a key, it never authorises anything.
-  presignUpload(input: { contentType: string; keyPrefix: string }): Promise<PresignedUpload>
+  presignUpload(input: { contentType: string; keyPrefix: string; byteSize?: number }): Promise<PresignedUpload>
   /** Short-lived read URL, for an administrator reviewing paperwork. */
   presignRead(objectId: string, expiresInSeconds?: number): string
 }
@@ -350,9 +406,12 @@ class MinioDocumentStore implements DocumentStore {
     },
   ) {}
 
-  async presignUpload(input: { contentType: string; keyPrefix: string }): Promise<PresignedUpload> {
+  async presignUpload(input: { contentType: string; keyPrefix: string; byteSize?: number }): Promise<PresignedUpload> {
     if (!ALLOWED_DOCUMENT_TYPES.has(input.contentType)) {
       throw new Error(`unsupported document type: ${input.contentType}`)
+    }
+    if (input.byteSize !== undefined && input.byteSize > MAX_DOCUMENT_BYTES) {
+      throw new Error(`document larger than ${MAX_DOCUMENT_BYTES} bytes`)
     }
     const objectId = `${input.keyPrefix}/${randomUUID()}`
     const expiresInSeconds = 300
@@ -365,6 +424,7 @@ class MinioDocumentStore implements DocumentStore {
         accessKeyId: this.cfg.accessKeyId,
         secretAccessKey: this.cfg.secretAccessKey,
         contentType: input.contentType,
+        contentLength: input.byteSize,
         expiresInSeconds,
       }),
       objectId,

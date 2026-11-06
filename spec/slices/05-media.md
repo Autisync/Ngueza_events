@@ -1,6 +1,6 @@
 # Slice 05 — media pipeline
 
-**Status:** infrastructure done and proven; the upload UI waits on auth.
+**Status:** done. Infrastructure here; the supplier upload UI in slice 27.
 **Ownership:** agent + review.
 
 ## Departure from the plan
@@ -53,10 +53,11 @@ cards for about 15 KB of imagery.
 in CI too, since signing is either exactly right or completely broken and
 unit tests alone cannot tell the difference.
 
-## Waiting on auth
+## Supplier upload UI
 
-The supplier-facing upload UI: request a presigned URL, PUT from the
-browser, record the id in `media`, reorder, set a cover, delete.
+Built in slice 27 (`spec/slices/27-photo-manager.md`): request a presigned
+URL, PUT from the browser, record the id in `media`, reorder, set a cover,
+delete.
 
 ## Operating notes
 
