@@ -17,7 +17,7 @@ import { isUuid } from '@/lib/safe'
 export type BookingStatus =
   | 'requested' | 'accepted' | 'awaiting_payment' | 'confirmed' | 'completed'
   | 'expired' | 'rejected' | 'cancelled_client' | 'cancelled_provider'
-  | 'no_show' | 'blocked'
+  | 'no_show' | 'blocked' | 'unavailable'
 
 export interface BookingRequest {
   providerId: string
@@ -263,6 +263,7 @@ export async function providerBookings(
   return asUser(ownerId, async (c) => {
     const { rows } = await c.query<any>(
       `select b.*, p.name as provider_name, p.slug as provider_slug,
+              p.category_id as provider_category_id, p.location_id as provider_location_id,
               pr.full_name as client_name, pr.email as client_email
          from bookings b
          join providers p on p.id = b.provider_id
@@ -284,6 +285,9 @@ export interface BookingDetail extends BookingSummary {
   serviceName: string | null
   notes: string | null
   policySnapshot: Record<string, unknown> | null
+  /** For "find another on the same date" when a date is lost (0033). */
+  providerCategoryId: string
+  providerLocationId: string
   history: Array<{ fromStatus: string | null; toStatus: string; createdAt: string }>
 }
 
@@ -319,6 +323,7 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       resourceId: row.resource_id, resourceName: row.resource_name,
       serviceId: row.service_id, serviceName: row.service_name,
       notes: row.notes, policySnapshot: row.policy_snapshot,
+      providerCategoryId: row.provider_category_id, providerLocationId: row.provider_location_id,
       history: history.rows.map((h) => ({
         fromStatus: h.from_status, toStatus: h.to_status, createdAt: h.created_at,
       })),

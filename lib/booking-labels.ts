@@ -13,12 +13,13 @@ export const STATUS_LABEL: Record<BookingStatus, string> = {
   completed: 'Concluída', expired: 'Expirou', rejected: 'Rejeitada',
   cancelled_client: 'Cancelada pelo cliente', cancelled_provider: 'Cancelada pelo fornecedor',
   no_show: 'Não compareceu', blocked: 'Bloqueada',
+  unavailable: 'Data indisponível',
 }
 
 export const STATUS_CLASS: Record<BookingStatus, 'wait' | 'ok' | 'bad' | 'off'> = {
   requested: 'wait', accepted: 'wait', awaiting_payment: 'wait', confirmed: 'ok',
   completed: 'ok', expired: 'off', rejected: 'bad', cancelled_client: 'off',
-  cancelled_provider: 'off', no_show: 'bad', blocked: 'off',
+  cancelled_provider: 'off', no_show: 'bad', blocked: 'off', unavailable: 'off',
 }
 
 export function formatWhen(iso: string): string {

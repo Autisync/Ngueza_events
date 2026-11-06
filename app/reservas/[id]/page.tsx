@@ -15,6 +15,8 @@ import { doClientCancel } from '@/app/booking-actions'
 import { doLeaveReview } from '@/app/review-actions'
 import { PaymentProofUpload } from './PaymentProofUpload'
 import styles from '../reservas.module.css'
+import shared from '@/app/shared.module.css'
+import { todayInLuanda } from '@/lib/safe'
 
 export const metadata: Metadata = { title: 'A minha reserva', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -154,6 +156,24 @@ export default async function ReservaDetalhe({
                 <PaymentProofUpload bookingId={booking.id} />
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {booking.status === 'unavailable' ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Esta data foi reservada por outro cliente</h2>
+            <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              O seu pedido foi encerrado e não tem nada a pagar. Veja o que ainda está livre
+              nesse dia, na mesma zona.
+            </p>
+            <a className={shared.button} style={{ display: 'inline-block', textDecoration: 'none' }} href={`/procurar?${new URLSearchParams({
+              data: todayInLuanda(new Date(booking.startsAt)),
+              zona: booking.providerLocationId,
+              categoria: booking.providerCategoryId,
+              ...(booking.partySize ? { pessoas: String(booking.partySize) } : {}),
+            }).toString()}`}>
+              Ver espaços livres nesse dia
+            </a>
           </div>
         ) : null}
 
