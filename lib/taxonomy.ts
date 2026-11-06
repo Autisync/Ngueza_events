@@ -24,7 +24,7 @@ import { asUser, isAlreadyExists, isCheckViolation } from '@/lib/db'
 const slugPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 export const categoryInput = z.object({
-  parentId: z.string().uuid().nullable(),
+  parentId: z.guid().nullable(),
   slug: z.string().trim().toLowerCase().min(2).max(60).regex(slugPattern,
     'letras minúsculas, números e hífens'),
   name: z.string().trim().min(2).max(80),
@@ -36,7 +36,7 @@ export const categoryInput = z.object({
 export type CategoryInput = z.infer<typeof categoryInput>
 
 export const locationInput = z.object({
-  parentId: z.string().uuid().nullable(),
+  parentId: z.guid().nullable(),
   level: z.enum(['country', 'province', 'municipality', 'district']),
   slug: z.string().trim().toLowerCase().min(2).max(60).regex(slugPattern,
     'letras minúsculas, números e hífens'),

@@ -30,7 +30,7 @@ export async function doRegisterBusiness(formData: FormData): Promise<void> {
     yearsActiveDeclared: str(formData, 'yearsActiveDeclared'),
   })
   if (!parsed.success) {
-    redirect(`/registar-negocio?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/registar-negocio?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
 
   const result = await createProvider(profile.id, parsed.data)
@@ -54,7 +54,7 @@ export async function doUpdateBusiness(formData: FormData): Promise<void> {
     yearsActiveDeclared: str(formData, 'yearsActiveDeclared'),
   })
   if (!parsed.success) {
-    redirect(`/painel/${providerId}?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/painel/${providerId}?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   await updateProvider(profile.id, providerId, parsed.data)
   redirect(`/painel/${providerId}?guardado=1`)
@@ -76,7 +76,7 @@ export async function doAddService(formData: FormData): Promise<void> {
     maxCapacity: str(formData, 'maxCapacity'),
   })
   if (!parsed.success) {
-    redirect(`/painel/${providerId}?erro=servico_${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   await addService(profile.id, providerId, parsed.data)
   redirect(`/painel/${providerId}?guardado=1#servicos`)
