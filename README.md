@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 31 migrations from empty · 289 tests · 56 database assertions |
+| Verified | 31 migrations from empty · 293 tests · 56 database assertions |
 
 ### Done
 
@@ -52,6 +52,7 @@ make contact.
 | 24 | The real homepage at `/`, replacing the pre-launch waitlist once there was enough live, verified supply to show instead of promise |
 | 25 | Free-text "Outro" on the waitlist's category/zone fields, entrance and selection animation, and `/admin/lista-de-espera` — the read-only admin view of who asked for what, so recruitment and a future campaign know where to go; see `spec/slices/25-waitlist-admin-and-other.md` |
 | 26 | Competitive-review fixes — 53 verified defects: a stored XSS, open redirects and on-domain scam text, fakeable verified reviews, paid dates that could expire, rewritable booking terms, 500s on mistyped links; see `spec/slices/26-review-fixes.md` |
+| 29 | Services edited in place — every field prefilled, "O que inclui" descriptions shown on the supplier page, errors next to the service being edited; see `spec/slices/29-edit-services.md` |
 
 ### Infrastructure
 

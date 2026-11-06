@@ -65,13 +65,15 @@ function toOwned(p: any): OwnedProvider {
 export interface OwnedService {
   id: string; name: string; price: Price; priceUnit: string
   minCapacity: number | null; maxCapacity: number | null
+  description: string | null
+  categoryId: string
 }
 
 export async function ownedServices(ownerId: string, providerId: string): Promise<OwnedService[]> {
   return asUser(ownerId, async (c) => {
     const { rows } = await c.query<any>(
-      `select id, name, price_mode, price_minor, price_max_minor, price_unit,
-              min_capacity, max_capacity
+      `select id, name, description, category_id, price_mode, price_minor, price_max_minor,
+              price_unit, min_capacity, max_capacity
          from services where provider_id = $1 and is_active
         order by (price_mode <> 'on_request') desc, price_minor asc nulls last`,
       [providerId],
@@ -79,6 +81,7 @@ export async function ownedServices(ownerId: string, providerId: string): Promis
     return rows.map((s) => ({
       id: s.id, name: s.name, priceUnit: s.price_unit,
       minCapacity: s.min_capacity, maxCapacity: s.max_capacity,
+      description: s.description, categoryId: s.category_id,
       price:
         s.price_mode === 'on_request'
           ? { mode: 'on_request' as const }

@@ -269,6 +269,38 @@ export async function addService(
   )
 }
 
+/**
+ * Edits a live service in place (slice 29). Before this a supplier could
+ * only remove a service and add it again to fix a price. Scoped to the
+ * provider as well as the id, so a form posted with another business's
+ * service id does nothing even before RLS refuses it. Existing bookings
+ * are unaffected: each carries its own total, written when it was made.
+ */
+export async function updateService(
+  ownerId: string,
+  providerId: string,
+  serviceId: string,
+  input: ServiceInput,
+): Promise<boolean> {
+  return asUser(ownerId, async (c) => {
+    const { rowCount } = await c.query(
+      `update services
+          set category_id = $3, name = $4, description = $5, price_mode = $6,
+              price_minor = $7, price_max_minor = $8, price_unit = $9,
+              min_capacity = $10, max_capacity = $11
+        where id = $1 and provider_id = $2 and is_active`,
+      [
+        serviceId, providerId, input.categoryId, input.name, input.description ?? null,
+        input.priceMode,
+        input.price === undefined ? null : input.price.toString(),
+        input.priceMax === undefined ? null : input.priceMax.toString(),
+        input.priceUnit, input.minCapacity ?? null, input.maxCapacity ?? null,
+      ],
+    )
+    return (rowCount ?? 0) > 0
+  })
+}
+
 export async function removeService(ownerId: string, serviceId: string): Promise<void> {
   await asUser(ownerId, (c) =>
     c.query(`update services set is_active = false where id = $1`, [serviceId]),

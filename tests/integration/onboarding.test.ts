@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { asSystem, asUser } from '@/lib/db'
 import {
   addResource, addService, createProvider, recordDocument,
-  removeService, serviceInput, submitForVerification, updateProvider,
+  removeService, serviceInput, submitForVerification, updateProvider, updateService,
 } from '@/lib/onboarding'
 
 /**
@@ -322,5 +322,69 @@ describe('resources', () => {
     })
     expect(rows.map((r) => r.name)).toEqual(['Espaço principal', 'Jardim'])
     expect(rows.find((r) => r.name === 'Jardim')?.capacity).toBe(400)
+  })
+})
+
+describe('editing a service in place (slice 29)', () => {
+  async function withService() {
+    const created = await createProvider(NEWCOMER, { name: 'Salão Edição', categoryId: SALOES, locationId: TALATONA })
+    if (!created.ok) throw new Error('create failed')
+    await addService(NEWCOMER, created.providerId,
+      serviceInput.parse({ name: 'Dia inteiro', categoryId: SALOES, priceMode: 'exact', price: '180.000' }))
+    const serviceId = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(`select id from services where provider_id = $1`, [created.providerId])
+      return rows[0]!.id
+    })
+    return { providerId: created.providerId, serviceId }
+  }
+  const row = (id: string) => asSystem(async (c) => {
+    const { rows } = await c.query(`select * from services where id = $1`, [id])
+    return rows[0]
+  })
+
+  it('changes price, mode, unit and description without creating a new service', async () => {
+    const { providerId, serviceId } = await withService()
+    const ok = await updateService(NEWCOMER, providerId, serviceId, serviceInput.parse({
+      name: 'Dia inteiro (sábado)', categoryId: SALOES, priceMode: 'range',
+      price: '200.000', priceMax: '250.000,50', priceUnit: 'day',
+      description: 'Inclui mesas, cadeiras e limpeza.',
+    }))
+    expect(ok).toBe(true)
+    const r = await row(serviceId)
+    expect(r.name).toBe('Dia inteiro (sábado)')
+    expect(r.price_mode).toBe('range')
+    expect(r.price_minor).toBe('20000000')
+    expect(r.price_max_minor).toBe('25000050')
+    expect(r.price_unit).toBe('day')
+    expect(r.description).toBe('Inclui mesas, cadeiras e limpeza.')
+    const count = await asSystem(async (c) =>
+      (await c.query(`select count(*)::int as n from services where provider_id = $1`, [providerId])).rows[0].n)
+    expect(count).toBe(1)
+  })
+
+  it('clears the price when switched to sob consulta', async () => {
+    const { providerId, serviceId } = await withService()
+    await updateService(NEWCOMER, providerId, serviceId,
+      serviceInput.parse({ name: 'Dia inteiro', categoryId: SALOES, priceMode: 'on_request' }))
+    const r = await row(serviceId)
+    expect(r.price_mode).toBe('on_request')
+    expect(r.price_minor).toBeNull()
+  })
+
+  it('does nothing to another supplier\'s service, or to one posted under the wrong business', async () => {
+    const { providerId, serviceId } = await withService()
+    const input = serviceInput.parse({ name: 'Roubado', categoryId: SALOES, priceMode: 'exact', price: '1' })
+    expect(await updateService(OTHER, providerId, serviceId, input)).toBe(false)
+    const other = await createProvider(OTHER, { name: 'Salão Vizinho', categoryId: SALOES, locationId: TALATONA })
+    if (!other.ok) throw new Error('create failed')
+    expect(await updateService(OTHER, other.providerId, serviceId, input)).toBe(false)
+    expect((await row(serviceId)).name).toBe('Dia inteiro')
+  })
+
+  it('does not edit a service that was removed', async () => {
+    const { providerId, serviceId } = await withService()
+    await removeService(NEWCOMER, serviceId)
+    expect(await updateService(NEWCOMER, providerId, serviceId,
+      serviceInput.parse({ name: 'Voltou', categoryId: SALOES, priceMode: 'on_request' }))).toBe(false)
   })
 })

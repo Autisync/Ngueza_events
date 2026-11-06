@@ -39,6 +39,8 @@
 .svcRow:last-child { border-bottom: 0; }
 .svcName { font-weight: 600; margin: 0; }
 .svcMeta { font-size: 0.84rem; color: var(--tinta-3); margin: 3px 0 0; }
+.svcDesc { font-size: 0.9rem; color: var(--tinta-2); margin: 6px 0 0; line-height: 1.45;
+           white-space: pre-line; max-width: 60ch; }
 .svcPrice { font-weight: 700; color: var(--azul-700); }
 .svcPriceQuiet { font-weight: 600; color: var(--tinta-3); }
 
