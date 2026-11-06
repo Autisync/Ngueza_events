@@ -32,8 +32,8 @@ connection. All four cases are asserted in `tests/sql/02_rls.sql`.
 "only when published", none. Owner and administrators.
 
 The files go to a **separate MinIO bucket** with `mc anonymous set none`,
-never the media bucket, which is anonymously readable so photographs load
-without a signed URL. An identity card behind that policy would be a
+never the media bucket, which imgproxy serves photographs from (and which
+was anonymously readable until slice 27). An identity card behind that policy would be a
 breach, so `wait-ready.sh` now refuses to start the stack if the
 documents bucket answers an anonymous request, and the media suite proves
 a naked GET returns 403 while a short-lived signed URL returns the file.

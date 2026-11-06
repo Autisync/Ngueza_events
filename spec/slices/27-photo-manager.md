@@ -21,19 +21,19 @@ of the supplier dashboard (it shows the count and the first thumbnails):
 - **Add** several photos at once, up to 30 per listing. The browser uploads
   straight to the media bucket with a presigned URL (§40): the app server
   never sees the bytes.
-- **Shrink on the phone first.** A photo longer than 2560px, or larger than
-  1.5 MB, is re-encoded to JPEG on the device before upload, and the smaller
-  file is kept. Delivery never serves more than 2048px, so clients see no
-  difference. The supplier sends far less over paid mobile data, and EXIF
-  (GPS included) is dropped before the file leaves the phone.
+- **Prepared on the phone.** Every photo is redrawn through a canvas and
+  re-encoded as JPEG, at most 2560px on the long side, before upload.
+  Delivery never serves more than 2048px, so clients see no difference.
+  The supplier sends far less over paid mobile data, and the canvas carries
+  pixels only: EXIF (GPS, camera serial, timestamp) never reaches storage.
 - **Make cover.** The cover is what search cards and the top of the supplier
   page show.
 - **Reorder** the rest with "← Antes" / "Depois →".
 - **Caption** each photo. The caption is the alt text and is shown on the
   gallery.
 - **Remove**, with a two-tap confirm that works without JavaScript. The
-  original is also deleted from storage, because the media bucket is
-  publicly readable and a removed photo should not stay reachable.
+  original is also deleted from storage, so a removed photo is gone rather
+  than merely unlisted.
 
 Arranging photos works without JavaScript; only uploading needs it. The
 `<noscript>` text says so plainly, as the document upload already does.
@@ -57,6 +57,26 @@ carousel are gone.
 | A row's object, owner and kind never change | `media_guard_identity` |
 | The public sees photos only of a listing it may see | `media_public_read` now uses `provider_is_public()`, so a suspended owner's photos disappear with the listing |
 
+## Photo metadata
+
+Asked during review: are photo metadata stored? The database stores none.
+`media` holds an object key, an optional caption, the order and the cover
+flag; no filename, size, camera data or location. Before this slice,
+originals could still reach storage carrying EXIF, and that storage was
+public:
+
+| Layer | Before | Now |
+|---|---|---|
+| Upload | Re-encoded only when large; a small photo went up untouched, EXIF and GPS included | Always re-encoded on the device, so no EXIF leaves the phone. If the browser cannot decode the file, the original goes up and the next two rows still cover it. |
+| Media bucket | Anonymously readable. The source path is base64 inside every imgproxy URL, so anyone could fetch the original. | Private (`mc anonymous set none`). `wait-ready.sh` refuses to continue if it answers anonymously. |
+| Delivery | imgproxy strips metadata (`IMGPROXY_STRIP_METADATA`) | Unchanged. imgproxy reads with its own credentials, so photos still load. |
+
+**Production:** restarting the media stack re-runs `minio-init`, which closes
+the existing bucket. Confirm afterwards that an anonymous GET on
+`/ngueza-media/` returns 403. Photos uploaded before this change may still
+carry EXIF in storage. They are no longer public, and imgproxy strips the
+metadata on delivery.
+
 ## Upload size is enforced by storage
 
 Presigned PUTs now sign `content-length` along with `content-type`. Storage
@@ -77,13 +97,15 @@ payment proofs (10 MB).
 - [x] The supplier page shows every photo, swipeable, with no script.
 - [x] Presign refuses: other origins (403), SVG (415), > 20 MB (413), someone else's listing (403). Recording someone else's key gets 400.
 - [x] A signed upload URL refuses a body larger than the declared size (`tests/media`, against real MinIO in CI).
+- [x] No EXIF leaves the phone; original files are not anonymously readable, and photos still load through imgproxy.
 
 ## Verified
 
 - `tests/integration/photos.test.ts` (17 tests).
 - `tests/unit/media.test.ts`: content-length and DELETE signing (+4).
-- `tests/media/roundtrip.test.ts`: sized upload, oversized refused, delete makes the public address stop answering (+3; runs in CI against real MinIO).
+- `tests/media/roundtrip.test.ts`: sized upload; oversized refused; originals not anonymously readable or listable; imgproxy still serves; delete removes the object (+5; runs in CI against real MinIO).
 - By hand, locally at 390px and desktop: add, cover, move and remove; the gallery swipe; on-device shrink (a 3.3 MB 4000×3000 PNG was sent as a 1.3 MB JPEG); the API guards above.
+- Metadata: a small JPEG carrying an EXIF block with GPS coordinates was fed to the upload component. The bytes it would PUT contained neither the EXIF header nor the coordinates.
 
 ## Not in this slice
 

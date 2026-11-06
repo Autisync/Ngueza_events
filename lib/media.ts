@@ -132,8 +132,8 @@ export function presignPut(opts: {
 }
 
 /** A short-lived DELETE URL, used server-side when a supplier removes a
- *  photograph — the media bucket is anonymously readable, so a removed
- *  photo must not stay reachable at its old address. */
+ *  photograph: a removed photo should be gone, not merely unlisted —
+ *  imgproxy would otherwise keep serving it to anyone with an old URL. */
 export function presignDelete(opts: {
   endpoint: string
   bucket: string
@@ -381,9 +381,9 @@ export function mediaStore(): MediaStore {
 // Verification documents (§25)
 //
 // A separate store from media, pointing at a separate PRIVATE bucket.
-// Keeping them apart is the whole safeguard: the media bucket is
-// anonymously readable so photographs load, and an identity card must
-// never end up behind that policy by a naming mistake.
+// Both buckets are private now (slice 27), but imgproxy is configured to
+// serve from the media bucket to anyone holding a signed URL — an identity
+// card must never end up there by a naming mistake.
 // ---------------------------------------------------------------------
 export interface DocumentStore {
   // keyPrefix scopes the object key — a provider for identity paperwork
@@ -450,8 +450,8 @@ class MinioDocumentStore implements DocumentStore {
 export function documentStore(): DocumentStore {
   const bucket = env('DOCUMENTS_BUCKET', 'ngueza-documents')
   if (bucket === env('MEDIA_BUCKET', 'ngueza-media')) {
-    // The media bucket is anonymously readable. Sharing it would publish
-    // every supplier's identity card.
+    // imgproxy serves from the media bucket. Sharing it would put every
+    // supplier's identity card one signed URL away from the public.
     throw new Error('DOCUMENTS_BUCKET must not be the same bucket as MEDIA_BUCKET')
   }
   return new MinioDocumentStore({

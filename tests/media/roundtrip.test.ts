@@ -122,12 +122,29 @@ describe('size-bound uploads and removal (slice 27)', () => {
     expect(r.ok).toBe(false)
   })
 
-  it('deletes a removed photo, so its public address stops answering', async () => {
-    const naked = `${CFG.endpoint}/${CFG.bucket}/${sizedKey}`
-    expect((await fetch(naked)).status).toBe(200)
+  // The original keeps whatever EXIF the phone wrote — GPS included.
+  // Only imgproxy's stripped derivatives may be public.
+  it('keeps originals private: no anonymous read, no listing', async () => {
+    const naked = await fetch(`${CFG.endpoint}/${CFG.bucket}/${sizedKey}`)
+    expect([401, 403]).toContain(naked.status)
+    const listing = await fetch(`${CFG.endpoint}/${CFG.bucket}/`)
+    expect(listing.ok).toBe(false)
+  })
+
+  it('still serves the photo through imgproxy, which reads with its own credentials', async () => {
+    const url = imgproxyUrl({
+      baseUrl: CFG.imgproxy, bucket: CFG.bucket, objectId: sizedKey,
+      variant: 'thumb', keyHex: CFG.key, saltHex: CFG.salt,
+    })
+    expect((await fetch(url)).status).toBe(200)
+  })
+
+  it('deletes a removed photo from storage', async () => {
+    const signedRead = () => fetch(presignGet({ ...CFG, objectKey: sizedKey, expiresInSeconds: 60 }))
+    expect((await signedRead()).status).toBe(200)
     const del = await fetch(presignDelete({ ...CFG, objectKey: sizedKey, expiresInSeconds: 60 }), { method: 'DELETE' })
     expect(del.ok).toBe(true)
-    expect((await fetch(naked)).ok).toBe(false)
+    expect((await signedRead()).status).toBe(404)
   })
 })
 

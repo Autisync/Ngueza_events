@@ -8,21 +8,29 @@ import styles from '../../painel.module.css'
  * Listing photographs go browser → presigned URL → media bucket (§40);
  * the application server never handles the bytes.
  *
- * A phone photograph is 3–8 MB, and most suppliers upload on mobile data
- * they pay for. Anything larger than delivery will ever need is scaled
- * down here first: the biggest variant imgproxy serves is 2048px, so a
- * 2560px JPEG loses nothing a client would see and is typically a tenth
- * of the size. Re-encoding through a canvas also drops EXIF — GPS
- * coordinates included — before the file leaves the phone.
+ * Every photograph is re-drawn through a canvas before it leaves the
+ * phone, for two reasons:
+ *
+ *  - Metadata. A canvas carries pixels only, so EXIF — GPS coordinates,
+ *    camera serial, the time the photo was taken — never reaches our
+ *    storage. A supplier photographing their venue from home will not
+ *    think about that; the upload has to.
+ *  - Data. A phone photograph is 3–8 MB and most suppliers upload on
+ *    mobile data they pay for. The biggest variant imgproxy serves is
+ *    2048px, so scaling to 2560px loses nothing a client would see.
+ *
+ * If the browser cannot decode the file, the original is sent as-is; the
+ * media bucket is private and imgproxy strips metadata on delivery, so
+ * that fallback is never public either.
  */
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif'
 const ALLOWED = new Set(ACCEPT.split(','))
 const MAX_BYTES = 20 * 1024 * 1024
 const MAX_EDGE = 2560
-const RESIZE_ABOVE_BYTES = 1.5 * 1024 * 1024
 
-async function shrink(file: File): Promise<Blob> {
+/** Re-encodes to a JPEG without metadata, at most MAX_EDGE on the long side. */
+async function prepare(file: File): Promise<Blob> {
   if (typeof createImageBitmap !== 'function') return file
   let bitmap: ImageBitmap
   try {
@@ -31,10 +39,6 @@ async function shrink(file: File): Promise<Blob> {
     return file
   }
   const longEdge = Math.max(bitmap.width, bitmap.height)
-  if (longEdge <= MAX_EDGE && file.size <= RESIZE_ABOVE_BYTES) {
-    bitmap.close()
-    return file
-  }
   const scale = Math.min(1, MAX_EDGE / longEdge)
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(bitmap.width * scale)
@@ -50,8 +54,9 @@ async function shrink(file: File): Promise<Blob> {
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
   bitmap.close()
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
-  // Keep whichever is smaller: an already well-compressed file can grow.
-  return blob && blob.size < file.size ? blob : file
+  // Always the re-encoded copy, even when it is a little larger: the
+  // point is as much what it leaves out as how big it is.
+  return blob ?? file
 }
 
 type Failure = { name: string; reason: string }
@@ -73,7 +78,7 @@ export function PhotoUpload({ providerId, remaining }: { providerId: string; rem
 
   async function uploadOne(file: File): Promise<string | null> {
     if (!ALLOWED.has(file.type)) return 'type'
-    const body = await shrink(file)
+    const body = await prepare(file)
     if (body.size > MAX_BYTES) return 'too_big'
 
     const presign = await fetch('/api/painel/foto?passo=presign', {
@@ -147,8 +152,9 @@ export function PhotoUpload({ providerId, remaining }: { providerId: string; rem
                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }} />
       </label>
       <p className={styles.hint} style={{ marginTop: 8 }}>
-        JPG, PNG, WEBP ou AVIF. Pode escolher várias de uma vez. Fotografias grandes são reduzidas
-        no seu telemóvel antes do envio, para gastar menos dados.
+        JPG, PNG, WEBP ou AVIF. Pode escolher várias de uma vez. As fotografias são preparadas no
+        seu telemóvel antes do envio: ficam mais leves, e a localização e outros dados da câmara
+        são retirados.
       </p>
 
       <p aria-live="polite" className={styles.hint} style={{ margin: 0 }}>{note}</p>

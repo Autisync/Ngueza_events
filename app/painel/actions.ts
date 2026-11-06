@@ -183,9 +183,9 @@ export async function doRemovePhoto(formData: FormData): Promise<void> {
   const { providerId, mediaId } = photoTarget(formData)
   const objectId = await removePhoto(profile.id, providerId, mediaId)
   if (!objectId) redirect(`/painel/${providerId}/fotos?erro=dados`)
-  // The media bucket is publicly readable, so a removed photograph must
-  // not stay reachable at its old address. Best effort: the row is
-  // already gone, so the listing no longer shows it either way.
+  // A removed photograph should be gone, not merely unlisted: imgproxy
+  // would keep serving it to anyone holding an old URL. Best effort: the
+  // row is already gone, so the listing no longer shows it either way.
   try {
     const deleted = await mediaStore().deleteObject(objectId)
     if (!deleted) console.error(`photo ${objectId}: removed from listing, storage delete failed`)
