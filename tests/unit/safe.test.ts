@@ -49,6 +49,8 @@ describe('normalizePhone', () => {
   })
   it('builds wa.me links without the plus', () => {
     expect(whatsappUrl('+244923456789')).toBe('https://wa.me/244923456789')
+    // A prefilled message, encoded so '&' or '?' in it cannot break the link.
+    expect(whatsappUrl('+244923456789', 'Olá! Ref. A&B? 15/12')).toBe('https://wa.me/244923456789?text=Ol%C3%A1!%20Ref.%20A%26B%3F%2015%2F12')
   })
 })
 

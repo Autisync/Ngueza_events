@@ -21,6 +21,16 @@ export const STATUS_CLASS: Record<BookingStatus, 'wait' | 'ok' | 'bad' | 'off'> 
   cancelled_provider: 'off', no_show: 'bad', blocked: 'off',
 }
 
+/** A short reference both sides can quote on WhatsApp: the id's first block. */
+export function bookingRef(id: string): string {
+  return id.slice(0, 8).toUpperCase()
+}
+
+/** "15/12/2026", in Luanda. */
+export function eventDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda' })
+}
+
 export function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('pt-PT', {
     timeZone: 'Africa/Luanda', dateStyle: 'long', timeStyle: 'short',

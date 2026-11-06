@@ -88,8 +88,9 @@ export function normalizePhone(raw: unknown): string | null {
 }
 
 /** wa.me wants the international number with no '+'. */
-export function whatsappUrl(e164: string): string {
-  return `https://wa.me/${e164.replace(/\D/g, '')}`
+export function whatsappUrl(e164: string, text?: string): string {
+  const base = `https://wa.me/${e164.replace(/\D/g, '')}`
+  return text ? `${base}?text=${encodeURIComponent(text)}` : base
 }
 
 // ---------------------------------------------------------------------------

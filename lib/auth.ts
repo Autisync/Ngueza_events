@@ -261,6 +261,8 @@ export interface Profile {
   id: string
   email: string
   fullName: string | null
+  /** E.164, as the booking form saves it (slice 30). */
+  phone: string | null
   role: 'client' | 'provider' | 'admin'
   emailVerified: boolean
   phoneVerified: boolean
@@ -278,11 +280,11 @@ export async function currentProfile(): Promise<Profile | null> {
 
   return asSystem(async (c) => {
     const { rows } = await c.query<{
-      id: string; email: string; full_name: string | null
+      id: string; email: string; full_name: string | null; phone: string | null
       role: Profile['role']; email_verified: boolean
       phone_verified: boolean; status: Profile['status']
     }>(
-      `select id, email, full_name, role, email_verified, phone_verified, status
+      `select id, email, full_name, phone, role, email_verified, phone_verified, status
          from profiles where id = $1`,
       [user.id],
     )
@@ -292,6 +294,7 @@ export async function currentProfile(): Promise<Profile | null> {
       id: row.id,
       email: row.email,
       fullName: row.full_name,
+      phone: row.phone,
       role: row.role,
       emailVerified: row.email_verified,
       phoneVerified: row.phone_verified,

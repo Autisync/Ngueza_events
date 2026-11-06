@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { blockDate, requestBooking, transition, type BookingStatus } from '@/lib/booking'
-import { calendarDate, isUuid, todayInLuanda } from '@/lib/safe'
+import { calendarDate, isUuid, normalizePhone, todayInLuanda } from '@/lib/safe'
 import { sessionId } from '@/lib/session'
 
 /**
@@ -68,6 +68,12 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
     redirect(`/fornecedor/${slug}?erro=dados#reservar`)
   }
 
+  // The supplier's only way to reach the client once they accept (0034).
+  // Required, and normalised to E.164 so the WhatsApp link works however
+  // it was typed.
+  const clientPhone = normalizePhone(str(formData, 'phone'))
+  if (!clientPhone) redirect(`/fornecedor/${slug}?erro=telefone#reservar`)
+
   const { date, startTime, endTime } = parsed.data
   const window = eventWindow(date, startTime, endTime)
   if (!window) redirect(`/fornecedor/${slug}?erro=dados#reservar`)
@@ -81,6 +87,7 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
     partySize: parsed.data.partySize,
     notes: parsed.data.notes,
     sessionId: await sessionId(),
+    clientPhone,
   })
 
   if (!result.ok) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { blockDate, completePastBookings, expireStaleBookings, requestBooking, transition } from '@/lib/booking'
+import { blockDate, bookingDetail, completePastBookings, expireStaleBookings, providerBookings, requestBooking, transition } from '@/lib/booking'
 import { asUser } from '@/lib/db'
 import { asSystem } from '@/lib/db'
 
@@ -543,5 +543,85 @@ describe('integrity guards (0031)', () => {
     const status = await asSystem(async (c) =>
       (await c.query(`select status from bookings where id = $1`, [id])).rows[0].status)
     expect(status).toBe('awaiting_payment')
+  })
+})
+
+describe('the two sides can reach each other (0034)', () => {
+  const OTHER_OWNER = '40000000-0000-0000-0000-000000000002'
+  const ADMIN = '40000000-0000-0000-0000-000000000099'
+  const request = (d: string) => requestBooking(JOAO, {
+    providerId: HORIZONTE, resourceId: SALAO,
+    startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T22:00:00Z`),
+    clientPhone: '+244923000111',
+  })
+  const idOf = (r: unknown) => (r as { bookingId: string }).bookingId
+  const joaoProfile = () => asSystem(async (c) =>
+    (await c.query(`select full_name, email, phone from profiles where id = $1`, [JOAO])).rows[0])
+
+  it('saves the phone the client gave to their profile, in the same request', async () => {
+    await asSystem((c) => c.query(`update profiles set phone = null where id = $1`, [JOAO]))
+    expect((await request('2027-11-01')).ok).toBe(true)
+    expect((await joaoProfile()).phone).toBe('+244923000111')
+  })
+
+  it('shows the supplier the client\'s name on a request, but not how to reach them', async () => {
+    const id = idOf(await request('2027-11-02'))
+    const seen = await bookingDetail(OWNER, id)
+    expect(seen?.clientName).toBe((await joaoProfile()).full_name)
+    expect(seen?.clientEmail).toBeNull()
+    expect(seen?.clientPhone).toBeNull()
+    expect(seen?.contactShared).toBe(false)
+    const listed = (await providerBookings(OWNER, HORIZONTE)).find((b) => b.id === id)
+    expect(listed?.clientName).toBe((await joaoProfile()).full_name)
+    expect(listed?.clientEmail).toBeNull()
+  })
+
+  it('shows email and phone once the supplier has accepted — and keeps them after', async () => {
+    const id = idOf(await request('2027-11-03'))
+    await transition(OWNER, id, 'accepted')
+    let seen = await bookingDetail(OWNER, id)
+    expect(seen?.contactShared).toBe(true)
+    expect(seen?.clientPhone).toBe('+244923000111')
+    expect(seen?.clientEmail).toBe((await joaoProfile()).email)
+    // A client cancelling afterwards does not make the history disappear.
+    await transition(JOAO, id, 'cancelled_client')
+    seen = await bookingDetail(OWNER, id)
+    expect(seen?.clientPhone).toBe('+244923000111')
+  })
+
+  it('never shares contact for a request the supplier only ever rejected', async () => {
+    const id = idOf(await request('2027-11-04'))
+    await transition(OWNER, id, 'rejected')
+    const seen = await bookingDetail(OWNER, id)
+    expect(seen?.clientPhone).toBeNull()
+    expect(seen?.clientEmail).toBeNull()
+  })
+
+  it('answers nothing to an unrelated supplier, a visitor calling it directly, or a stranger', async () => {
+    const id = idOf(await request('2027-11-05'))
+    await transition(OWNER, id, 'accepted')
+    const rows = await asUser(OTHER_OWNER, async (c) =>
+      (await c.query(`select * from booking_client_contact($1)`, [id])).rows)
+    expect(rows).toHaveLength(0)
+    const { asVisitor } = await import('@/lib/db')
+    await expect(asVisitor((c) => c.query(`select * from booking_client_contact($1)`, [id])))
+      .rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('lets an administrator see it, for support', async () => {
+    const id = idOf(await request('2027-11-06'))
+    await transition(OWNER, id, 'accepted')
+    const seen = await bookingDetail(ADMIN, id)
+    expect(seen?.clientPhone).toBe('+244923000111')
+  })
+
+  it('gives the client the supplier\'s own published numbers', async () => {
+    const id = idOf(await request('2027-11-07'))
+    const seen = await bookingDetail(JOAO, id)
+    const published = await asSystem(async (c) =>
+      (await c.query(`select phone, whatsapp from providers where id = $1`, [HORIZONTE])).rows[0])
+    expect(seen?.providerPhone).toBe(published.phone)
+    expect(seen?.providerWhatsapp).toBe(published.whatsapp)
+    expect(seen?.clientPhone).toBe('+244923000111')   // their own
   })
 })
