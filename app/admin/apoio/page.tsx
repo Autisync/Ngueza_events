@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { supportQueue, TOPICS } from '@/lib/support'
 import { Chrome } from '../Chrome'
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 /** The help inbox (slice 35): oldest first, so nobody waits longest. */
 export default async function Apoio() {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, open] = await Promise.all([queueCounts(profile.id), supportQueue(profile.id, 'open')])
 
   return (

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { consoleSearch } from '@/lib/console'
 import { formatWhen, STATUS_LABEL } from '@/lib/booking-labels'
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 /** One box for whatever the person on the phone has (slice 38). */
 export default async function Consola({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { q = '' } = await searchParams
   const [counts, results] = await Promise.all([queueCounts(profile.id), consoleSearch(profile.id, q)])
   const none = q.trim().length >= 2 && !results.bookings.length && !results.people.length && !results.providers.length

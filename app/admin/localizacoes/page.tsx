@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { locationTree } from '@/lib/taxonomy'
 import { doCreateLocation } from '../taxonomy-actions'
@@ -43,7 +43,7 @@ function order(nodes: Awaited<ReturnType<typeof locationTree>>) {
 export default async function Localizacoes({
   searchParams,
 }: { searchParams: Promise<{ erro?: string; guardado?: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, tree, flags] = await Promise.all([
     queueCounts(profile.id), locationTree(profile.id), searchParams,
   ])

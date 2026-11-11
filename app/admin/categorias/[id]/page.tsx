@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../../guard'
 import { queueCounts } from '@/lib/admin'
 import { categoryTree } from '@/lib/taxonomy'
 import { doToggleCategory, doUpdateCategory } from '../../taxonomy-actions'
@@ -24,7 +24,7 @@ export default async function EditarCategoria({
   params: Promise<{ id: string }>
   searchParams: Promise<{ erro?: string }>
 }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { id } = await params
   const [counts, tree, flags] = await Promise.all([
     queueCounts(profile.id), categoryTree(profile.id), searchParams,

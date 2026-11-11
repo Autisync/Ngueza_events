@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { dashboardMetrics, providerHealthReport, type PeriodCounts } from '@/lib/analytics'
 import { Chrome } from '../Chrome'
@@ -43,7 +43,7 @@ function Period({ title, p }: { title: string; p: PeriodCounts }) {
 }
 
 export default async function Metricas() {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, metrics, health] = await Promise.all([
     queueCounts(profile.id),
     dashboardMetrics(profile.id),

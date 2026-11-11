@@ -41,6 +41,10 @@ export interface AuthedUser {
   id: string
   email: string | null
   expiresAt: number
+  /** Authenticator assurance level: 'aal2' once this session has passed a
+   *  second factor (slice 40). Read from the verified token, never trusted
+   *  from anywhere else. */
+  aal: 'aal1' | 'aal2'
 }
 
 /** Verified locally. Returns null for absent, malformed or expired tokens. */
@@ -65,6 +69,7 @@ function payloadToUser(payload: JWTPayload): AuthedUser | null {
     id,
     email: typeof payload.email === 'string' ? payload.email : null,
     expiresAt: typeof payload.exp === 'number' ? payload.exp : 0,
+    aal: payload.aal === 'aal2' ? 'aal2' : 'aal1',
   }
 }
 
@@ -321,5 +326,19 @@ export async function requireProfile(role?: Profile['role']): Promise<Profile> {
   if (role && profile.role !== role && profile.role !== 'admin') {
     throw new Error('FORBIDDEN')
   }
+  // Every admin action calls requireProfile('admin'): the second factor is
+  // enforced here as well as in the admin layout, so a server action cannot
+  // be posted from a session that never passed it (slice 40).
+  if (role === 'admin' && !(await adminMfaSatisfied())) throw new Error('MFA_REQUIRED')
   return profile
+}
+
+/** Whether admin MFA is enforced in this environment. Off until an
+ *  administrator has enrolled, so turning it on cannot lock everyone out. */
+export const adminMfaRequired = () => process.env.ADMIN_REQUIRE_MFA?.trim() === '1'
+
+/** true when MFA is not required, or this session has passed it (aal2). */
+export async function adminMfaSatisfied(): Promise<boolean> {
+  if (!adminMfaRequired()) return true
+  return (await currentUser())?.aal === 'aal2'
 }

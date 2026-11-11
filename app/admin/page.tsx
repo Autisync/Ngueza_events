@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from './guard'
 import { queueCounts, recentAudit } from '@/lib/admin'
 import { jobHealth, recentRuns } from '@/lib/jobs'
 import { switches } from '@/lib/switches'
@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'Administração', robots: { index: f
 export const dynamic = 'force-dynamic'
 
 export default async function Admin() {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, audit, health, runs] = await Promise.all([
     queueCounts(profile.id), recentAudit(profile.id, 12),
     jobHealth().catch(() => null), recentRuns(profile.id, 6),

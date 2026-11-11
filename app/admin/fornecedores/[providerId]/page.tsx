@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../../guard'
 import { providerForReview, queueCounts } from '@/lib/admin'
 import { formatPrice } from '@/lib/money'
 import {
@@ -31,7 +31,7 @@ export default async function Rever({
   params: Promise<{ providerId: string }>
   searchParams: Promise<{ feito?: string; erro?: string }>
 }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { providerId } = await params
   const [p, counts, flags] = await Promise.all([
     providerForReview(profile.id, providerId),

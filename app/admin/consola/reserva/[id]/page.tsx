@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../../../guard'
 import { queueCounts } from '@/lib/admin'
 import { bookingDetail, type BookingStatus } from '@/lib/booking'
 import { bookingTimeline } from '@/lib/console'
@@ -17,7 +17,7 @@ const KIND_LABEL = { state: 'Estado', payment: 'Pagamento', email: 'Email', help
 
 /** One booking, everything that happened to it, and the team's notes (slice 38). */
 export default async function ReservaConsola({ params }: { params: Promise<{ id: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { id } = await params
   const [counts, booking] = await Promise.all([queueCounts(profile.id), bookingDetail(profile.id, id)])
   if (!booking) notFound()

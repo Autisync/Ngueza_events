@@ -99,6 +99,8 @@ export default async function Conta({
           Pode alterar a palavra-passe a qualquer momento.
         </p>
         <a href="/recuperar">Alterar palavra-passe</a>
+        {' · '}
+        <a href="/conta/seguranca">Verificação em dois passos</a>
       </div>
 
       {/* POST, so no page or image can sign someone out by linking here. */}
