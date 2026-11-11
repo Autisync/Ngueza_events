@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 33 migrations from empty · 323 tests · 56 database assertions |
+| Verified | 34 migrations from empty · 331 tests · 59 database assertions |
 
 ### Done
 
@@ -55,6 +55,7 @@ make contact.
 | 27 | Supplier photo manager — upload (shrunk on the phone first), cover, order, captions, removal; a swipeable gallery on the supplier page; upload sizes now enforced by storage, not just the form; see `spec/slices/27-photo-manager.md` |
 | 28 | Competing requests released honestly — when one booking takes a date, the others on that space close as "Data indisponível" with a same-day search link, instead of sitting on "Aceite" until they expire; see `spec/slices/28-release-competing-requests.md` |
 | 29 | Services edited in place — every field prefilled, "O que inclui" descriptions shown on the supplier page, errors next to the service being edited; see `spec/slices/29-edit-services.md` |
+| 30 | The two sides of a booking can reach each other — the client's +244 number on the request, name always and phone/email once accepted for the supplier, WhatsApp with a prefilled reference both ways; job functions closed to visitors; see `spec/slices/30-booking-contacts.md` |
 
 ### Infrastructure
 

@@ -294,7 +294,9 @@ export default async function ProviderPage({
                   ? 'Essa data já passou. Escolha uma data a partir de hoje.'
                   : flags.erro === 'indisponivel'
                     ? 'Não é possível pedir uma reserva a este fornecedor neste momento.'
-                    : 'Verifique os dados introduzidos.'}
+                    : flags.erro === 'telefone'
+                      ? 'Indique um número de telemóvel válido, por exemplo 923 456 789.'
+                      : 'Verifique os dados introduzidos.'}
             </p>
           ) : null}
 
@@ -358,6 +360,19 @@ export default async function ProviderPage({
                   </label>
                 </div>
 
+                <label>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                    Telemóvel (WhatsApp)
+                  </span>
+                  <input type="tel" name="phone" required maxLength={40} autoComplete="tel"
+                         inputMode="tel" placeholder="923 456 789" defaultValue={profile.phone ?? ''}
+                         style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                  border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                  <span style={{ display: 'block', marginTop: 5, fontSize: '0.83rem', color: 'var(--tinta-3)' }}>
+                    O fornecedor só vê o seu número depois de aceitar o pedido, para combinar os
+                    detalhes consigo. Nunca aparece publicamente.
+                  </span>
+                </label>
                 <label>
                   <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
                     Número de pessoas <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span>

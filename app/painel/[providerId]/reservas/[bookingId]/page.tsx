@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { bookingDetail, type BookingStatus } from '@/lib/booking'
-import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { ownedProvider } from '@/lib/painel'
 import { refundEntitlement } from '@/lib/cancellation-policy'
 import { doSupplierTransition } from '@/app/booking-actions'
@@ -99,9 +100,7 @@ export default async function ReservaFornecedor({
           {booking.resourceName ? (
             <div className={styles.row}><span>Espaço</span><span>{booking.resourceName}</span></div>
           ) : null}
-          {booking.clientEmail ? (
-            <div className={styles.row}><span>Contacto</span><span>{booking.clientEmail}</span></div>
-          ) : null}
+
           {booking.partySize ? (
             <div className={styles.row}><span>Pessoas</span><span>{booking.partySize}</span></div>
           ) : null}
@@ -109,6 +108,8 @@ export default async function ReservaFornecedor({
             <div className={styles.row}><span>Observações</span><span>{booking.notes}</span></div>
           ) : null}
         </div>
+
+        {booking.clientId ? <ClientContact booking={booking} providerName={provider.name} /> : null}
 
         {entitlement ? (
           <div className={styles.card}>
@@ -159,5 +160,56 @@ export default async function ReservaFornecedor({
         </div>
       </div>
     </main>
+  )
+}
+
+/** How the supplier reaches the client (0034): the name always; phone,
+ *  WhatsApp and email once they have accepted the request. */
+function ClientContact({
+  booking, providerName,
+}: {
+  booking: NonNullable<Awaited<ReturnType<typeof bookingDetail>>>
+  providerName: string
+}) {
+  const phone = normalizePhone(booking.clientPhone)
+  const firstName = booking.clientName?.split(' ')[0]
+  const hello = `Olá${firstName ? ` ${firstName}` : ''}! Fala ${providerName}, sobre o seu pedido de reserva na NGUEZA para ${eventDay(booking.startsAt)} (ref. ${bookingRef(booking.id)}).`
+
+  return (
+    <div className={styles.card}>
+      <h2>Cliente</h2>
+      <div className={styles.row}><span>Nome</span><span>{booking.clientName ?? '—'}</span></div>
+      {booking.contactShared === false ? (
+        <p className={styles.note} style={{ margin: '12px 0 0' }}>
+          O telefone e o email do cliente aparecem aqui depois de aceitar o pedido.
+        </p>
+      ) : (
+        <>
+          {booking.clientPhone ? (
+            <div className={styles.row}>
+              <span>Telemóvel</span>
+              <a href={`tel:${phone ?? booking.clientPhone}`}>{booking.clientPhone}</a>
+            </div>
+          ) : null}
+          {booking.clientEmail ? (
+            <div className={styles.row}>
+              <span>Email</span><a href={`mailto:${booking.clientEmail}`}>{booking.clientEmail}</a>
+            </div>
+          ) : null}
+          {phone ? (
+            <div className={styles.actions} style={{ marginTop: 14 }}>
+              <a className={`${styles.btn} ${styles.go}`} style={{ textDecoration: 'none' }}
+                 href={whatsappUrl(phone, hello)} target="_blank" rel="noopener noreferrer">
+                Falar no WhatsApp
+              </a>
+            </div>
+          ) : !booking.clientPhone ? (
+            <p className={styles.note} style={{ margin: '12px 0 0' }}>
+              Este pedido foi feito antes de pedirmos o telefone. Use o email para combinar.
+            </p>
+          ) : null}
+        </>
+      )}
+    </div>
   )
 }

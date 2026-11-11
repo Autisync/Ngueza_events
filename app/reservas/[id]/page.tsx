@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { bookingDetail } from '@/lib/booking'
-import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { reviewExistsForBooking } from '@/lib/reviews'
 import { clientPayments } from '@/lib/payments'
 import { PAYMENT_STATUS_CLASS, PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
@@ -159,6 +160,8 @@ export default async function ReservaDetalhe({
           </div>
         ) : null}
 
+        <SupplierContact booking={booking} />
+
         {booking.status === 'unavailable' ? (
           <div className={styles.card}>
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Esta data foi reservada por outro cliente</h2>
@@ -256,5 +259,39 @@ export default async function ReservaDetalhe({
         </div>
       </div>
     </main>
+  )
+}
+
+/** How the client reaches the supplier. Straight to the supplier's own
+ *  number — not through /api/contacto, which counts pre-booking contact
+ *  (§32 leakage); talking about a booking already made is not leakage. */
+function SupplierContact({ booking }: { booking: NonNullable<Awaited<ReturnType<typeof bookingDetail>>> }) {
+  const whatsapp = normalizePhone(booking.providerWhatsapp)
+  const phone = normalizePhone(booking.providerPhone)
+  if (!whatsapp && !phone) return null
+  const hello = `Olá! Escrevo sobre o meu pedido de reserva na NGUEZA para ${eventDay(booking.startsAt)} (ref. ${bookingRef(booking.id)}).`
+  return (
+    <div className={styles.card}>
+      <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Falar com {booking.providerName}</h2>
+      <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+        Referência da reserva: <strong>{bookingRef(booking.id)}</strong>. Indique-a ao fornecedor.
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {whatsapp ? (
+          <a className={shared.button} style={{ display: 'inline-block', textDecoration: 'none' }}
+             href={whatsappUrl(whatsapp, hello)} target="_blank" rel="noopener noreferrer">
+            WhatsApp
+          </a>
+        ) : null}
+        {phone ? (
+          <a className={shared.button}
+             style={{ display: 'inline-block', textDecoration: 'none', background: 'var(--branco)',
+                      color: 'var(--azul-700)', border: '1px solid var(--azul-500)' }}
+             href={`tel:${phone}`}>
+            Ligar
+          </a>
+        ) : null}
+      </div>
+    </div>
   )
 }

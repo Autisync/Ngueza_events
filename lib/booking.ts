@@ -28,6 +28,9 @@ export interface BookingRequest {
   partySize?: number
   notes?: string
   sessionId?: string | null
+  /** E.164. Saved to the client's profile in the same transaction as the
+   *  request, so the supplier can reach them once they accept (0034). */
+  clientPhone?: string | null
 }
 
 export type RequestOutcome =
@@ -90,6 +93,13 @@ export async function requestBooking(
         ],
       )
       const id = rows[0]!.id
+
+      if (input.clientPhone) {
+        await c.query(
+          `update profiles set phone = $2 where id = $1 and phone is distinct from $2`,
+          [clientId, input.clientPhone],
+        )
+      }
 
       // The denominator of the §32 leakage ratio. Written in the same
       // transaction as the booking, so the two can never disagree.
@@ -262,12 +272,14 @@ export async function providerBookings(
 ): Promise<BookingSummary[]> {
   return asUser(ownerId, async (c) => {
     const { rows } = await c.query<any>(
+      // A supplier cannot read client profiles (profiles_self_read), so
+      // the name — and the email once accepted — come from 0034's
+      // booking_client_contact(), which answers only for their bookings.
       `select b.*, p.name as provider_name, p.slug as provider_slug,
-              p.category_id as provider_category_id, p.location_id as provider_location_id,
-              pr.full_name as client_name, pr.email as client_email
+              cc.full_name as client_name, cc.email as client_email
          from bookings b
          join providers p on p.id = b.provider_id
-         left join profiles pr on pr.id = b.client_id
+         left join lateral booking_client_contact(b.id) cc on true
         where b.provider_id = $1
         order by
           case b.status when 'requested' then 0 else 1 end,
@@ -285,6 +297,13 @@ export interface BookingDetail extends BookingSummary {
   serviceName: string | null
   notes: string | null
   policySnapshot: Record<string, unknown> | null
+  /** The client's phone: their own to the client, the supplier's to see
+   *  only once they have accepted (0034). */
+  clientPhone: string | null
+  /** For the supplier: whether the client's email and phone are visible yet. */
+  contactShared: boolean | null
+  providerPhone: string | null
+  providerWhatsapp: string | null
   /** For "find another on the same date" when a date is lost (0033). */
   providerCategoryId: string
   providerLocationId: string
@@ -298,12 +317,20 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
   if (!isUuid(bookingId)) return null
   return asUser(actorId, async (c) => {
     const { rows } = await c.query<any>(
+      // pr: the client reading their own booking, or an admin.
+      // cc: the supplier, through booking_client_contact() (0034).
       `select b.*, p.name as provider_name, p.slug as provider_slug,
-              pr.full_name as client_name, pr.email as client_email,
+              p.category_id as provider_category_id, p.location_id as provider_location_id,
+              p.phone as provider_phone, p.whatsapp as provider_whatsapp,
+              coalesce(pr.full_name, cc.full_name) as client_name,
+              coalesce(pr.email, cc.email) as client_email,
+              coalesce(pr.phone, cc.phone) as client_phone,
+              cc.contact_shared,
               r.name as resource_name, s.name as service_name
          from bookings b
          join providers p on p.id = b.provider_id
          left join profiles pr on pr.id = b.client_id
+         left join lateral booking_client_contact(b.id) cc on true
          left join resources r on r.id = b.resource_id
          left join services s on s.id = b.service_id
         where b.id = $1`,
@@ -324,6 +351,8 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       serviceId: row.service_id, serviceName: row.service_name,
       notes: row.notes, policySnapshot: row.policy_snapshot,
       providerCategoryId: row.provider_category_id, providerLocationId: row.provider_location_id,
+      clientPhone: row.client_phone, contactShared: row.contact_shared ?? null,
+      providerPhone: row.provider_phone, providerWhatsapp: row.provider_whatsapp,
       history: history.rows.map((h) => ({
         fromStatus: h.from_status, toStatus: h.to_status, createdAt: h.created_at,
       })),
