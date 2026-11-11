@@ -17,7 +17,7 @@ import { isUuid } from '@/lib/safe'
 export type BookingStatus =
   | 'requested' | 'accepted' | 'awaiting_payment' | 'confirmed' | 'completed'
   | 'expired' | 'rejected' | 'cancelled_client' | 'cancelled_provider'
-  | 'no_show' | 'blocked'
+  | 'no_show' | 'blocked' | 'unavailable'
 
 export interface BookingRequest {
   providerId: string
@@ -304,6 +304,9 @@ export interface BookingDetail extends BookingSummary {
   contactShared: boolean | null
   providerPhone: string | null
   providerWhatsapp: string | null
+  /** For "find another on the same date" when a date is lost (0033). */
+  providerCategoryId: string
+  providerLocationId: string
   history: Array<{ fromStatus: string | null; toStatus: string; createdAt: string }>
 }
 
@@ -317,6 +320,7 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       // pr: the client reading their own booking, or an admin.
       // cc: the supplier, through booking_client_contact() (0034).
       `select b.*, p.name as provider_name, p.slug as provider_slug,
+              p.category_id as provider_category_id, p.location_id as provider_location_id,
               p.phone as provider_phone, p.whatsapp as provider_whatsapp,
               coalesce(pr.full_name, cc.full_name) as client_name,
               coalesce(pr.email, cc.email) as client_email,
@@ -346,6 +350,7 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       resourceId: row.resource_id, resourceName: row.resource_name,
       serviceId: row.service_id, serviceName: row.service_name,
       notes: row.notes, policySnapshot: row.policy_snapshot,
+      providerCategoryId: row.provider_category_id, providerLocationId: row.provider_location_id,
       clientPhone: row.client_phone, contactShared: row.contact_shared ?? null,
       providerPhone: row.provider_phone, providerWhatsapp: row.provider_whatsapp,
       history: history.rows.map((h) => ({

@@ -101,10 +101,11 @@ describe('booking', () => {
     expect(result).toEqual({ ok: false, reason: 'slot_taken' })
   })
 
-  it('still lets the constraint decide when the pre-check races', async () => {
+  it('still lets the constraint decide when two confirmations race', async () => {
     // The courtesy check in requestBooking can go stale between read and
-    // write. Confirming is where exclusivity is actually enforced, and it
-    // must hold even when two bookings got as far as being accepted.
+    // write, and the release in 0033 skips rows another transaction holds.
+    // Confirming is where exclusivity is actually enforced, and it must
+    // hold — without a deadlock — when both confirmations arrive at once.
     const a = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
       startsAt: at('2027-09-01T09:00:00Z'), endsAt: at('2027-09-01T22:00:00Z'),
@@ -118,8 +119,16 @@ describe('booking', () => {
 
     await transition(OWNER, idA, 'accepted')
     await transition(OWNER, idB, 'accepted')
-    expect(await transition(OWNER, idA, 'confirmed')).toEqual({ ok: true })
-    expect(await transition(OWNER, idB, 'confirmed')).toEqual({ ok: false, reason: 'slot_taken' })
+    const outcomes = await Promise.all([
+      transition(OWNER, idA, 'confirmed'),
+      transition(OWNER, idB, 'confirmed'),
+    ])
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(1)
+    // The loser either lost at the constraint or had already been
+    // released by the winner; never two confirmations, never an error.
+    for (const o of outcomes.filter((x) => !x.ok)) {
+      expect(['slot_taken', 'illegal_transition']).toContain((o as { reason: string }).reason)
+    }
   })
 
   it('refuses a transition the state machine does not allow', async () => {
@@ -623,5 +632,102 @@ describe('the two sides can reach each other (0034)', () => {
     expect(seen?.providerPhone).toBe(published.phone)
     expect(seen?.providerWhatsapp).toBe(published.whatsapp)
     expect(seen?.clientPhone).toBe('+244923000111')   // their own
+  })
+})
+
+describe('a taken date releases its competitors (0033)', () => {
+  const day = (d: string) => ({
+    providerId: HORIZONTE, resourceId: SALAO,
+    startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T22:00:00Z`),
+  })
+  const statusOf = (id: string) => asSystem(async (c) => {
+    const { rows } = await c.query<{ status: string }>(`select status from bookings where id = $1`, [id])
+    return rows[0]!.status
+  })
+  const idOf = (r: unknown) => (r as { bookingId: string }).bookingId
+
+  it('closes every overlapping request and acceptance when one starts to hold the date', async () => {
+    const winner = idOf(await requestBooking(JOAO, day('2027-10-01')))
+    const accepted = idOf(await requestBooking(ANA, day('2027-10-01')))
+    const pending = idOf(await requestBooking(ANA, { ...day('2027-10-01'), startsAt: at('2027-10-01T18:00:00Z') }))
+    const otherDay = idOf(await requestBooking(ANA, day('2027-10-02')))
+
+    await transition(OWNER, winner, 'accepted')
+    await transition(OWNER, accepted, 'accepted')
+    expect(await transition(OWNER, winner, 'awaiting_payment')).toEqual({ ok: true })
+
+    expect(await statusOf(accepted)).toBe('unavailable')
+    expect(await statusOf(pending)).toBe('unavailable')
+    expect(await statusOf(otherDay)).toBe('requested')   // a different date is untouched
+    expect(await statusOf(winner)).toBe('awaiting_payment')
+  })
+
+  it('tells the displaced client, with the date and the supplier\'s zone for a new search', async () => {
+    const winner = idOf(await requestBooking(JOAO, day('2027-10-05')))
+    const loser = idOf(await requestBooking(ANA, day('2027-10-05')))
+    await transition(OWNER, winner, 'accepted')
+    await transition(OWNER, winner, 'confirmed')
+
+    const mail = await asSystem(async (c) => {
+      const { rows } = await c.query<{ kind: string; recipient_id: string; context: Record<string, string> }>(
+        `select kind, recipient_id, context from notification_outbox
+          where kind = 'booking_unavailable' and context->>'booking_id' = $1`, [loser])
+      return rows
+    })
+    expect(mail).toHaveLength(1)
+    expect(mail[0]!.recipient_id).toBe(ANA)
+    expect(mail[0]!.context.location_id).toBeTruthy()
+    expect(mail[0]!.context.category_id).toBeTruthy()
+  })
+
+  it('releases them when the supplier blocks the date for an off-platform booking, too', async () => {
+    const pending = idOf(await requestBooking(ANA, day('2027-10-08')))
+    expect((await blockDate(OWNER, { ...day('2027-10-08') })).ok).toBe(true)
+    expect(await statusOf(pending)).toBe('unavailable')
+  })
+
+  it('refuses to accept a request for a date that is already held', async () => {
+    const pending = idOf(await requestBooking(ANA, day('2027-10-10')))
+    expect((await blockDate(OWNER, { ...day('2027-10-10') })).ok).toBe(true)
+    // Released already; and a request that slipped in after the hold
+    // (the courtesy check racing) cannot become a second "aceite".
+    expect(await statusOf(pending)).toBe('unavailable')
+    const late = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+         values ($1, $2, $3, 'requested', '2027-10-10T10:00:00Z', '2027-10-10T12:00:00Z') returning id`,
+        [HORIZONTE, JOAO, SALAO])
+      return rows[0]!.id
+    })
+    expect(await transition(OWNER, late, 'accepted')).toEqual({ ok: false, reason: 'slot_taken' })
+  })
+
+  it('lets nobody set it by hand — client, supplier or admin', async () => {
+    const id = idOf(await requestBooking(ANA, day('2027-10-12')))
+    const ADMIN = '40000000-0000-0000-0000-000000000099'
+    for (const actor of [ANA, OWNER, ADMIN]) {
+      expect(await transition(actor, id, 'unavailable')).toEqual({ ok: false, reason: 'not_allowed' })
+    }
+    expect(await statusOf(id)).toBe('requested')
+  })
+
+  it('gives the client\'s booking page the supplier\'s zone and category for the same-day search', async () => {
+    // Regression: 0033's fields were first added to the supplier list query
+    // instead of the booking detail, so the link read zona=undefined.
+    const id = idOf(await requestBooking(ANA, day('2027-10-16')))
+    const seen = await bookingDetail(ANA, id)
+    const p = await asSystem(async (c) =>
+      (await c.query(`select category_id, location_id from providers where id = $1`, [HORIZONTE])).rows[0])
+    expect(seen?.providerCategoryId).toBe(p.category_id)
+    expect(seen?.providerLocationId).toBe(p.location_id)
+  })
+
+  it('is terminal: nothing moves a released request again', async () => {
+    const winner = idOf(await requestBooking(JOAO, day('2027-10-14')))
+    const loser = idOf(await requestBooking(ANA, day('2027-10-14')))
+    await transition(OWNER, winner, 'accepted')
+    await transition(OWNER, winner, 'confirmed')
+    expect(await transition(OWNER, loser, 'accepted')).toEqual({ ok: false, reason: 'illegal_transition' })
+    expect(await transition(ANA, loser, 'cancelled_client')).toEqual({ ok: false, reason: 'illegal_transition' })
   })
 })

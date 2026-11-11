@@ -59,9 +59,17 @@ ngueza-imgproxy      healthy
 ngueza-minio-init    exited (0)   ← correct: it creates the bucket and stops
 ```
 
-`ngueza-minio-init` is expected to exit. It creates the bucket, marks it
-publicly readable, and finishes. It re-runs on every stack start and is
-idempotent.
+`ngueza-minio-init` is expected to exit. It creates both buckets, makes
+sure neither is anonymously readable, and finishes. It re-runs on every
+stack start and is idempotent — so restarting a deployment made before
+slice 27 closes the media bucket, which used to be public. Photographs are
+served only through imgproxy, which reads with its own credentials and
+strips EXIF. Check it after a restart:
+
+```bash
+# Expect 403. A 200 means originals, with GPS metadata, are public.
+curl -s -o /dev/null -w '%{http_code}\n' https://media.ngueza.com/ngueza-media/
+```
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://media.ngueza.com/minio/health/live

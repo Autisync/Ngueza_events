@@ -19,6 +19,7 @@ transition; the database decides whether it is legal.
 | `cancelled_provider` | no | — | Supplier cancelled. |
 | `no_show` | no | — | Client did not appear. |
 | `blocked` | **yes** | — | Supplier blocking a date booked off-platform (§27). No client. |
+| `unavailable` | no | — | Another booking took the date (0033). Set by the database only. |
 
 `awaiting_payment` holds the slot deliberately. Without it, two clients can
 both reach payment for the same date and one necessarily loses *after*
@@ -42,6 +43,9 @@ requested ──► accepted ──► awaiting_payment ──► confirmed ─�
                   └──► confirmed        (flows with no payment step)
 
 blocked ──► cancelled_provider
+
+requested ──► unavailable   ┐  the moment another booking on the same space
+accepted  ──► unavailable   ┘  starts to hold an overlapping date (0033)
 ```
 
 Anything not listed above raises `check_violation`. There is no path back
@@ -61,6 +65,7 @@ out of a terminal state; a client who wants to rebook creates a new booking.
 | `→ cancelled_client` | ✓ | — | ✓ | — |
 | `→ cancelled_provider` | — | ✓ | ✓ | — |
 | `→ blocked` | — | ✓ | ✓ | — |
+| `→ unavailable` | — | — | — | ✓ only — the database, inside the transition that took the date |
 
 **Enforced by `bookings_guard_actor` (0021), not only documented here.**
 `bookings_guard_transition` (0006) enforces the state *graph* — that
@@ -77,6 +82,32 @@ while building the booking screens (slice 08).
 date is free again is making a cancellation, which is attributable to
 whoever decided it; `expired` means specifically that nobody acted in
 time, and only the scheduled job may set it.
+
+## Releasing competitors (0033)
+
+A pending request does not hold a date, so a supplier can accept two
+clients for the same space and day. When one of them starts to hold it —
+`awaiting_payment`, `confirmed` or `blocked` — `bookings_release_competitors`
+moves every overlapping `requested`/`accepted` booking on that space to
+`unavailable`, in the same transaction, and the client is told with a link to
+the same search on the same date. Before 0033 the loser sat on "Aceite" until
+it expired 48h later, with an email saying nobody had acted in time.
+
+- **Not `expired`** (nobody failed to act), and **not `rejected` /
+  `cancelled_provider`** (the supplier did nothing to this client, and
+  those count against them).
+- **Database only.** Judged by `bookings_guard_unavailable`, an
+  invoker-rights trigger. `bookings_guard_actor` is `SECURITY DEFINER`, so
+  inside it `current_user` is always its owner and it cannot tell a person
+  from the release function.
+- **No deadlock.** The release uses `FOR UPDATE SKIP LOCKED`. A competing
+  row that another transaction is changing (typically its own racing
+  confirmation) is left to the exclusion constraint, as before.
+- **No new "aceite" for a held date.** `requested → accepted` fails with
+  `23P01` if the space is already held (`bookings_guard_held_date`).
+- **Venues only.** A service supplier's capacity is a count of overlapping
+  holds, so one more hold does not make a particular competing request
+  impossible.
 
 ## Expiry
 

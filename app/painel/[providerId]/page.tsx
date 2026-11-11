@@ -5,10 +5,13 @@ import { formatPrice } from '@/lib/money'
 import { formOptions, ownedDocuments, ownedProvider, ownedResources, ownedServices } from '@/lib/painel'
 import {
   doAddResource, doAddService, doRemoveResource, doRemoveService, doSubmitForVerification,
-  doUpdateBusiness, doUpdateResource,
+  doUpdateBusiness, doUpdateResource, doUpdateService,
 } from '../actions'
 import { DocumentUpload } from './DocumentUpload'
+import { ServiceFields } from './ServiceFields'
 import { verificationLabel } from '@/lib/painel-labels'
+import { coverImageUrl } from '@/lib/media'
+import { MAX_PHOTOS, ownedPhotos } from '@/lib/photos'
 import styles from '../painel.module.css'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
@@ -46,7 +49,7 @@ export default async function GerirNegocio({
   params, searchParams,
 }: {
   params: Promise<{ providerId: string }>
-  searchParams: Promise<{ erro?: string; guardado?: string; novo?: string; submetido?: string }>
+  searchParams: Promise<{ erro?: string; guardado?: string; novo?: string; submetido?: string; editar?: string }>
 }) {
   const profile = await currentProfile()
   if (!profile) redirect('/entrar?next=/painel')
@@ -56,7 +59,8 @@ export default async function GerirNegocio({
   // RLS already hides other people's businesses, so nothing here is a 403.
   if (!provider) notFound()
 
-  const [services, resources, documents, { categories, locations }, flags] = await Promise.all([
+  const [photos, services, resources, documents, { categories, locations }, flags] = await Promise.all([
+    ownedPhotos(profile.id, providerId),
     ownedServices(profile.id, providerId),
     ownedResources(profile.id, providerId),
     ownedDocuments(profile.id, providerId),
@@ -94,9 +98,35 @@ export default async function GerirNegocio({
             Submetido. A nossa equipa analisa os documentos e avisamos por email.
           </p>
         ) : null}
-        {flags.erro ? (
+        {flags.erro && !flags.editar ? (
           <p className={styles.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
         ) : null}
+
+        {/* ---- photographs (slice 27) ---- */}
+        <div className={styles.card} id="fotos">
+          <h2>Fotografias</h2>
+          {photos.length === 0 ? (
+            <p className={styles.note}>
+              O seu perfil ainda não tem fotografias e aparece com um ícone cinzento nos resultados.
+              É a primeira coisa que um cliente procura.
+            </p>
+          ) : (
+            <>
+              <p className={styles.note}>{photos.length} de {MAX_PHOTOS} · a primeira é a capa.</p>
+              <div className={styles.strip} aria-hidden="true">
+                {photos.slice(0, 6).map((p) => {
+                  const src = coverImageUrl(p.externalId, 'thumb')
+                  // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL
+                  return src ? <img key={p.id} src={src} alt="" loading="lazy" /> : <span key={p.id} />
+                })}
+              </div>
+            </>
+          )}
+          <a className={styles.submit} href={`/painel/${provider.id}/fotos`}
+             style={{ display: 'inline-block', textDecoration: 'none' }}>
+            {photos.length === 0 ? 'Adicionar fotografias' : 'Gerir fotografias'}
+          </a>
+        </div>
 
         {/* ---- bookings ---- */}
         <div className={styles.card}>
@@ -219,91 +249,51 @@ export default async function GerirNegocio({
           ) : (
             <div className={styles.list}>
               {services.map((s) => (
-                <div className={styles.item} key={s.id}>
-                  <div>
-                    <strong>{s.name}</strong>
-                    <span className={styles.meta}>
-                      {UNITS[s.priceUnit] ?? s.priceUnit}
-                      {s.maxCapacity ? ` · até ${s.maxCapacity} pessoas` : ''}
-                    </span>
+                <div className={styles.item} key={s.id} id={`servico-${s.id}`} style={{ display: 'block' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                    <div>
+                      <strong>{s.name}</strong>
+                      <span className={styles.meta}>
+                        {UNITS[s.priceUnit] ?? s.priceUnit}
+                        {s.maxCapacity ? ` · até ${s.maxCapacity} pessoas` : ''}
+                      </span>
+                      {s.description ? <span className={styles.meta}>{s.description}</span> : null}
+                    </div>
+                    <span className={styles.price}>{formatPrice(s.price)}</span>
                   </div>
-                  <span className={styles.price}>{formatPrice(s.price)}</span>
-                  <form action={doRemoveService}>
-                    <input type="hidden" name="providerId" value={provider.id} />
-                    <input type="hidden" name="serviceId" value={s.id} />
-                    <button className={styles.inline} type="submit"
-                            style={{ background: 'none', border: 0, color: 'var(--erro)',
-                                     cursor: 'pointer', font: 'inherit', fontSize: '0.86rem' }}>
-                      Remover
-                    </button>
-                  </form>
+                  {/* Edit in place: fixing a price used to mean removing the
+                      service and typing it all in again. */}
+                  <details style={{ marginTop: 10 }} open={flags.editar === s.id}>
+                    <summary className={styles.inline} style={{ marginLeft: 0, cursor: 'pointer', color: 'var(--azul-700)', fontWeight: 600 }}>
+                      Editar
+                    </summary>
+                    <form action={doUpdateService} style={{ marginTop: 12 }}>
+                      <input type="hidden" name="providerId" value={provider.id} />
+                      <input type="hidden" name="serviceId" value={s.id} />
+                      {flags.editar === s.id && flags.erro ? (
+                        <p className={styles.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
+                      ) : null}
+                      <ServiceFields categories={categories} defaultCategoryId={provider.categoryId}
+                                     service={s} idPrefix={`svc-${s.id}`} />
+                      <div className={styles.actions}>
+                        <button className={`${styles.btn} ${styles.go}`} type="submit">Guardar serviço</button>
+                      </div>
+                    </form>
+                    <form action={doRemoveService} style={{ marginTop: 10 }}>
+                      <input type="hidden" name="providerId" value={provider.id} />
+                      <input type="hidden" name="serviceId" value={s.id} />
+                      <button className={`${styles.btn} ${styles.no}`} type="submit">Retirar serviço</button>
+                    </form>
+                  </details>
                 </div>
               ))}
             </div>
           )}
 
+          <h3 style={{ fontSize: '0.98rem', margin: '18px 0 10px' }}>Adicionar serviço</h3>
           <form action={doAddService}>
             <input type="hidden" name="providerId" value={provider.id} />
-            <div className={styles.two}>
-              <label className={styles.field}>
-                <span className={styles.label}>Nome do serviço</span>
-                <input className={styles.input} name="name" required minLength={3} maxLength={120}
-                       placeholder="Aluguer do salão (dia inteiro)" />
-              </label>
-              <label className={styles.field}>
-                <span className={styles.label}>Categoria</span>
-                <select className={styles.select} name="categoryId" required
-                        defaultValue={provider.categoryId}>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className={styles.two}>
-              <label className={styles.field}>
-                <span className={styles.label}>Como cobra</span>
-                <select className={styles.select} name="priceMode" defaultValue="exact">
-                  <option value="exact">Preço fixo</option>
-                  <option value="from">A partir de</option>
-                  <option value="range">Intervalo</option>
-                  <option value="on_request">Sob consulta</option>
-                </select>
-              </label>
-              <label className={styles.field}>
-                <span className={styles.label}>Unidade</span>
-                <select className={styles.select} name="priceUnit" defaultValue="event">
-                  <option value="event">Por evento</option>
-                  <option value="day">Por dia</option>
-                  <option value="hour">Por hora</option>
-                  <option value="person">Por pessoa</option>
-                </select>
-              </label>
-            </div>
-            <div className={styles.two}>
-              <label className={styles.field}>
-                <span className={styles.label}>Preço (Kz)</span>
-                <input className={styles.input} name="price" inputMode="numeric"
-                       placeholder="180.000" />
-                <span className={styles.hint}>Deixe vazio se for sob consulta.</span>
-              </label>
-              <label className={styles.field}>
-                <span className={styles.label}>Preço máximo (Kz)</span>
-                <input className={styles.input} name="priceMax" inputMode="numeric"
-                       placeholder="620.000" />
-                <span className={styles.hint}>Só para intervalo.</span>
-              </label>
-            </div>
-            <div className={styles.two}>
-              <label className={styles.field}>
-                <span className={styles.label}>Capacidade mínima</span>
-                <input className={styles.input} name="minCapacity" type="number" min={1} />
-              </label>
-              <label className={styles.field}>
-                <span className={styles.label}>Capacidade máxima</span>
-                <input className={styles.input} name="maxCapacity" type="number" min={1} />
-              </label>
-            </div>
+            <ServiceFields categories={categories} defaultCategoryId={provider.categoryId} idPrefix="svc-new" />
             <button className={`${styles.submit} ${styles.ghost}`} type="submit">
               Adicionar serviço
             </button>

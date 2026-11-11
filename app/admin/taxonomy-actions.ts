@@ -31,7 +31,7 @@ export async function doCreateCategory(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const parsed = categoryFromForm(formData)
   if (!parsed.success) {
-    redirect(`/admin/categorias?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/admin/categorias?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   const result = await createCategory(admin.id, parsed.data)
   redirect(result.ok ? '/admin/categorias?guardado=1' : `/admin/categorias?erro=${result.reason}`)
@@ -42,7 +42,7 @@ export async function doUpdateCategory(formData: FormData): Promise<void> {
   const catId = String(formData.get('id') ?? '')
   const parsed = categoryFromForm(formData)
   if (!parsed.success) {
-    redirect(`/admin/categorias?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/admin/categorias?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   const result = await updateCategory(admin.id, catId, parsed.data)
   redirect(result.ok ? '/admin/categorias?guardado=1' : `/admin/categorias?erro=${result.reason}`)
@@ -71,7 +71,7 @@ export async function doCreateLocation(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const parsed = locationFromForm(formData)
   if (!parsed.success) {
-    redirect(`/admin/localizacoes?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/admin/localizacoes?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   const result = await createLocation(admin.id, parsed.data)
   redirect(result.ok ? '/admin/localizacoes?guardado=1' : `/admin/localizacoes?erro=${result.reason}`)
@@ -82,7 +82,7 @@ export async function doUpdateLocation(formData: FormData): Promise<void> {
   const locId = String(formData.get('id') ?? '')
   const parsed = locationFromForm(formData)
   if (!parsed.success) {
-    redirect(`/admin/localizacoes?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/admin/localizacoes?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   const result = await updateLocation(admin.id, locId, parsed.data)
   redirect(result.ok ? '/admin/localizacoes?guardado=1' : `/admin/localizacoes?erro=${result.reason}`)
