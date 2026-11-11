@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 33 migrations from empty · 319 tests · 56 database assertions |
+| Verified | 33 migrations from empty · 323 tests · 56 database assertions |
 
 ### Done
 
@@ -54,6 +54,7 @@ make contact.
 | 26 | Competitive-review fixes — 53 verified defects: a stored XSS, open redirects and on-domain scam text, fakeable verified reviews, paid dates that could expire, rewritable booking terms, 500s on mistyped links; see `spec/slices/26-review-fixes.md` |
 | 27 | Supplier photo manager — upload (shrunk on the phone first), cover, order, captions, removal; a swipeable gallery on the supplier page; upload sizes now enforced by storage, not just the form; see `spec/slices/27-photo-manager.md` |
 | 28 | Competing requests released honestly — when one booking takes a date, the others on that space close as "Data indisponível" with a same-day search link, instead of sitting on "Aceite" until they expire; see `spec/slices/28-release-competing-requests.md` |
+| 29 | Services edited in place — every field prefilled, "O que inclui" descriptions shown on the supplier page, errors next to the service being edited; see `spec/slices/29-edit-services.md` |
 
 ### Infrastructure
 

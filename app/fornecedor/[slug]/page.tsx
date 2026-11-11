@@ -220,6 +220,8 @@ export default async function ProviderPage({
                       {UNITS[s.priceUnit] ?? s.priceUnit}
                       {s.maxCapacity ? ` · até ${s.maxCapacity} pessoas` : ''}
                     </p>
+                    {/* What the price covers, in the supplier's words (slice 29). */}
+                    {s.description ? <p className={styles.svcDesc}>{s.description}</p> : null}
                   </div>
                   <span
                     className={

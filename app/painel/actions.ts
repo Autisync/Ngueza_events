@@ -6,7 +6,7 @@ import { requireProfile } from '@/lib/auth'
 import {
   addResource, addService, createProvider, providerInput, removeResource, resourceInput,
   updateResource,
-  serviceInput, removeService, submitForVerification, updateProvider,
+  serviceInput, removeService, submitForVerification, updateProvider, updateService,
 } from '@/lib/onboarding'
 import { movePhoto, removePhoto, setCover, updateCaption } from '@/lib/photos'
 import { mediaStore } from '@/lib/media'
@@ -62,11 +62,8 @@ export async function doUpdateBusiness(formData: FormData): Promise<void> {
   redirect(`/painel/${providerId}?guardado=1`)
 }
 
-export async function doAddService(formData: FormData): Promise<void> {
-  const profile = await requireProfile()
-  const providerId = String(formData.get('providerId') ?? '')
-  if (!isUuid(providerId)) redirect('/painel')
-  const parsed = serviceInput.safeParse({
+/** The same fields for adding and editing a service. */
+const serviceFields = (formData: FormData) => serviceInput.safeParse({
     name: str(formData, 'name') ?? '',
     description: str(formData, 'description'),
     categoryId: str(formData, 'categoryId') ?? '',
@@ -77,11 +74,32 @@ export async function doAddService(formData: FormData): Promise<void> {
     minCapacity: str(formData, 'minCapacity'),
     maxCapacity: str(formData, 'maxCapacity'),
   })
+
+export async function doAddService(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
+  const parsed = serviceFields(formData)
   if (!parsed.success) {
-    redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
+    redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}#servicos`)
   }
   await addService(profile.id, providerId, parsed.data)
   redirect(`/painel/${providerId}?guardado=1#servicos`)
+}
+
+export async function doUpdateService(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const providerId = String(formData.get('providerId') ?? '')
+  const serviceId = String(formData.get('serviceId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
+  if (!isUuid(serviceId)) redirect(`/painel/${providerId}?erro=dados#servicos`)
+  const parsed = serviceFields(formData)
+  if (!parsed.success) {
+    // Reopen the same service's form, so the error sits next to it.
+    redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}&editar=${serviceId}#servico-${serviceId}`)
+  }
+  const ok = await updateService(profile.id, providerId, serviceId, parsed.data)
+  redirect(`/painel/${providerId}?${ok ? 'guardado=1' : 'erro=dados'}#servico-${serviceId}`)
 }
 
 export async function doRemoveService(formData: FormData): Promise<void> {
