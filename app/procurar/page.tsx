@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
-import { recordSearch, search, type Cursor } from '@/lib/search'
+import { recordSearch, search, type Cursor, type SearchSort } from '@/lib/search'
+import { majorInput, parseMajor } from '@/lib/money'
 import { isCrawler, sessionId } from '@/lib/session'
 import { EmptyState } from '@/app/EmptyState'
 import { SupplierCard } from '@/app/SupplierCard'
@@ -20,7 +21,24 @@ export const dynamic = 'force-dynamic'
 // reaches a Postgres cast unvalidated. An invalid value is treated as
 // absent, so a mistyped or WhatsApp-mangled link still shows results
 // instead of a 500.
-type Params = Record<'categoria' | 'zona' | 'pessoas' | 'data' | 'depois', string | string[] | undefined>
+type Params = Record<'categoria' | 'zona' | 'pessoas' | 'data' | 'depois' | 'orcamento' | 'ordem', string | string[] | undefined>
+
+const SORTS: Record<SearchSort, string> = {
+  relevancia: 'Relevância',
+  preco: 'Preço mais baixo',
+  avaliacao: 'Mais bem avaliados',
+}
+
+/** "450.000" → cêntimos; anything unparsable, zero or absurd is no budget. */
+function budget(raw: string | undefined): bigint | undefined {
+  if (!raw || raw.length > 20) return undefined
+  try {
+    const v = parseMajor(raw)
+    return v > 0n ? v : undefined
+  } catch {
+    return undefined
+  }
+}
 
 type Category = { id: string; slug: string; name: string; type: 'venue' | 'service' }
 type Municipality = { id: string; slug: string; name: string }
@@ -30,10 +48,16 @@ async function filters(): Promise<{ categories: Category[]; municipalities: Muni
     // The same set the homepage offers: venues and services alike. The
     // homepage linked DJs and make-up here while this list only held
     // venue categories, so the filter silently vanished.
+    // Only categories somebody can actually be found under (slice 42,
+    // review R002): a filter that can only ever return "nada encontrado"
+    // is a dead end. Visitors see only public suppliers (RLS).
     const cats = await c.query<Category>(
-      `select id, slug, name, default_supplier_type as type from categories
-        where is_active and parent_id is not null
-        order by default_supplier_type = 'venue' desc, sort_order`,
+      `select c.id, c.slug, c.name, c.default_supplier_type as type from categories c
+        where c.is_active and c.parent_id is not null
+          and (exists (select 1 from providers p where p.category_id = c.id and p.is_published)
+               or exists (select 1 from services s join providers p on p.id = s.provider_id
+                           where s.category_id = c.id and s.is_active and p.is_published))
+        order by c.default_supplier_type = 'venue' desc, c.sort_order`,
     )
     const locs = await c.query<Municipality>(
       `select id, slug, name from locations where is_active and level = 'municipality' order by name`,
@@ -54,7 +78,9 @@ function decodeCursor(raw?: string): Cursor | undefined {
   try {
     const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'))
     if (isUuid(parsed?.id) && typeof parsed?.name === 'string' && parsed.name.length <= 200) {
-      return { isDemo: Boolean(parsed.isDemo), hasPrice: Boolean(parsed.hasPrice), name: parsed.name, id: parsed.id }
+      const sortNum = typeof parsed.sortNum === 'string' && /^-?\d+(\.\d+)?$/.test(parsed.sortNum) ? parsed.sortNum : undefined
+      const sort = parsed.sort in SORTS ? (parsed.sort as SearchSort) : undefined
+      return { isDemo: Boolean(parsed.isDemo), hasPrice: Boolean(parsed.hasPrice), name: parsed.name, id: parsed.id, sort, sortNum }
     }
   } catch {
     // A malformed cursor is a first page, not an error page.
@@ -78,6 +104,8 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
     capacity: intInRange(params.pessoas, 1, 100000),
     // A past date is not "livre" — it is simply not a question we answer.
     date: pastDate ? undefined : date,
+    maxPriceMinor: budget(firstParam(params.orcamento)),
+    sort: (firstParam(params.ordem) ?? '') in SORTS ? (firstParam(params.ordem) as SearchSort) : 'relevancia' as SearchSort,
     cursor: decodeCursor(firstParam(params.depois)),
   }
 
@@ -101,6 +129,8 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
   if (zone) next.set('zona', zone.id)
   if (query.capacity) next.set('pessoas', String(query.capacity))
   if (query.date) next.set('data', query.date)
+  if (query.maxPriceMinor) next.set('orcamento', majorInput(query.maxPriceMinor))
+  if (query.sort !== 'relevancia') next.set('ordem', query.sort)
   if (results.nextCursor) next.set('depois', encodeCursor(results.nextCursor))
   const quoteHref = `/pedir-orcamento${category ? `?categoria=${category.id}` : ''}`
 
@@ -148,6 +178,23 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
               <input className={styles.ctl} type="number" name="pessoas" min={1} max={100000}
                      inputMode="numeric" placeholder="200" defaultValue={query.capacity ?? ''} />
             </label>
+            {/* Kept out of the way on a phone, where six stacked fields
+                pushed every result below the first screen; open whenever
+                one of them is in use. */}
+            <details className={styles.more} open={Boolean(query.maxPriceMinor) || query.sort !== 'relevancia'}>
+              <summary className={styles.lab}>Mais filtros</summary>
+            <label className={styles.f}>
+              <span className={styles.lab}>Orçamento até (Kz)</span>
+              <input className={styles.ctl} name="orcamento" inputMode="decimal" placeholder="500.000"
+                     defaultValue={query.maxPriceMinor ? majorInput(query.maxPriceMinor) : ''} />
+            </label>
+            <label className={styles.f}>
+              <span className={styles.lab}>Ordenar</span>
+              <select className={styles.ctl} name="ordem" defaultValue={query.sort}>
+                {Object.entries(SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            </details>
             <button className={styles.go} type="submit">
               Procurar
             </button>
@@ -163,6 +210,7 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
             {results.hits.length === 1 && !results.nextCursor ? ` ${noun[0]}` : ` ${noun[1]}`}
             {query.date ? ` ${results.hits.length === 1 && !results.nextCursor ? 'livre' : 'livres'} a ${query.date.split('-').reverse().join('/')}` : ''}
             {query.capacity ? ` · ${query.capacity} pessoas` : ''}
+            {query.maxPriceMinor ? ` · até ${majorInput(query.maxPriceMinor)} Kz` : ''}
           </p>
           {pastDate ? <p className={styles.count}>Essa data já passou — a mostrar sem filtro de data.</p> : null}
         </div>

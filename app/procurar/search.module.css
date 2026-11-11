@@ -37,3 +37,11 @@
         border-radius: 10px; text-decoration: none;
         transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out); }
 .more:hover { background: var(--azul-050); border-color: var(--azul-700); }
+
+/* "Mais filtros" (slice 42): budget and sort, folded away on a phone. */
+.more { grid-column: 1 / -1; }
+.more summary { cursor: pointer; list-style: none; padding: 4px 0; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary::after { content: ' +'; }
+.more[open] summary::after { content: ' −'; }
+.more[open] { display: grid; gap: 12px; }
