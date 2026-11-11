@@ -92,6 +92,11 @@ function when(context: BookingContext): string {
 
 const dashboard = (providerId: string) => `${siteUrl()}/painel/${providerId}`
 const publicPage = (slug: string) => `${siteUrl()}/fornecedor/${slug}`
+/** The absolute link for an email: the same place the inbox opens. */
+const link = (kind: string, c: object) => {
+  const path = notificationPath(kind, c as Record<string, unknown>)
+  return path ? `${siteUrl()}${path}` : null
+}
 
 function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
   switch (kind) {
@@ -103,8 +108,8 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           `Data: ${when(c)}`,
           '',
-          'Aceite ou rejeite a partir do seu painel:',
-          dashboard(c.provider_id),
+          'Aceite ou rejeite aqui:',
+          link(kind, c) ?? dashboard(c.provider_id),
         ].join('\n'),
       }
     case 'booking_accepted':
@@ -115,8 +120,8 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           `Data: ${when(c)}`,
           '',
-          'Veja o perfil e os próximos passos:',
-          publicPage(c.provider_slug),
+          'Veja o próximo passo na página da reserva:',
+          link(kind, c) ?? publicPage(c.provider_slug),
         ].join('\n'),
       }
     case 'booking_awaiting_payment': {
@@ -154,7 +159,8 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           `Data: ${when(c)}`,
           '',
-          publicPage(c.provider_slug),
+          'A página da reserva tem o local, os contactos e a referência:',
+          link(kind, c) ?? publicPage(c.provider_slug),
         ].join('\n'),
       }
     case 'booking_confirmed_provider':
@@ -263,7 +269,7 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           'Confirme no seu painel depois de verificar que o valor entrou na sua conta.',
           'Enquanto o comprovativo estiver em análise, a data continua reservada para este cliente.',
-          `${dashboard(c.provider_id)}/reservas`,
+          link(kind, c) ?? `${dashboard(c.provider_id)}/reservas`,
         ].join('\n'),
       }
     case 'booking_released_provider':
@@ -273,7 +279,7 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           `A reserva de ${when(c)} expirou porque o cliente não avançou com o pagamento a tempo.`,
           '',
           'A data voltou a ficar disponível no seu calendário.',
-          `${dashboard(c.provider_id)}/reservas`,
+          link(kind, c) ?? `${dashboard(c.provider_id)}/reservas`,
         ].join('\n'),
       }
     default:
@@ -381,7 +387,7 @@ function quoteMail(kind: NotificationKind, context: unknown): RenderedMail {
           when ? `Data do evento: ${when}` : null,
           '',
           'O cliente vai agora pedir a reserva na sua página. Acompanhe os pedidos no seu painel:',
-          `${dashboard(c.provider_id)}/reservas`,
+          link(kind, c) ?? `${dashboard(c.provider_id)}/reservas`,
         ].filter((line): line is string => line !== null).join('\n'),
       }
     }
@@ -433,4 +439,43 @@ export function render(kind: string, context: Record<string, unknown>): Rendered
 
   if (BOOKING_KINDS.has(k)) return bookingMail(k, context as unknown as BookingContext)
   return providerMail(k, context as unknown as ProviderContext)
+}
+
+
+// ---------------------------------------------------------------------
+// Where each notification takes its reader (slice 36). One answer for the
+// email link and the in-app inbox, so they can never disagree: the screen
+// where the person acts on it, not a generic dashboard or a public page.
+// ---------------------------------------------------------------------
+const TO_SUPPLIER = new Set<string>([
+  'booking_requested', 'booking_confirmed_provider', 'booking_cancelled_client',
+  'booking_payment_submitted', 'booking_released_provider',
+])
+
+/** A site-relative path, or null when there is nothing to open. */
+export function notificationPath(kind: string, context: Record<string, unknown>): string | null {
+  const c = context as {
+    booking_id?: string; provider_id?: string; provider_slug?: string; support_request_id?: string
+  }
+  if (kind.startsWith('booking_') && c.booking_id) {
+    if (TO_SUPPLIER.has(kind)) {
+      return c.provider_id ? `/painel/${c.provider_id}/reservas/${c.booking_id}` : null
+    }
+    return `/reservas/${c.booking_id}`
+  }
+  switch (kind) {
+    case 'provider_verified': case 'provider_rejected':
+    case 'provider_suspended': case 'provider_reinstated':
+      return c.provider_id ? `/painel/${c.provider_id}` : null
+    case 'quote_request_new':
+      return c.provider_id ? `/painel/${c.provider_id}/pedidos` : '/painel'
+    case 'quote_offer_received':
+      return '/conta/pedidos'
+    case 'quote_offer_accepted':
+      return c.provider_id ? `/painel/${c.provider_id}/reservas` : '/painel'
+    case 'support_request_new':
+      return '/admin/apoio'
+    default:
+      return null
+  }
 }

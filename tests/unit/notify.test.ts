@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { render } from '@/lib/notify'
+import { notificationPath, render } from '@/lib/notify'
 
 /**
  * Pure rendering — no database, no mailer. What lib/notifications.ts
@@ -212,5 +212,40 @@ describe('links use the configured site origin', () => {
     process.env.NEXT_PUBLIC_SITE_URL = 'https://ngueza.com'
     const mail = render('booking_requested', BOOKING_CONTEXT)
     expect(mail.text).toContain('https://ngueza.com/painel/p1')
+  })
+})
+
+describe('where a notification takes its reader (slice 36)', () => {
+  const ctx = { booking_id: 'b1', provider_id: 'p1', provider_slug: 's', provider_name: 'X',
+                starts_at: '2027-04-01T09:00:00Z', ends_at: '2027-04-01T20:00:00Z' }
+
+  it('sends the supplier to the booking that needs them, not the dashboard', () => {
+    for (const k of ['booking_requested', 'booking_payment_submitted', 'booking_cancelled_client',
+                     'booking_confirmed_provider', 'booking_released_provider']) {
+      expect(notificationPath(k, ctx)).toBe('/painel/p1/reservas/b1')
+    }
+  })
+
+  it('sends the client to their own booking page', () => {
+    for (const k of ['booking_accepted', 'booking_awaiting_payment', 'booking_confirmed',
+                     'booking_rejected', 'booking_expired', 'booking_unavailable', 'booking_no_show']) {
+      expect(notificationPath(k, ctx)).toBe('/reservas/b1')
+    }
+  })
+
+  it('knows the non-booking kinds, and says null rather than guessing', () => {
+    expect(notificationPath('provider_verified', ctx)).toBe('/painel/p1')
+    expect(notificationPath('quote_offer_received', {})).toBe('/conta/pedidos')
+    expect(notificationPath('quote_request_new', { provider_id: 'p1' })).toBe('/painel/p1/pedidos')
+    expect(notificationPath('support_request_new', {})).toBe('/admin/apoio')
+    expect(notificationPath('booking_requested', { provider_id: 'p1' })).toBeNull()
+    expect(notificationPath('qualquer', ctx)).toBeNull()
+  })
+
+  it('puts the same link in the email', () => {
+    expect(render('booking_requested', ctx).text).toContain('/painel/p1/reservas/b1')
+    expect(render('booking_accepted', ctx).text).toContain('/reservas/b1')
+    expect(render('booking_confirmed', ctx).text).toContain('/reservas/b1')
+    expect(render('booking_payment_submitted', ctx).text).toContain('/painel/p1/reservas/b1')
   })
 })
