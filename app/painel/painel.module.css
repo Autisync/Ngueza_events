@@ -104,3 +104,39 @@
 .audit { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8rem;
          border-bottom: 1px solid var(--linha); padding: 9px 0; color: var(--tinta-2); }
 .when { color: var(--tinta-3); }
+
+/* ---- photographs (slice 27) ---- */
+.upload { position: relative; display: inline-block; }
+.upload:focus-within { outline: 3px solid var(--azul-500); outline-offset: 2px; }
+.disabled { background: var(--tinta-3); }
+.disabled:hover { background: var(--tinta-3); box-shadow: none; }
+
+.photos { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 14px;
+          grid-template-columns: 1fr; }
+@media (min-width: 560px) { .photos { grid-template-columns: 1fr 1fr; } }
+.photo { border: 1px solid var(--linha); border-radius: 10px; overflow: hidden;
+         background: var(--branco); scroll-margin-top: 16px; }
+.photoFrame { position: relative; aspect-ratio: 3 / 2; background: var(--azul-050);
+              display: flex; align-items: center; justify-content: center;
+              color: var(--tinta-3); font-size: 0.85rem; }
+.photoFrame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.badge { position: absolute; top: 10px; left: 10px; font-size: 0.75rem; font-weight: 700;
+         padding: 4px 10px; border-radius: 999px; background: var(--azul-700); color: var(--branco); }
+.position { position: absolute; top: 10px; right: 10px; font-size: 0.75rem; font-weight: 700;
+            padding: 4px 9px; border-radius: 999px; background: rgba(6, 43, 77, 0.7); color: var(--branco); }
+.photoBody { padding: 12px; }
+.photoBody .field { margin-bottom: 8px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mini { padding: 8px 12px; font: inherit; font-size: 0.86rem; font-weight: 600;
+        border-radius: 8px; cursor: pointer; background: var(--branco);
+        color: var(--azul-700); border: 1px solid var(--linha); min-height: 40px; }
+.mini:hover { border-color: var(--azul-500); background: var(--azul-050); }
+.mini:disabled { color: var(--tinta-3); cursor: not-allowed; background: var(--azul-050); }
+.danger { color: var(--erro); }
+.danger:hover { border-color: var(--erro); background: var(--erro-fundo); }
+.confirm summary { list-style: none; display: inline-flex; align-items: center; }
+.confirm summary::-webkit-details-marker { display: none; }
+.confirm[open] summary { display: none; }
+.strip { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; }
+.strip img, .strip span { width: 96px; height: 64px; object-fit: cover; border-radius: 7px;
+                          flex: none; background: var(--azul-050); }

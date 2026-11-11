@@ -81,24 +81,31 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MEDIA_BUCKET: ${MEDIA_BUCKET:-ngueza-media}
       DOCUMENTS_BUCKET: ${DOCUMENTS_BUCKET:-ngueza-documents}
-    # Two buckets, and the difference between them matters.
+    # Two buckets, both private. Kept apart so an identity card can never
+    # land in the bucket imgproxy serves from by a naming mistake.
     #
-    #   media      — anonymously readable, so supplier photographs load
-    #                straight from storage with no signed URL.
-    #   documents  — identity cards, NIFs, commercial registrations. NO
-    #                anonymous access. Reachable only through a
-    #                short-lived signed URL issued to an administrator.
+    #   media      — supplier photographs. Visitors only ever see them
+    #                through imgproxy, which reads with its own credentials
+    #                (below) and strips EXIF on the way out. Until slice 27
+    #                this bucket was anonymously readable, which exposed the
+    #                ORIGINAL file — GPS coordinates and all — to anyone who
+    #                decoded the source path inside an imgproxy URL.
+    #   documents  — identity cards, NIFs, commercial registrations, proofs
+    #                of payment. Reachable only through a short-lived signed
+    #                URL issued to an administrator.
     #
     # `mc anonymous set none` is applied explicitly rather than relying on
-    # the default, so a later MinIO default cannot quietly open it.
+    # the default, so a later MinIO default cannot quietly open either. It
+    # re-runs on every stack start, so restarting an existing deployment
+    # closes a media bucket that an older version of this file opened.
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
       mc mb --ignore-existing local/$$MEDIA_BUCKET &&
-      mc anonymous set download local/$$MEDIA_BUCKET &&
+      mc anonymous set none local/$$MEDIA_BUCKET &&
       mc mb --ignore-existing local/$$DOCUMENTS_BUCKET &&
       mc anonymous set none local/$$DOCUMENTS_BUCKET &&
-      echo 'bucket '$$MEDIA_BUCKET' ready' &&
+      echo 'bucket '$$MEDIA_BUCKET' ready (private)' &&
       echo 'bucket '$$DOCUMENTS_BUCKET' ready (private)'
       "
     networks: [media]
