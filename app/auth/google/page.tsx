@@ -14,7 +14,6 @@ export default async function GoogleAuth({
 
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>A entrar…</h1>
 
       <GoogleCallback next={target} />

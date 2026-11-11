@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { formatPrice } from '@/lib/money'
-import { formOptions, ownedDocuments, ownedProvider, ownedResources, ownedServices } from '@/lib/painel'
+import { dashboardCounts, formOptions, ownedDocuments, ownedProvider, ownedResources, ownedServices } from '@/lib/painel'
 import {
   doAddResource, doAddService, doRemoveResource, doRemoveService, doSubmitForVerification,
   doUpdateBusiness, doUpdateResource, doUpdateService,
 } from '../actions'
 import { DocumentUpload } from './DocumentUpload'
 import { ServiceFields } from './ServiceFields'
+import { Icon } from '@/app/SiteHeader'
 import { verificationLabel } from '@/lib/painel-labels'
 import { coverImageUrl } from '@/lib/media'
 import { MAX_PHOTOS, ownedPhotos } from '@/lib/photos'
@@ -59,8 +60,9 @@ export default async function GerirNegocio({
   // RLS already hides other people's businesses, so nothing here is a 403.
   if (!provider) notFound()
 
-  const [photos, services, resources, documents, { categories, locations }, flags] = await Promise.all([
+  const [photos, counts, services, resources, documents, { categories, locations }, flags] = await Promise.all([
     ownedPhotos(profile.id, providerId),
+    dashboardCounts(profile.id, providerId),
     ownedServices(profile.id, providerId),
     ownedResources(profile.id, providerId),
     ownedDocuments(profile.id, providerId),
@@ -102,80 +104,68 @@ export default async function GerirNegocio({
           <p className={styles.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
         ) : null}
 
-        {/* ---- photographs (slice 27) ---- */}
-        <div className={styles.card} id="fotos">
-          <h2>Fotografias</h2>
-          {photos.length === 0 ? (
-            <p className={styles.note}>
-              O seu perfil ainda não tem fotografias e aparece com um ícone cinzento nos resultados.
-              É a primeira coisa que um cliente procura.
-            </p>
-          ) : (
-            <>
-              <p className={styles.note}>{photos.length} de {MAX_PHOTOS} · a primeira é a capa.</p>
-              <div className={styles.strip} aria-hidden="true">
-                {photos.slice(0, 6).map((p) => {
+        {/* ---- the dashboard (slice 43): one tile per area, each with the
+            number that matters and highlighted when something waits on
+            the supplier. Replaced a column of identical cards. ---- */}
+        <div className={styles.tiles}>
+          <a className={`${styles.tile} ${counts.pendingRequests > 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/reservas`}>
+            <span className={styles.tileIcon}><Icon name="calendar" size={22} /></span>
+            <span className={styles.tileTitle}>Reservas</span>
+            <span className={styles.tileNum}>{counts.pendingRequests}</span>
+            <span className={styles.tileSub}>
+              {counts.pendingRequests === 1 ? 'pedido por responder' : 'pedidos por responder'}
+              {counts.awaitingPayment ? ` · ${counts.awaitingPayment} a aguardar pagamento` : ''}
+              {counts.upcoming ? ` · ${counts.upcoming} confirmadas` : ''}
+            </span>
+          </a>
+          <a className={`${styles.tile} ${photos.length === 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/fotos`}>
+            <span className={styles.tileIcon}><Icon name="image" size={22} /></span>
+            <span className={styles.tileTitle}>Fotografias</span>
+            <span className={styles.tileNum}>{photos.length}<small> / {MAX_PHOTOS}</small></span>
+            <span className={styles.tileSub}>{photos.length === 0 ? 'Sem fotografias: é a primeira coisa que um cliente procura' : 'a primeira é a capa'}</span>
+            {photos.length > 0 ? (
+              <span className={styles.strip} aria-hidden="true">
+                {photos.slice(0, 4).map((p) => {
                   const src = coverImageUrl(p.externalId, 'thumb')
                   // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL
                   return src ? <img key={p.id} src={src} alt="" loading="lazy" /> : <span key={p.id} />
                 })}
-              </div>
-            </>
-          )}
-          <a className={styles.submit} href={`/painel/${provider.id}/fotos`}
-             style={{ display: 'inline-block', textDecoration: 'none' }}>
-            {photos.length === 0 ? 'Adicionar fotografias' : 'Gerir fotografias'}
+              </span>
+            ) : null}
           </a>
+          <a className={`${styles.tile} ${counts.openQuotes > 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/pedidos`}>
+            <span className={styles.tileIcon}><Icon name="quote" size={22} /></span>
+            <span className={styles.tileTitle}>Pedidos de orçamento</span>
+            <span className={styles.tileNum}>{counts.openQuotes}</span>
+            <span className={styles.tileSub}>{counts.openQuotes === 1 ? 'à espera da sua proposta' : 'à espera da sua proposta'}</span>
+          </a>
+          <a className={`${styles.tile} ${counts.unansweredReviews > 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/avaliacoes`}>
+            <span className={styles.tileIcon}><Icon name="star" size={22} /></span>
+            <span className={styles.tileTitle}>Avaliações</span>
+            <span className={styles.tileNum}>{counts.reviews}</span>
+            <span className={styles.tileSub}>{counts.unansweredReviews ? `${counts.unansweredReviews} sem a sua resposta` : 'O que os clientes dizem'}</span>
+          </a>
+          <a className={styles.tile} href={`/painel/${provider.id}/cancelamento`}>
+            <span className={styles.tileIcon}><Icon name="policy" size={22} /></span>
+            <span className={styles.tileTitle}>Cancelamento</span>
+            <span className={styles.tileSub} style={{ marginTop: 6 }}>{counts.policyName ?? 'Política padrão'}</span>
+          </a>
+          {provider.isPublished ? (
+            <a className={styles.tile} href={`/fornecedor/${provider.slug}`}>
+              <span className={styles.tileIcon}><Icon name="eye" size={22} /></span>
+              <span className={styles.tileTitle}>A sua página</span>
+              <span className={styles.tileSub} style={{ marginTop: 6 }}>Ver como os clientes a vêem</span>
+            </a>
+          ) : null}
         </div>
 
-        {/* ---- bookings ---- */}
-        <div className={styles.card}>
-          <h2>Reservas</h2>
-          <p className={styles.note}>
-            Pedidos por responder, reservas confirmadas, e o bloqueio manual de datas para quem
-            reservou fora da NGUEZA.
-          </p>
-          <a className={styles.submit} href={`/painel/${provider.id}/reservas`}
-             style={{ display: 'inline-block', textDecoration: 'none' }}>
-            Ver reservas
-          </a>
-        </div>
-
-        {/* ---- reviews ---- */}
-        <div className={styles.card}>
-          <h2>Avaliações</h2>
-          <p className={styles.note}>
-            O que os clientes dizem, e o seu direito de resposta.
-          </p>
-          <a className={styles.submit} href={`/painel/${provider.id}/avaliacoes`}
-             style={{ display: 'inline-block', textDecoration: 'none' }}>
-            Ver avaliações
-          </a>
-        </div>
-
-        {/* ---- quote requests (slice 20) ---- */}
-        <div className={styles.card}>
-          <h2>Pedidos de orçamento</h2>
-          <p className={styles.note}>
-            Pedidos de clientes que correspondem à sua categoria e localização — responda com um preço.
-          </p>
-          <a className={styles.submit} href={`/painel/${provider.id}/pedidos`}
-             style={{ display: 'inline-block', textDecoration: 'none' }}>
-            Ver pedidos
-          </a>
-        </div>
-
-        {/* ---- cancellation policy ---- */}
-        <div className={styles.card}>
-          <h2>Política de cancelamento</h2>
-          <p className={styles.note}>
-            O que um cliente recebe de volta, consoante a antecedência com que cancela.
-          </p>
-          <a className={styles.submit} href={`/painel/${provider.id}/cancelamento`}
-             style={{ display: 'inline-block', textDecoration: 'none' }}>
-            Ver política
-          </a>
-        </div>
+        <nav className={styles.jump} aria-label="Nesta página">
+          <span>Nesta página:</span>
+          <a href="#verificacao">Estado e documentos</a>
+          <a href="#servicos">Serviços e preços</a>
+          {provider.supplierType === 'venue' ? <a href="#espacos">Espaços</a> : null}
+          <a href="#perfil">Dados do negócio</a>
+        </nav>
 
         {/* ---- verification ---- */}
         <div className={styles.card} id="verificacao">

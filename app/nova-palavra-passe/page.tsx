@@ -19,7 +19,6 @@ export default async function NovaPalavraPasse({
 
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Nova palavra-passe</h1>
 
       {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.falhou}</p> : null}

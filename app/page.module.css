@@ -8,7 +8,7 @@
 .hero {
   background: linear-gradient(170deg, var(--azul-800) 0%, var(--azul-700) 55%, var(--azul-600) 100%);
   color: var(--branco);
-  padding: 8px 0 64px;
+  padding: clamp(28px, 6vw, 56px) 0 64px;
 }
 .wedge {
   font-size: clamp(1.9rem, 5.5vw, 3rem);

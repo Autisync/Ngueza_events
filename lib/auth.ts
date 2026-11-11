@@ -250,6 +250,7 @@ const cookieOptions = {
 export async function storeSession(session: Session): Promise<void> {
   const jar = await cookies()
   jar.set(ACCESS_COOKIE, session.accessToken, { ...cookieOptions, maxAge: 60 * 60 })
+  jar.delete('ngz_expired')
   jar.set(REFRESH_COOKIE, session.refreshToken, { ...cookieOptions, maxAge: 60 * 60 * 24 * 30 })
 }
 

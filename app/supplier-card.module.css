@@ -42,3 +42,15 @@
        border-radius: 999px; padding: 2px 9px; }
 
 .unit { font-weight: 500; font-size: 0.85em; color: var(--tinta-3); }
+
+/* The no-photo illustration (slice 43): a blue gradient, a soft dot grid
+   and the category's own line drawing — lively without pretending. */
+.thumbArt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 10px; color: var(--branco);
+            background:
+              radial-gradient(rgba(255,255,255,0.16) 1px, transparent 1.5px) 0 0 / 14px 14px,
+              radial-gradient(120% 90% at 85% 10%, var(--azul-500) 0%, transparent 60%),
+              linear-gradient(150deg, var(--azul-700), var(--azul-900)); }
+.thumbArt svg { filter: drop-shadow(0 6px 14px rgba(0,0,0,0.25)); }
+.thumbArtLabel { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+                 color: var(--azul-200); }

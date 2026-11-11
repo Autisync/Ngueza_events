@@ -6,7 +6,6 @@ export const metadata: Metadata = { title: 'Confirme o seu email', robots: { ind
 export default function Confirmar() {
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Falta confirmar o email</h1>
       <p className={`${styles.alert} ${styles.ok}`}>Conta criada.</p>
       <p className={styles.lede}>

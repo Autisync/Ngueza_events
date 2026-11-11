@@ -23,7 +23,6 @@ export default async function Confirmar({
   if (result === null) {
     return (
       <main className={styles.page}>
-        <p className={styles.mark}>NGUEZA</p>
         <h1 className={styles.title}>Confirmar o seu email</h1>
         <p className={styles.body}>Carregue no botão para confirmar a inscrição na lista da NGUEZA.</p>
         <form action={doConfirmNewsletter}>
@@ -37,7 +36,6 @@ export default async function Confirmar({
   if (result === 'unknown') {
     return (
       <main className={styles.page}>
-        <p className={styles.mark}>NGUEZA</p>
         <div className={`${styles.icon} ${styles.iconWarn}`} aria-hidden="true">
           !
         </div>
@@ -55,7 +53,6 @@ export default async function Confirmar({
 
   return (
     <main className={styles.page}>
-      <p className={styles.mark}>NGUEZA</p>
       <div className={`${styles.icon} ${styles.iconOk}`} aria-hidden="true">
         ✓
       </div>

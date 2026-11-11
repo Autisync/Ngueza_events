@@ -18,7 +18,6 @@ export default async function Reservas() {
     <main>
       <section className={styles.top}>
         <div className={styles.wrap}>
-          <a className={styles.mark} href="/">← NGUEZA</a>
           <h1 className={styles.title}>As minhas reservas</h1>
         </div>
       </section>

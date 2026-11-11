@@ -130,3 +130,41 @@ export async function formOptions() {
     return { categories: categories.rows, locations: locations.rows }
   })
 }
+
+export interface DashboardCounts {
+  /** Requests waiting for this supplier's answer. */
+  pendingRequests: number
+  /** Bookings waiting on the supplier to confirm a payment. */
+  awaitingPayment: number
+  upcoming: number
+  reviews: number
+  unansweredReviews: number
+  openQuotes: number
+  policyName: string | null
+}
+
+/** The numbers on the painel's tiles (slice 43): what is waiting, at a glance. */
+export async function dashboardCounts(ownerId: string, providerId: string): Promise<DashboardCounts> {
+  return asUser(ownerId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select
+         (select count(*) from bookings where provider_id = $1 and status = 'requested')::int as pending,
+         (select count(*) from bookings where provider_id = $1 and status = 'awaiting_payment')::int as awaiting,
+         (select count(*) from bookings where provider_id = $1 and status = 'confirmed' and starts_at > now())::int as upcoming,
+         (select count(*) from reviews where provider_id = $1 and status = 'published')::int as reviews,
+         (select count(*) from reviews r where r.provider_id = $1 and r.status = 'published'
+            and r.provider_reply is null)::int as unanswered,
+         (select count(*) from quote_requests qr
+           where quote_request_open_and_matches(qr.id, $1)
+             and not exists (select 1 from quote_offers o where o.quote_request_id = qr.id and o.provider_id = $1))::int as quotes,
+         (select name from cancellation_policies where is_active and (provider_id = $1 or provider_id is null)
+           order by provider_id nulls last limit 1) as policy`,
+      [providerId],
+    )
+    const r = rows[0]
+    return {
+      pendingRequests: r.pending, awaitingPayment: r.awaiting, upcoming: r.upcoming,
+      reviews: r.reviews, unansweredReviews: r.unanswered, openQuotes: r.quotes, policyName: r.policy,
+    }
+  })
+}

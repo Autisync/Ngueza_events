@@ -3,6 +3,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { siteUrl } from '@/lib/env'
 import './globals.css'
+import { SiteFooter, SiteHeader } from './SiteHeader'
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
@@ -39,7 +40,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-AO">
       <body>
+        <SiteHeader />
         {children}
+        <SiteFooter />
         <Analytics />
         <SpeedInsights />
       </body>

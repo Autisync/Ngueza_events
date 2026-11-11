@@ -48,6 +48,8 @@ export interface SearchHit {
   description: string | null
   supplierType: 'venue' | 'service'
   categoryName: string
+  /** For the card's illustration when there is no photo yet (slice 43). */
+  categorySlug: string
   /** categoryName plus every active service's own category, deduplicated
    *  (slice 22) — what this provider actually matched the search through,
    *  not only what it registered as. */
@@ -77,6 +79,7 @@ interface Row {
   description: string | null
   supplier_type: 'venue' | 'service'
   category_name: string
+  category_slug: string
   extra_category_names: string[] | null
   location_name: string
   capacity: number | null
@@ -129,6 +132,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
         select
           p.id, p.slug, p.name, p.description, p.supplier_type, p.is_demo,
           cat.name  as category_name,
+          cat.slug  as category_slug,
           loc.name  as location_name,
           r.id      as resource_id,
           r.capacity,
@@ -192,7 +196,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       ),
       ranked as (
         select distinct on (id)
-          id, slug, name, description, supplier_type, category_name, extra_category_names,
+          id, slug, name, description, supplier_type, category_name, category_slug, extra_category_names,
           location_name, capacity, cover_image_id, is_demo, price_mode, price_minor, price_max_minor,
           price_unit, rating_average, review_count,
           (price_mode is not null and price_mode <> 'on_request') as has_price
@@ -251,6 +255,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       description: row.description,
       supplierType: row.supplier_type,
       categoryName: row.category_name,
+      categorySlug: row.category_slug,
       categoryNames: [row.category_name, ...(row.extra_category_names ?? [])]
         .filter((name, i, all) => all.indexOf(name) === i),
       locationName: row.location_name,

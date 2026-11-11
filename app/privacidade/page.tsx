@@ -9,7 +9,6 @@ export const metadata: Metadata = {
 export default function Privacidade() {
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <div className={`${styles.icon} ${styles.iconWait}`} aria-hidden="true">···</div>
       <h1 className={styles.title}>Política de Privacidade</h1>
       <p className={styles.body}>

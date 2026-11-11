@@ -47,7 +47,11 @@ const cookieOptions = {
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  const response = NextResponse.next()
+  // The path, for the shared header (slice 43): it marks the current
+  // section and stays out of the admin area, which has its own shell.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', request.nextUrl.pathname)
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
 
   if (!request.cookies.get(SESSION)) {
     response.cookies.set(SESSION, crypto.randomUUID(), {
@@ -84,6 +88,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       // treats them as signed out instead of retrying on every request.
       response.cookies.delete(ACCESS)
       response.cookies.delete(REFRESH)
+      // Say why (slice 43, review R068): a session that could not be
+      // renewed used to sign the person out silently, and the next page
+      // just asked them to sign in as if nothing had happened.
+      response.cookies.set('ngz_expired', '1', { ...cookieOptions, httpOnly: false, maxAge: 300 })
       return response
     }
 

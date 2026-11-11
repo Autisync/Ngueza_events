@@ -31,7 +31,7 @@ export default async function Registar({
     <main>
       <section className={styles.top}>
         <div className={styles.wrap}>
-          <a className={styles.mark} href="/painel">← NGUEZA</a>
+          <a className={styles.mark} href="/painel">← Painel</a>
           <h1 className={styles.title}>Registar o meu negócio</h1>
           <p className={styles.sub}>
             Depois de registar, envia os documentos e a nossa equipa verifica antes de o perfil

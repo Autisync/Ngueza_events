@@ -23,7 +23,6 @@ export default async function Painel() {
     <main>
       <section className={styles.top}>
         <div className={styles.wrap}>
-          <a className={styles.mark} href="/">← NGUEZA</a>
           <h1 className={styles.title}>Painel do fornecedor</h1>
           <p className={styles.sub}>
             {providers.length === 0

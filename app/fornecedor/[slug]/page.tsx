@@ -9,6 +9,8 @@ import { isCrawler, sessionId } from '@/lib/session'
 import { currentProfile } from '@/lib/auth'
 import { doRequestBooking } from '@/app/booking-actions'
 import { publicPolicy } from '@/lib/cancellation-policy'
+import { CategoryIcon } from '@/app/CategoryIcon'
+import cardStyles from '@/app/supplier-card.module.css'
 import { pausedNotice } from '@/lib/switches'
 import { jsonForScript, todayInLuanda } from '@/lib/safe'
 import { formatRating, relativeTierSteps, reviewCountLabel } from '@/lib/booking-labels'
@@ -150,18 +152,18 @@ export default async function ProviderPage({
             ))}
           </ul>
         ) : (
-          <svg className={styles.heroIcon} width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <circle cx="8.5" cy="10.5" r="1.5" />
-            <path d="M21 15l-5-5-9 9" />
-          </svg>
+          // No photos yet: the category's own drawing (slice 43), as on its card.
+          <span className={cardStyles.thumbArt} aria-hidden="true">
+            <CategoryIcon slug={provider.categorySlug} size={64} />
+            <span className={cardStyles.thumbArtLabel}>{provider.categoryName}</span>
+          </span>
         )}
       </div>
 
       <section className={styles.top}>
         <div className={styles.wrap}>
           <a className={styles.mark} href="/procurar">
-            ← NGUEZA
+            ← Todos os fornecedores
           </a>
           <p className={styles.crumb}>
             {provider.categoryName} · {provider.locationPath.slice(-2).join(' · ')}
@@ -535,16 +537,12 @@ export default async function ProviderPage({
           {provider.addressLine ? <p className={styles.p} style={{ marginTop: 14 }}>{provider.addressLine}</p> : null}
         </section>
 
-        <footer className={styles.foot}>
+        <div className={styles.foot}>
           <p>
             Os preços e a disponibilidade são indicados pelo fornecedor. Confirme sempre antes de
             efectuar qualquer pagamento.
           </p>
-          <p>
-            <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
-          </p>
-        </footer>
+        </div>
       </div>
     </main>
   )
