@@ -75,6 +75,7 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
   // it was typed.
   const clientPhone = normalizePhone(str(formData, 'phone'))
   if (!clientPhone) redirect(`/fornecedor/${slug}?erro=telefone#reservar`)
+  if (formData.get('aceito') !== 'on') redirect(`/fornecedor/${slug}?erro=aceitar#reservar`)
 
   const { date, startTime, endTime } = parsed.data
   const window = eventWindow(date, startTime, endTime)
@@ -90,6 +91,7 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
     notes: parsed.data.notes,
     sessionId: await sessionId(),
     clientPhone,
+    acceptsLegal: true,
   })
 
   if (!result.ok) {

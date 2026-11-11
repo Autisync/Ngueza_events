@@ -5,6 +5,7 @@ import 'server-only'
 import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege, isSlotTaken } from '@/lib/db'
 import { isUuid } from '@/lib/safe'
 import type { Minor } from '@/lib/money'
+import { recordAcceptance } from '@/lib/legal'
 
 /**
  * The booking loop (§10, §26, §27).
@@ -32,6 +33,9 @@ export interface BookingRequest {
   /** E.164. Saved to the client's profile in the same transaction as the
    *  request, so the supplier can reach them once they accept (0034). */
   clientPhone?: string | null
+  /** The client ticked "li e aceito": record the terms and cancellation
+   *  versions in force, in the same transaction as the request (0042). */
+  acceptsLegal?: boolean
 }
 
 export type RequestOutcome =
@@ -94,6 +98,10 @@ export async function requestBooking(
         ],
       )
       const id = rows[0]!.id
+
+      if (input.acceptsLegal) {
+        await recordAcceptance(c, clientId, ['terms', 'cancellation'], 'booking', id)
+      }
 
       if (input.clientPhone) {
         await c.query(

@@ -313,7 +313,9 @@ export default async function ProviderPage({
                   ? 'Essa data já passou. Escolha uma data a partir de hoje.'
                   : flags.erro === 'indisponivel'
                     ? 'Não é possível pedir uma reserva a este fornecedor neste momento.'
-                    : flags.erro === 'pausado'
+                    : flags.erro === 'aceitar'
+                      ? 'Para pedir a reserva, confirme que leu os Termos e a política de cancelamento.'
+                      : flags.erro === 'pausado'
                       ? 'Os novos pedidos de reserva estão temporariamente suspensos.'
                       : flags.erro === 'telefone'
                       ? 'Indique um número de telemóvel válido, por exemplo 923 456 789.'
@@ -451,6 +453,13 @@ export default async function ProviderPage({
                                      resize: 'vertical' }} />
                 </label>
               </div>
+              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 14px', fontSize: '0.9rem' }}>
+                <input type="checkbox" name="aceito" required style={{ marginTop: 3 }} />
+                <span>
+                  Li e aceito os <a href="/termos" target="_blank">Termos de Utilização</a> e a política de
+                  cancelamento acima{policy ? ` («${policy.name}»)` : ''}.
+                </span>
+              </label>
               <button className={`${styles.btn} ${styles.btnMain}`} type="submit"
                       style={{ border: 0, cursor: 'pointer' }}>
                 Solicitar reserva

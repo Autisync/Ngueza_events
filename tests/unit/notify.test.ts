@@ -249,3 +249,15 @@ describe('where a notification takes its reader (slice 36)', () => {
     expect(render('booking_payment_submitted', ctx).text).toContain('/painel/p1/reservas/b1')
   })
 })
+
+describe('the client\'s acknowledgement of a request (slice 41)', () => {
+  it('says it is not yet a reservation, and links to the booking', () => {
+    const mail = render('booking_requested_client', {
+      booking_id: 'b9', provider_id: 'p1', provider_slug: 's', provider_name: 'Salão X',
+      starts_at: '2027-04-01T09:00:00Z', ends_at: '2027-04-01T20:00:00Z',
+    })
+    expect(mail.subject).toBe('Pedido enviado — Salão X')
+    expect(mail.text).toContain('Ainda não é uma reserva')
+    expect(mail.text).toContain('/reservas/b9')
+  })
+})

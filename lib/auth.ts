@@ -140,7 +140,7 @@ export async function signIn(email: string, password: string, clientIp?: string 
 }
 
 export type SignUpResult =
-  | { ok: true; needsEmailConfirmation: boolean; session: Session | null }
+  | { ok: true; needsEmailConfirmation: boolean; session: Session | null; userId: string | null }
   | { ok: false; error: AuthError }
 
 export async function signUp(
@@ -160,10 +160,13 @@ export async function signUp(
   const data = await response.json().catch(() => ({}))
   if (!response.ok) return { ok: false, error: classify(response.status, data) }
 
+  // The new account's id, so the action can record what it accepted (0042):
+  // the user object, or the session's user when no confirmation is needed.
+  const userId = (data.user?.id ?? data.id ?? null) as string | null
   if (data.access_token) {
-    return { ok: true, needsEmailConfirmation: false, session: toSession(data) }
+    return { ok: true, needsEmailConfirmation: false, session: toSession(data), userId }
   }
-  return { ok: true, needsEmailConfirmation: true, session: null }
+  return { ok: true, needsEmailConfirmation: true, session: null, userId }
 }
 
 export async function refreshSession(refreshToken: string): Promise<Session | null> {
