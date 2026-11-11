@@ -1,12 +1,15 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
-import { bookingDetail, type BookingStatus } from '@/lib/booking'
+import { bookingDetail, lastPaymentInstructions, type BookingStatus } from '@/lib/booking'
+import { bookingPayments, paymentProgress } from '@/lib/payments'
+import { PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
+import { formatMinor } from '@/lib/money'
 import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
 import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { ownedProvider } from '@/lib/painel'
 import { refundEntitlement } from '@/lib/cancellation-policy'
-import { doSupplierTransition } from '@/app/booking-actions'
+import { doRequestPayment, doSupplierTransition } from '@/app/booking-actions'
 import styles from '../../../painel.module.css'
 
 export const metadata: Metadata = { title: 'Reserva', robots: { index: false } }
@@ -25,8 +28,9 @@ const NEXT_STEPS: Partial<Record<BookingStatus, Array<{ to: BookingStatus; label
     { to: 'accepted', label: 'Aceitar', tone: 'go' },
     { to: 'rejected', label: 'Rejeitar', tone: 'no' },
   ],
+  // Asking for payment is its own form below ("Pedir pagamento"): it
+  // needs the amounts, not just a button (slice 31).
   accepted: [
-    { to: 'awaiting_payment', label: 'Marcar como aguarda pagamento', tone: 'go' },
     { to: 'confirmed', label: 'Confirmar directamente', tone: 'go' },
     { to: 'cancelled_provider', label: 'Cancelar', tone: 'no' },
   ],
@@ -72,6 +76,11 @@ export default async function ReservaFornecedor({
   const showEntitlement = booking.status !== 'blocked'
     && (steps.length > 0 || booking.status === 'cancelled_client')
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
+  const [payments, lastInstructions] = await Promise.all([
+    bookingPayments(profile.id, booking.id),
+    booking.status === 'accepted' ? lastPaymentInstructions(profile.id, providerId) : Promise.resolve(null),
+  ])
+  const progress = paymentProgress(booking.totalMinor, payments)
 
   return (
     <main>
@@ -110,6 +119,87 @@ export default async function ReservaFornecedor({
         </div>
 
         {booking.clientId ? <ClientContact booking={booking} providerName={provider.name} /> : null}
+
+        {booking.status === 'accepted' ? (
+          <div className={styles.card} id="pagamento">
+            <h2>Pedir pagamento</h2>
+            <p className={styles.note}>
+              O cliente paga-lhe directamente, fora da NGUEZA, e envia o comprovativo aqui. Diga
+              quanto e como — o cliente recebe estes dados por email e na página da reserva.
+              Depois de enviados, não podem ser alterados.
+            </p>
+            <form action={doRequestPayment}>
+              <input type="hidden" name="bookingId" value={booking.id} />
+              <input type="hidden" name="providerId" value={providerId} />
+              <div className={styles.two}>
+                <label className={styles.field}>
+                  <span className={styles.label}>Total acordado (Kz)</span>
+                  <input className={styles.input} name="total" required inputMode="decimal"
+                         placeholder="1.800.000" />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.label}>Sinal a pagar agora (Kz)</span>
+                  <input className={styles.input} name="deposit" inputMode="decimal"
+                         placeholder="Vazio = o total" />
+                  <span className={styles.hint}>O resto paga-se como combinarem.</span>
+                </label>
+              </div>
+              <label className={styles.field}>
+                <span className={styles.label}>Como pagar</span>
+                <textarea className={styles.area} name="instructions" maxLength={500}
+                          defaultValue={lastInstructions ?? ''}
+                          placeholder="Ex.: Transferência para o IBAN AO06 0000 0000 0000 0000 0000 0 (Salão Horizonte, Lda) ou Multicaixa Express 923 000 000. Indique a referência da reserva." />
+              </label>
+              <button className={`${styles.btn} ${styles.go}`} type="submit">Pedir pagamento ao cliente</button>
+            </form>
+          </div>
+        ) : null}
+
+        {booking.totalMinor !== null || payments.length > 0 ? (
+          <div className={styles.card} id="pagamento">
+            <h2>Pagamento</h2>
+            {booking.totalMinor !== null ? (
+              <>
+                <div className={styles.row}><span>Total acordado</span><span>{formatMinor(BigInt(booking.totalMinor))}</span></div>
+                {booking.depositMinor !== null ? (
+                  <div className={styles.row}><span>Sinal pedido</span><span>{formatMinor(BigInt(booking.depositMinor))}</span></div>
+                ) : null}
+                <div className={styles.row}><span>Declarado pelo cliente</span><span>{formatMinor(progress.declaredMinor)}</span></div>
+                {progress.remainingMinor !== null ? (
+                  <div className={styles.row}><span>Por pagar</span><strong>{formatMinor(progress.remainingMinor)}</strong></div>
+                ) : null}
+              </>
+            ) : null}
+            {payments.length === 0 ? (
+              <p className={styles.note} style={{ margin: '12px 0 0' }}>O cliente ainda não enviou comprovativo.</p>
+            ) : (
+              <div className={styles.list} style={{ marginTop: 14 }}>
+                {payments.map((p) => (
+                  <div className={styles.item} key={p.id}>
+                    <div>
+                      <strong>{formatMinor(BigInt(p.amountMinor))}</strong>
+                      <span className={styles.meta}>
+                        {formatWhen(p.createdAt)}{p.reference ? ` · ref. ${p.reference}` : ''}
+                      </span>
+                      <span className={styles.meta}>{PAYMENT_STATUS_LABEL[p.status]}</span>
+                    </div>
+                    {p.documentId ? (
+                      <a href={`/api/reservas/comprovativo?id=${p.documentId}`} target="_blank" rel="noopener noreferrer">
+                        Ver comprovativo
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+            {booking.status === 'awaiting_payment' ? (
+              <p className={styles.note} style={{ margin: '12px 0 0' }}>
+                Confirme só depois de ver o dinheiro na sua conta. «Comprovativo verificado» quer
+                dizer que a NGUEZA achou o documento legível e plausível — não que o dinheiro chegou.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {entitlement ? (
           <div className={styles.card}>

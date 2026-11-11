@@ -1,4 +1,5 @@
 import type { OwnedService } from '@/lib/painel'
+import { majorInput } from '@/lib/money'
 import styles from '../painel.module.css'
 
 /**
@@ -7,14 +8,7 @@ import styles from '../painel.module.css'
  * component: plain inputs inside the caller's <form>, no JavaScript.
  */
 
-/** 180000000n → "1.800.000"; 18000050n → "180.000,50" — pt-AO grouping,
- *  which is what suppliers type and exactly what parseMajor reads back. */
-function majorInput(minor: bigint | undefined): string {
-  if (minor === undefined) return ''
-  const whole = (minor / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  const frac = minor % 100n
-  return frac === 0n ? whole : `${whole},${frac.toString().padStart(2, '0')}`
-}
+const amount = (minor: bigint | undefined) => (minor === undefined ? '' : majorInput(minor))
 
 export function ServiceFields({
   categories, defaultCategoryId, service, idPrefix,
@@ -82,13 +76,13 @@ export function ServiceFields({
         <label className={styles.field}>
           <span className={styles.label}>Preço (Kz)</span>
           <input className={styles.input} name="price" inputMode="decimal"
-                 defaultValue={majorInput(priceMinor)} placeholder="180.000" />
+                 defaultValue={amount(priceMinor)} placeholder="180.000" />
           <span className={styles.hint}>Deixe vazio se for sob consulta.</span>
         </label>
         <label className={styles.field}>
           <span className={styles.label}>Preço máximo (Kz)</span>
           <input className={styles.input} name="priceMax" inputMode="decimal"
-                 defaultValue={majorInput(priceMax)} placeholder="620.000" />
+                 defaultValue={amount(priceMax)} placeholder="620.000" />
           <span className={styles.hint}>Só para intervalo.</span>
         </label>
       </div>

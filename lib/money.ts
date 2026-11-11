@@ -23,6 +23,15 @@ export function parseMajor(input: string): Minor {
   return negative ? -minor : minor
 }
 
+/** `majorInput(180000000n)` → '1.800.000'; `majorInput(18000050n)` →
+ *  '180.000,50'. The pt-AO form people type into an amount field, and
+ *  exactly what parseMajor reads back — for prefilling inputs. */
+export function majorInput(minor: Minor): string {
+  const whole = (minor / MINOR_UNITS_PER_MAJOR).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const frac = minor % MINOR_UNITS_PER_MAJOR
+  return frac === 0n ? whole : `${whole},${frac.toString().padStart(2, '0')}`
+}
+
 /** `formatMinor(200000050n)` → '2 000 000,50 Kz' */
 export function formatMinor(minor: Minor, opts: { compact?: boolean } = {}): string {
   const negative = minor < 0n

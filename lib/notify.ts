@@ -28,6 +28,7 @@ export interface RenderedMail {
 }
 
 interface BookingContext {
+  booking_id?: string
   provider_id: string
   provider_name: string
   provider_slug: string
@@ -36,6 +37,11 @@ interface BookingContext {
   from_status?: string | null
   category_id?: string | null
   location_id?: string | null
+  /** Set by the supplier when asking for payment (0035). jsonb carries
+   *  bigint as a number or string; both are read through BigInt(). */
+  total_minor?: number | string | null
+  deposit_minor?: number | string | null
+  payment_instructions?: string | null
 }
 
 interface ProviderContext {
@@ -112,18 +118,33 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           publicPage(c.provider_slug),
         ].join('\n'),
       }
-    case 'booking_awaiting_payment':
+    case 'booking_awaiting_payment': {
+      // How much and how (slice 31). Older bookings asked for payment
+      // without terms; for those, fall back to "contact the supplier".
+      const total = c.total_minor == null ? null : BigInt(c.total_minor)
+      const deposit = c.deposit_minor == null ? null : BigInt(c.deposit_minor)
+      const booking = c.booking_id ? `${siteUrl()}/reservas/${c.booking_id}` : `${siteUrl()}/reservas`
       return {
         subject: `Aguarda o seu pagamento — ${c.provider_name}`,
         text: [
           `${c.provider_name} confirmou disponibilidade para a sua data e aguarda o pagamento.`,
           '',
           `Data: ${when(c)}`,
+          ...(total === null ? [] : [
+            `Total acordado: ${formatMinor(total)}`,
+            ...(deposit === null ? [] : [`Sinal a pagar agora: ${formatMinor(deposit)}`]),
+          ]),
+          ...(c.payment_instructions ? ['', 'Como pagar:', c.payment_instructions] : []),
           '',
-          'Contacte o fornecedor para combinar o pagamento:',
-          publicPage(c.provider_slug),
+          total === null
+            ? 'Contacte o fornecedor para combinar o pagamento e depois envie o comprovativo:'
+            : 'Paga directamente ao fornecedor. Depois envie o comprovativo na página da reserva:',
+          booking,
+          '',
+          'A NGUEZA nunca lhe pede para pagar para outra conta além da indicada pelo fornecedor.',
         ].join('\n'),
       }
+    }
     case 'booking_confirmed':
       return {
         subject: `Reserva confirmada — ${c.provider_name}`,

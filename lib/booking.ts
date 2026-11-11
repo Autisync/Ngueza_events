@@ -4,6 +4,7 @@ import 'server-only'
 
 import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege, isSlotTaken } from '@/lib/db'
 import { isUuid } from '@/lib/safe'
+import type { Minor } from '@/lib/money'
 
 /**
  * The booking loop (§10, §26, §27).
@@ -130,7 +131,15 @@ export async function requestBooking(
 
 export type TransitionOutcome =
   | { ok: true }
-  | { ok: false; reason: 'slot_taken' | 'illegal_transition' | 'not_found' | 'not_allowed' }
+  | { ok: false; reason: 'slot_taken' | 'illegal_transition' | 'not_found' | 'not_allowed' | 'terms_required' | 'invalid_terms' }
+
+/** What the supplier sets when asking for payment (0035). Written in the
+ *  same UPDATE as the transition — the only moment the database allows it. */
+export interface PaymentTerms {
+  totalMinor: Minor
+  depositMinor?: Minor | null
+  instructions?: string | null
+}
 
 /**
  * Move a booking along. The database refuses anything the state machine
@@ -144,10 +153,22 @@ export async function transition(
   actorId: string,
   bookingId: string,
   to: BookingStatus,
+  terms?: PaymentTerms,
 ): Promise<TransitionOutcome> {
   try {
     const changed = await asUser(actorId, async (c) => {
-      const result = await c.query(`update bookings set status = $2 where id = $1`, [bookingId, to])
+      const result = terms
+        ? await c.query(
+            `update bookings
+                set status = $2, total_minor = $3, deposit_minor = $4, payment_instructions = $5
+              where id = $1`,
+            [
+              bookingId, to, terms.totalMinor.toString(),
+              terms.depositMinor == null ? null : terms.depositMinor.toString(),
+              terms.instructions?.trim() || null,
+            ],
+          )
+        : await c.query(`update bookings set status = $2 where id = $1`, [bookingId, to])
       return result.rowCount ?? 0
     })
     // Zero rows means RLS hid it or it does not exist — indistinguishable
@@ -157,6 +178,13 @@ export async function transition(
   } catch (error) {
     if (isSlotTaken(error)) return { ok: false, reason: 'slot_taken' }
     if (isInsufficientPrivilege(error)) return { ok: false, reason: 'not_allowed' }
+    const e = error as { constraint?: string; message?: string }
+    if (isCheckViolation(error) && e.message?.includes('needs the agreed total')) {
+      return { ok: false, reason: 'terms_required' }
+    }
+    if (isCheckViolation(error) && e.constraint === 'bookings_deposit_within_total') {
+      return { ok: false, reason: 'invalid_terms' }
+    }
     if (isCheckViolation(error)) return { ok: false, reason: 'illegal_transition' }
     throw error
   }
@@ -246,6 +274,20 @@ function toSummary(r: any): BookingSummary {
   }
 }
 
+/** The instructions this supplier gave on their last payment request,
+ *  to prefill the next one — nobody should retype an IBAN per booking. */
+export async function lastPaymentInstructions(ownerId: string, providerId: string): Promise<string | null> {
+  return asUser(ownerId, async (c) => {
+    const { rows } = await c.query<{ payment_instructions: string }>(
+      `select payment_instructions from bookings
+        where provider_id = $1 and payment_instructions is not null
+        order by updated_at desc limit 1`,
+      [providerId],
+    )
+    return rows[0]?.payment_instructions ?? null
+  })
+}
+
 /** "As minhas reservas" — everything a signed-in client has requested,
  *  across every supplier. */
 export async function clientBookings(clientId: string): Promise<BookingSummary[]> {
@@ -304,6 +346,9 @@ export interface BookingDetail extends BookingSummary {
   contactShared: boolean | null
   providerPhone: string | null
   providerWhatsapp: string | null
+  /** The sinal and how to pay, set by the supplier when asking for payment (0035). */
+  depositMinor: string | null
+  paymentInstructions: string | null
   /** For "find another on the same date" when a date is lost (0033). */
   providerCategoryId: string
   providerLocationId: string
@@ -353,6 +398,7 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       providerCategoryId: row.provider_category_id, providerLocationId: row.provider_location_id,
       clientPhone: row.client_phone, contactShared: row.contact_shared ?? null,
       providerPhone: row.provider_phone, providerWhatsapp: row.provider_whatsapp,
+      depositMinor: row.deposit_minor, paymentInstructions: row.payment_instructions,
       history: history.rows.map((h) => ({
         fromStatus: h.from_status, toStatus: h.to_status, createdAt: h.created_at,
       })),
