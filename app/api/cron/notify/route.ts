@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { claimAndSend } from '@/lib/notifications'
+import { recordRun } from '@/lib/jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,8 +31,12 @@ async function run(request: Request): Promise<NextResponse> {
   const requested = Number(new URL(request.url).searchParams.get('limit'))
   const limit = Number.isInteger(requested) && requested > 0 ? Math.min(requested, 200) : 25
 
-  const result = await claimAndSend(limit)
-  return NextResponse.json(result)
+  try {
+    return NextResponse.json(await recordRun('notify', () => claimAndSend(limit)))
+  } catch (error) {
+    console.error('cron notify failed', error)
+    return NextResponse.json({ error: 'notify failed' }, { status: 500 })
+  }
 }
 
 export const GET = run
