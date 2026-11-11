@@ -366,3 +366,26 @@ describe('admin visibility', () => {
     expect(ownerRows.rows.every((r) => r.recipient_id === OWNER)).toBe(true)
   })
 })
+
+describe('the in-app inbox (slice 36)', () => {
+  it('marks all of one person’s notifications read, and nobody else’s', async () => {
+    const { markAllNotificationsRead, myUnreadNotificationCount } = await import('@/lib/notifications')
+    const { asSystem: sys } = await import('@/lib/db')
+    const A = '40000000-0000-0000-0000-000000000090'
+    const B = '40000000-0000-0000-0000-000000000091'
+    await sys((c) => c.query(
+      `insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+       values ('booking_accepted', 'a@x.ao', $1, '{}', 'inbox-test', 1),
+              ('booking_accepted', 'a@x.ao', $1, '{}', 'inbox-test', 2),
+              ('booking_accepted', 'b@x.ao', $2, '{}', 'inbox-test', 3)`, [A, B]))
+    try {
+      const before = await myUnreadNotificationCount(B)
+      expect(await myUnreadNotificationCount(A)).toBeGreaterThanOrEqual(2)
+      await markAllNotificationsRead(A)
+      expect(await myUnreadNotificationCount(A)).toBe(0)
+      expect(await myUnreadNotificationCount(B)).toBe(before)
+    } finally {
+      await sys((c) => c.query(`delete from notification_outbox where source_table = 'inbox-test'`))
+    }
+  })
+})

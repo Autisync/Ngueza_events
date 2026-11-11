@@ -187,3 +187,12 @@ export async function markNotificationRead(actorId: string, id: number): Promise
     ),
   )
 }
+
+export async function markAllNotificationsRead(actorId: string): Promise<void> {
+  await asUser(actorId, (c) =>
+    c.query(
+      `update notification_outbox set read_at = now() where recipient_id = $1 and read_at is null`,
+      [actorId],
+    ),
+  )
+}
