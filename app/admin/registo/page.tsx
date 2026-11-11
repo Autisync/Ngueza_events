@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, recentAudit } from '@/lib/admin'
 import { recentNotifications } from '@/lib/notifications'
 import { Chrome } from '../Chrome'
@@ -26,7 +26,7 @@ const NOTIFY_KIND_LABEL: Record<string, string> = {
 }
 
 export default async function Registo() {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, audit, notifications] = await Promise.all([
     queueCounts(profile.id),
     recentAudit(profile.id, 200),

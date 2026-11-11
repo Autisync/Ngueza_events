@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, paymentQueue } from '@/lib/admin'
 import { formatMinor } from '@/lib/money'
 import { doDecidePayment } from '../actions'
@@ -13,7 +13,7 @@ export default async function Pagamentos({
   searchParams,
 }: { searchParams: Promise<{ erro?: string }> }) {
   const { erro } = await searchParams
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, payments] = await Promise.all([queueCounts(profile.id), paymentQueue(profile.id)])
 
   return (

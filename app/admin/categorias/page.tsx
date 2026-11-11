@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { categoryTree } from '@/lib/taxonomy'
 import { doCreateCategory } from '../taxonomy-actions'
@@ -45,7 +45,7 @@ const TYPE_LABEL: Record<string, string> = {
 export default async function Categorias({
   searchParams,
 }: { searchParams: Promise<{ erro?: string; guardado?: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, tree, flags] = await Promise.all([
     queueCounts(profile.id), categoryTree(profile.id), searchParams,
   ])

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { currentProfile } from '@/lib/auth'
+import { adminMfaSatisfied, currentProfile } from '@/lib/auth'
 
 /**
  * Everything under /admin is gated here, once.
@@ -13,5 +13,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const profile = await currentProfile()
   if (!profile) redirect('/entrar?next=/admin')
   if (profile.role !== 'admin') redirect('/')
+  // Slice 40: with ADMIN_REQUIRE_MFA=1, the admin area needs a session that
+  // has passed a second factor. requireProfile('admin') enforces the same
+  // for every admin action.
+  if (!(await adminMfaSatisfied())) redirect('/conta/seguranca?next=/admin')
   return <>{children}</>
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, reportQueue } from '@/lib/admin'
 import { doResolveReport } from '../actions'
 import { Chrome } from '../Chrome'
@@ -22,7 +22,7 @@ export default async function Denuncias({
   searchParams,
 }: { searchParams: Promise<{ erro?: string }> }) {
   const { erro } = await searchParams
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, reports] = await Promise.all([queueCounts(profile.id), reportQueue(profile.id)])
 
   return (
