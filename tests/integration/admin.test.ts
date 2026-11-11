@@ -6,6 +6,7 @@ import {
   verifyProvider,
 } from '@/lib/admin'
 import { createProvider, recordDocument, submitForVerification } from '@/lib/onboarding'
+import { providerChecklist, withdrawDocument } from '@/lib/documents'
 
 /**
  * Slice 12 — an administrator reviews paperwork and decides.
@@ -40,6 +41,17 @@ async function reset() {
     await c.query(`delete from auth.users where id = $1`, [SUPPLIER])
     await c.query(`update profiles set status = 'active' where id = $1`, [CLIENT])
   })
+}
+
+/** Verifying needs an accepted document (0044); the reviewer accepts the
+ *  fixture's identity document the way the admin page does. */
+async function acceptDocuments(providerId: string): Promise<void> {
+  const ids = await asSystem(async (c) => {
+    const { rows } = await c.query<{ id: string }>(
+      `select id from provider_documents where provider_id = $1 and status = 'submitted'`, [providerId])
+    return rows.map((r) => r.id)
+  })
+  for (const id of ids) await decideDocument(ADMIN, id, 'accepted')
 }
 
 async function aPendingSupplier(): Promise<string> {
@@ -99,6 +111,7 @@ describe('the verification queue', () => {
 describe('deciding', () => {
   it('verifies and publishes in one action', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     const row = await asSystem(async (c) => {
@@ -122,6 +135,7 @@ describe('deciding', () => {
     })
     expect(before).toBe(0)
 
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     const after = await asSystem(async (c) => {
@@ -150,6 +164,7 @@ describe('deciding', () => {
 
   it('suspends a verified supplier and takes the listing down', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
     await suspendProvider(ADMIN, providerId, 'Denúncias confirmadas de fotografias enganosas.')
 
@@ -198,6 +213,7 @@ describe('a non-administrator cannot decide', () => {
 
   it('keeps the audit log unreadable to anyone but an administrator', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     for (const who of [SUPPLIER, CLIENT]) {
@@ -214,6 +230,7 @@ describe('a non-administrator cannot decide', () => {
 describe('the audit trail names a person (§38)', () => {
   it('records the verification decision and who made it', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     const entries = await asSystem(async (c) => {
@@ -242,6 +259,7 @@ describe('the audit trail names a person (§38)', () => {
 
   it('cannot be rewritten or deleted, even by an administrator', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     await expect(
@@ -257,6 +275,7 @@ describe('the audit trail names a person (§38)', () => {
 
   it('lets an erased person go without destroying what they did (§37 + §38)', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     const before = await asSystem(async (c) => {
@@ -314,6 +333,7 @@ describe('reports (§31)', () => {
 describe('review detail', () => {
   it('gives the reviewer the documents and the decision history', async () => {
     const providerId = await aPendingSupplier()
+    await acceptDocuments(providerId)
     await verifyProvider(ADMIN, providerId)
 
     const detail = await providerForReview(ADMIN, providerId)
@@ -321,5 +341,53 @@ describe('review detail', () => {
     expect(detail?.ownerEmail).toBe('admin-test-supplier@teste.ao')
     expect(detail?.history.length).toBeGreaterThan(0)
     expect(detail?.history[0].actor_email).toBe('admin@ngueza.com')
+  })
+})
+
+describe('the document floor (0044)', () => {
+  it('refuses to verify a supplier with no accepted document, even for an administrator', async () => {
+    const providerId = await aPendingSupplier()
+    await expect(verifyProvider(ADMIN, providerId)).rejects.toMatchObject({ code: '23514' })
+    await acceptDocuments(providerId)
+    await verifyProvider(ADMIN, providerId)
+  })
+})
+
+describe('the document checklist (slice 46)', () => {
+  it('asks a venue for its four papers and shows what was sent', async () => {
+    const providerId = await aPendingSupplier()
+    const items = await providerChecklist(SUPPLIER, providerId)
+    expect(items!.map((i) => [i.kind.slug, i.state])).toEqual([
+      ['identity', 'submitted'], ['nif', 'missing'], ['commercial_registration', 'missing'], ['space_rights', 'missing'],
+    ])
+    // The administrator sees the same facts; a client sees nothing.
+    expect((await providerChecklist(ADMIN, providerId))!.map((i) => i.state)).toEqual(items!.map((i) => i.state))
+    expect(await providerChecklist(CLIENT, providerId)).toBeNull()
+  })
+
+  it('lets a supplier withdraw a document still waiting, but not one already decided', async () => {
+    const providerId = await aPendingSupplier()
+    const docId = await asSystem(async (c) => (await c.query<{ id: string }>(
+      `select id from provider_documents where provider_id = $1`, [providerId])).rows[0]!.id)
+
+    // Not someone else's.
+    expect(await withdrawDocument(CLIENT, providerId, docId)).toBe(false)
+
+    await decideDocument(ADMIN, docId, 'accepted')
+    expect(await withdrawDocument(SUPPLIER, providerId, docId)).toBe(false)
+
+    await recordDocument(SUPPLIER, providerId, { kind: 'nif', externalId: `${providerId}/nif-errado.pdf` })
+    const wrong = await asSystem(async (c) => (await c.query<{ id: string }>(
+      `select id from provider_documents where provider_id = $1 and kind = 'nif'`, [providerId])).rows[0]!.id)
+    expect(await withdrawDocument(SUPPLIER, providerId, wrong)).toBe(true)
+    const left = await asSystem(async (c) => (await c.query(
+      `select kind from provider_documents where provider_id = $1`, [providerId])).rows.map((r) => r.kind))
+    expect(left).toEqual(['identity'])
+  })
+
+  it('refuses a document kind that does not exist', async () => {
+    const providerId = await aPendingSupplier()
+    await expect(recordDocument(SUPPLIER, providerId, { kind: 'carta_de_conducao', externalId: `${providerId}/x.pdf` }))
+      .rejects.toMatchObject({ code: '23503' })
   })
 })

@@ -393,12 +393,16 @@ export interface DocumentStore {
   presignUpload(input: { contentType: string; keyPrefix: string; byteSize?: number }): Promise<PresignedUpload>
   /** Short-lived read URL, for an administrator reviewing paperwork. */
   presignRead(objectId: string, expiresInSeconds?: number): string
+  /** Forget a file a supplier withdrew (slice 46). True when gone. */
+  deleteObject(objectId: string): Promise<boolean>
 }
 
 class MinioDocumentStore implements DocumentStore {
   constructor(
     private readonly cfg: {
       publicEndpoint: string
+      /** Server-to-storage endpoint, for deletes (no bytes pass through). */
+      s3Endpoint: string
       bucket: string
       region: string
       accessKeyId: string
@@ -434,6 +438,24 @@ class MinioDocumentStore implements DocumentStore {
     }
   }
 
+  async deleteObject(objectId: string): Promise<boolean> {
+    const url = presignDelete({
+      endpoint: this.cfg.s3Endpoint,
+      bucket: this.cfg.bucket,
+      objectKey: objectId,
+      region: this.cfg.region,
+      accessKeyId: this.cfg.accessKeyId,
+      secretAccessKey: this.cfg.secretAccessKey,
+      expiresInSeconds: 60,
+    })
+    try {
+      const response = await fetch(url, { method: 'DELETE', signal: AbortSignal.timeout(5000) })
+      return response.ok || response.status === 404
+    } catch {
+      return false
+    }
+  }
+
   presignRead(objectId: string, expiresInSeconds = 300): string {
     return presignGet({
       endpoint: this.cfg.publicEndpoint,
@@ -456,6 +478,7 @@ export function documentStore(): DocumentStore {
   }
   return new MinioDocumentStore({
     publicEndpoint: required('MEDIA_S3_PUBLIC_ENDPOINT'),
+    s3Endpoint: env('MEDIA_S3_ENDPOINT', required('MEDIA_S3_PUBLIC_ENDPOINT')),
     bucket,
     region: env('MEDIA_REGION', 'us-east-1'),
     accessKeyId: required('MEDIA_ACCESS_KEY_ID'),

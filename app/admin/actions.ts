@@ -1,5 +1,6 @@
 'use server'
 
+import { CHECK_VIOLATION } from '@/lib/db'
 import { redirect } from 'next/navigation'
 import { requireProfile } from '@/lib/auth'
 import { isUuid } from '@/lib/safe'
@@ -29,8 +30,12 @@ const text = (f: FormData, k: string) => {
 export async function doVerify(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   const providerId = uuid(formData, 'providerId')
-  await verifyProvider(admin.id, providerId)
-  redirect(`/admin/fornecedores/${providerId}?feito=verificado`)
+  // The database refuses to verify with no accepted document (0044).
+  const ok = await verifyProvider(admin.id, providerId).then(() => true, (error: unknown) => {
+    if ((error as { code?: string })?.code === CHECK_VIOLATION) return false
+    throw error
+  })
+  redirect(`/admin/fornecedores/${providerId}?${ok ? 'feito=verificado' : 'erro=sem_documento_aceite'}`)
 }
 
 export async function doReject(formData: FormData): Promise<void> {

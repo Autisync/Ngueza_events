@@ -110,9 +110,9 @@ export async function ownedDocuments(ownerId: string, providerId: string) {
   return asUser(ownerId, async (c) => {
     const { rows } = await c.query<{
       id: string; kind: string; status: string
-      original_filename: string | null; review_note: string | null
+      original_filename: string | null; review_note: string | null; created_at: Date
     }>(
-      `select id, kind, status, original_filename, review_note
+      `select id, kind, status, original_filename, review_note, created_at
          from provider_documents where provider_id = $1 order by created_at`,
       [providerId],
     )

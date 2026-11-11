@@ -5,6 +5,7 @@ import { isSameOriginRequest } from '@/lib/safe'
 import { asUser } from '@/lib/db'
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES, documentStore } from '@/lib/media'
 import { recordDocument } from '@/lib/onboarding'
+import { documentKinds } from '@/lib/documents'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,8 @@ const presignBody = z.object({
 
 const recordBody = z.object({
   providerId: z.guid(),
-  kind: z.enum(['identity', 'nif', 'commercial_registration', 'proof_of_address', 'other']),
+  // Kinds are rows now (0044); checked against the active list below.
+  kind: z.string().regex(/^[a-z0-9_]+$/).max(60),
   externalId: z.string().min(1).max(300),
   filename: z.string().max(200).optional(),
   contentType: z.string().max(120).optional(),
@@ -87,6 +89,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   // uploaded file as its own.
   if (!parsed.data.externalId.startsWith(`${parsed.data.providerId}/`)) {
     return NextResponse.json({ error: 'bad object key' }, { status: 400 })
+  }
+  if (!(await documentKinds()).some((k) => k.slug === parsed.data.kind)) {
+    return NextResponse.json({ error: 'tipo de documento desconhecido' }, { status: 400 })
   }
 
   await recordDocument(profile.id, parsed.data.providerId, {

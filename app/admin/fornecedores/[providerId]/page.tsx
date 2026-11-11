@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { adminProfile } from '../../guard'
 import { providerForReview, queueCounts } from '@/lib/admin'
 import { formatPrice } from '@/lib/money'
+import { documentKinds, providerChecklist } from '@/lib/documents'
+import { notYetAccepted } from '@/lib/document-checklist'
 import {
   doDecideDocument, doReinstate, doReject, doSetAccountStatus, doSuspend, doVerify,
 } from '../../actions'
@@ -12,11 +14,6 @@ import styles from '../../admin.module.css'
 export const metadata: Metadata = { title: 'Rever fornecedor', robots: { index: false } }
 export const dynamic = 'force-dynamic'
 
-const DOC_KINDS: Record<string, string> = {
-  identity: 'Documento de identificação', nif: 'NIF',
-  commercial_registration: 'Certidão comercial',
-  proof_of_address: 'Comprovativo de morada', other: 'Outro',
-}
 const DOC_REJECT_REASONS = [
   'Documento ilegível', 'Documento expirado',
   'Não corresponde ao nome declarado', 'Documento incompleto',
@@ -27,7 +24,7 @@ const PROVIDER_REJECT_REASONS = [
 ]
 const DONE: Record<string, string> = {
   verificado: 'Fornecedor verificado e publicado.',
-  rejeitado: 'Fornecedor rejeitado. O motivo fica visível no painel dele.',
+  rejeitado: 'Fornecedor rejeitado. O motivo fica visível no painel do fornecedor.',
   suspenso: 'Fornecedor suspenso e retirado do site.',
   reactivado: 'Fornecedor reactivado.',
   conta: 'Estado da conta actualizado.',
@@ -41,12 +38,17 @@ export default async function Rever({
 }) {
   const profile = await adminProfile()
   const { providerId } = await params
-  const [p, counts, flags] = await Promise.all([
+  const [p, counts, flags, kinds, items] = await Promise.all([
     providerForReview(profile.id, providerId),
     queueCounts(profile.id),
     searchParams,
+    documentKinds(),
+    providerChecklist(profile.id, providerId),
   ])
-  if (!p) notFound()
+  if (!p || !items) notFound()
+  const kindName = (slug: string) => kinds.find((k) => k.slug === slug)?.name ?? slug
+  const anyAccepted = p.documents.some((d) => d.status === 'accepted')
+  const stillOpen = notYetAccepted(items)
 
   const price = (s: any) =>
     formatPrice(
@@ -61,6 +63,11 @@ export default async function Rever({
       <Chrome title={p.name} active="fornecedores" counts={counts} />
       <div className={styles.wrap}>
         {flags.feito ? <p className={styles.alert}>{DONE[flags.feito]}</p> : null}
+        {flags.erro === 'sem_documento_aceite' ? (
+          <p className={styles.alert} style={{ background: 'var(--erro-fundo)', color: 'var(--erro)' }}>
+            Aceite pelo menos um documento antes de verificar este fornecedor.
+          </p>
+        ) : null}
         {flags.erro === 'motivo' ? (
           <p className={styles.alert} style={{ background: 'var(--erro-fundo)', color: 'var(--erro)' }}>
             Escreva um motivo — o fornecedor precisa de saber o que corrigir.
@@ -103,6 +110,20 @@ export default async function Rever({
             As ligações abrem o ficheiro por três minutos e não ficam no histórico da página —
             cada documento é reaberto por pedido, nunca embutido na página (§40).
           </p>
+          {/* What this type of business must provide (0044), as facts. The
+              decision stays with the reviewer. */}
+          <div className={styles.checklist}>
+            {items.map((i) => (
+              <span key={i.kind.slug} className={`${styles.pill} ${
+                i.state === 'accepted' ? styles.ok : i.state === 'submitted' ? styles.wait
+                : i.state === 'rejected' ? styles.bad : styles.off}`}>
+                {i.state === 'accepted' ? '✓ ' : i.state === 'missing' ? '✗ ' : ''}{i.kind.name}
+                {!i.required ? ' (opcional)' : ''} —{' '}
+                {i.state === 'accepted' ? 'aceite' : i.state === 'submitted' ? 'por rever'
+                  : i.state === 'rejected' ? 'rejeitado' : 'em falta'}
+              </span>
+            ))}
+          </div>
           <div className={styles.row} style={{ marginBottom: 10 }}>
             <span>A comparar com</span>
             <span><strong>{p.name}</strong> · responsável <strong>{p.ownerName ?? p.ownerEmail}</strong></span>
@@ -113,7 +134,7 @@ export default async function Rever({
             p.documents.map((d) => (
               <div className={styles.doc} key={d.id}>
                 <div>
-                  <strong>{DOC_KINDS[d.kind] ?? d.kind}</strong>
+                  <strong>{kindName(d.kind)}</strong>
                   <span className={styles.meta}>
                     {d.originalFilename ?? '—'}
                     {d.byteSize ? ` · ${Math.round(d.byteSize / 1024)} KB` : ''}
@@ -179,12 +200,25 @@ export default async function Rever({
           </p>
 
           {p.verificationStatus !== 'verified' && p.verificationStatus !== 'suspended' ? (
-            <form action={doVerify} style={{ marginBottom: 14 }}>
-              <input type="hidden" name="providerId" value={p.id} />
-              <button className={`${styles.btn} ${styles.go}`} type="submit">
-                Verificar e publicar
-              </button>
-            </form>
+            anyAccepted ? (
+              <form action={doVerify} style={{ marginBottom: 14 }}>
+                <input type="hidden" name="providerId" value={p.id} />
+                {stillOpen.length > 0 ? (
+                  <p className={styles.note} style={{ color: 'var(--aviso)' }}>
+                    Ainda não aceites: {stillOpen.map((i) => i.kind.name).join(', ')}.
+                    Pode verificar na mesma, se tiver razões para isso.
+                  </p>
+                ) : null}
+                <button className={`${styles.btn} ${styles.go}`} type="submit">
+                  Verificar e publicar
+                </button>
+              </form>
+            ) : (
+              <p className={styles.note}>
+                Para verificar, aceite primeiro pelo menos um documento (a base de dados recusa
+                verificar sem nenhum).
+              </p>
+            )
           ) : null}
 
           {p.verificationStatus === 'suspended' ? (
@@ -194,26 +228,46 @@ export default async function Rever({
             </form>
           ) : null}
 
-          <form action={doReject} style={{ marginBottom: 14 }}>
-            <input type="hidden" name="providerId" value={p.id} />
-            <div className={styles.chips}>
-              {PROVIDER_REJECT_REASONS.map((r) => (
-                <button key={r} className={styles.chip} type="submit" name="reasonCanned" value={r}>
-                  {r}
+          {/* Reject only what is waiting for a decision (R035): a live
+              supplier is suspended, not "rejected". Two steps, never one
+              tap: choose a reason, then confirm. */}
+          {p.verificationStatus === 'pending' ? (
+            <details className={styles.confirm}>
+              <summary>Rejeitar…</summary>
+              <form action={doReject}>
+                <input type="hidden" name="providerId" value={p.id} />
+                <div className={styles.chips} role="radiogroup" aria-label="Motivo">
+                  {PROVIDER_REJECT_REASONS.map((r) => (
+                    <label key={r} className={styles.chipPick}>
+                      <input type="radio" name="reasonCanned" value={r} />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </div>
+                <input className={styles.input} name="reasonText"
+                       placeholder="Ou escreva o motivo — o fornecedor vê este texto" />
+                <button className={`${styles.btn} ${styles.no}`} type="submit" style={{ marginTop: 10 }}>
+                  Confirmar rejeição
                 </button>
-              ))}
-            </div>
-            <input className={styles.input} name="reasonText"
-                   placeholder="Outro motivo — o fornecedor vê este texto" />
-            <button className={`${styles.btn} ${styles.no}`} type="submit">Rejeitar</button>
-          </form>
+              </form>
+            </details>
+          ) : null}
 
           {p.verificationStatus !== 'suspended' ? (
-            <form action={doSuspend}>
-              <input type="hidden" name="providerId" value={p.id} />
-              <input className={styles.input} name="reason" required placeholder="Motivo da suspensão" />
-              <button className={`${styles.btn} ${styles.no}`} type="submit">Suspender fornecedor</button>
-            </form>
+            <details className={styles.confirm}>
+              <summary>Suspender…</summary>
+              <p className={styles.note}>
+                O perfil e as fotografias saem do site de imediato e os novos pedidos são recusados.
+                As reservas existentes continuam.
+              </p>
+              <form action={doSuspend}>
+                <input type="hidden" name="providerId" value={p.id} />
+                <input className={styles.input} name="reason" required placeholder="Motivo da suspensão" />
+                <button className={`${styles.btn} ${styles.no}`} type="submit" style={{ marginTop: 10 }}>
+                  Confirmar suspensão
+                </button>
+              </form>
+            </details>
           ) : null}
         </div>
 

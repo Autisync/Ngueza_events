@@ -176,3 +176,16 @@
 .inline { margin-left: 12px; color: var(--azul-700); font-size: 0.9rem; }
 .inline:hover { color: var(--azul-800); text-decoration: underline; }
 .state { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+
+/* Slice 46: the document checklist, and two-step reject / suspend. */
+.checklist { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.confirm { margin: 0 0 12px; border: 1px solid var(--linha); border-radius: 10px; padding: 10px 14px; }
+.confirm summary { cursor: pointer; font-weight: 700; color: var(--erro); }
+.confirm[open] summary { margin-bottom: 10px; }
+.chipPick { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; font-size: 0.82rem; font-weight: 600;
+            border: 1px solid var(--linha); border-radius: 999px; cursor: pointer; background: var(--branco); }
+.chipPick:has(input:checked) { background: var(--erro-fundo); color: var(--erro); border-color: var(--erro); }
+.chipPick input { accent-color: var(--erro); margin: 0; }
+/* A document's name, file and note each on their own line. */
+.doc strong, .doc .meta { display: block; }
+.doc .pill { margin-top: 6px; }

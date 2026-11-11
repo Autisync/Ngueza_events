@@ -176,3 +176,28 @@
 .amenity:hover { border-color: var(--azul-300); }
 .amenity:has(input:checked) { background: var(--azul-050); border-color: var(--azul-500); color: var(--azul-800); font-weight: 600; }
 .amenity input { accent-color: var(--azul-600); margin: 0; }
+
+/* The verification checklist (slice 46). */
+.checklist { list-style: none; margin: 0 0 14px; padding: 0; border: 1px solid var(--linha);
+             border-radius: 10px; overflow: hidden; }
+.checklist li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: start;
+                padding: 12px 14px; border-bottom: 1px solid var(--linha); background: var(--branco); }
+.checklist li:last-child { border-bottom: 0; }
+.ckMark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+          font-size: 0.8rem; font-weight: 800; border: 2px solid var(--linha); color: var(--tinta-3); }
+.ckBody { min-width: 0; font-size: 0.93rem; }
+.ckBody .meta { font-size: 0.84rem; color: var(--tinta-3); display: block; margin-top: 2px; }
+.ckBody .meta:first-of-type:not(:last-child) { display: inline; }
+.ckNote { display: block; margin-top: 3px; font-size: 0.85rem; font-weight: 600; color: var(--erro); }
+.ckState { font-size: 0.85rem; font-weight: 700; white-space: nowrap; color: var(--tinta-3); }
+.ckState a { color: var(--azul-700); }
+.ck_accepted .ckMark { background: var(--bom); border-color: var(--bom); color: var(--branco); }
+.ck_accepted .ckState { color: var(--bom); }
+.ck_submitted .ckMark { border-color: var(--aviso); color: var(--aviso); }
+.ck_submitted .ckState { color: var(--aviso); }
+.ck_rejected { background: var(--erro-fundo) !important; }
+.ck_rejected .ckMark { background: var(--erro); border-color: var(--erro); color: var(--branco); }
+.sent { margin: 0 0 6px; }
+.sent summary { cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--azul-700); }
+.linkBtn { background: none; border: 0; padding: 0; font: inherit; font-size: 0.85rem; font-weight: 700;
+           color: var(--erro); cursor: pointer; text-decoration: underline; }

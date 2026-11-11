@@ -71,6 +71,7 @@ make contact.
 | 43 | One site shell — a shared header (navigation, notifications, account) and footer on every page; a painel dashboard of tiles with live counts; category illustrations instead of grey placeholders; an expired session explained at sign-in; see `spec/slices/43-site-shell.md` |
 | 44 | A month calendar on the supplier page — Monday first, month by month, a free day opens the form with that date and space; multi-day events ("Até ao dia"); errors shown next to the field; a sticky "Solicitar reserva" bar on phones; see `spec/slices/44-calendar-and-booking-form.md` |
 | 45 | Amenities per space — admin-managed rows (Gerador, Estacionamento, Coberto…) ticked per space in the painel, shown on the profile, and a search filter that needs them all on the same space; see `spec/slices/45-amenities.md` |
+| 46 | The verification document checklist — document kinds as rows, required per supplier type; the supplier sees what is missing, waiting, accepted or rejected and why, can withdraw a mistaken upload, and can only submit once everything required is sent; the database refuses to verify without an accepted document; two-step reject and suspend; see `spec/slices/46-document-checklist.md` |
 
 ### Infrastructure
 

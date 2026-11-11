@@ -13,17 +13,15 @@ import { useState } from 'react'
  * supplier who cannot attach paperwork never gets verified and never
  * finds out why.
  */
-const KINDS = [
-  { value: 'identity', label: 'Documento de identificação' },
-  { value: 'nif', label: 'NIF' },
-  { value: 'commercial_registration', label: 'Certidão comercial' },
-  { value: 'proof_of_address', label: 'Comprovativo de morada' },
-  { value: 'other', label: 'Outro' },
-]
-
 const MAX_BYTES = 10 * 1024 * 1024
 
-export function DocumentUpload({ providerId }: { providerId: string }) {
+/** Kinds come from the database (0044), in the order to send them; the
+ *  first one still missing is preselected (slice 46). */
+export function DocumentUpload({ providerId, kinds, defaultKind }: {
+  providerId: string
+  kinds: Array<{ value: string; label: string }>
+  defaultKind?: string
+}) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -101,10 +99,10 @@ export function DocumentUpload({ providerId }: { providerId: string }) {
           <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
             Tipo de documento
           </span>
-          <select name="kind" defaultValue="identity"
+          <select name="kind" defaultValue={defaultKind ?? kinds[0]?.value}
                   style={{ width: '100%', padding: '11px 12px', font: 'inherit',
                            border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }}>
-            {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+            {kinds.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
           </select>
         </label>
         <label>
