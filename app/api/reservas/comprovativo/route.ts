@@ -23,13 +23,13 @@ export const dynamic = 'force-dynamic'
  */
 
 const presignBody = z.object({
-  bookingId: z.string().uuid(),
+  bookingId: z.guid(),
   contentType: z.string().max(120),
   byteSize: z.number().int().positive().max(MAX_DOCUMENT_BYTES),
 })
 
 const recordBody = z.object({
-  bookingId: z.string().uuid(),
+  bookingId: z.guid(),
   amount: z.string().min(1).max(30),
   reference: z.string().max(200).optional(),
   externalId: z.string().min(1).max(300),
@@ -75,6 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const upload = await documentStore().presignUpload({
       contentType: parsed.data.contentType,
       keyPrefix: parsed.data.bookingId,
+      byteSize: parsed.data.byteSize,
     })
     return NextResponse.json(upload)
   }

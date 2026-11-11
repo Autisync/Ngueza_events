@@ -9,6 +9,8 @@ import {
 } from '../actions'
 import { DocumentUpload } from './DocumentUpload'
 import { verificationLabel } from '@/lib/painel-labels'
+import { coverImageUrl } from '@/lib/media'
+import { MAX_PHOTOS, ownedPhotos } from '@/lib/photos'
 import styles from '../painel.module.css'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
@@ -56,7 +58,8 @@ export default async function GerirNegocio({
   // RLS already hides other people's businesses, so nothing here is a 403.
   if (!provider) notFound()
 
-  const [services, resources, documents, { categories, locations }, flags] = await Promise.all([
+  const [photos, services, resources, documents, { categories, locations }, flags] = await Promise.all([
+    ownedPhotos(profile.id, providerId),
     ownedServices(profile.id, providerId),
     ownedResources(profile.id, providerId),
     ownedDocuments(profile.id, providerId),
@@ -97,6 +100,32 @@ export default async function GerirNegocio({
         {flags.erro ? (
           <p className={styles.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
         ) : null}
+
+        {/* ---- photographs (slice 27) ---- */}
+        <div className={styles.card} id="fotos">
+          <h2>Fotografias</h2>
+          {photos.length === 0 ? (
+            <p className={styles.note}>
+              O seu perfil ainda não tem fotografias e aparece com um ícone cinzento nos resultados.
+              É a primeira coisa que um cliente procura.
+            </p>
+          ) : (
+            <>
+              <p className={styles.note}>{photos.length} de {MAX_PHOTOS} · a primeira é a capa.</p>
+              <div className={styles.strip} aria-hidden="true">
+                {photos.slice(0, 6).map((p) => {
+                  const src = coverImageUrl(p.externalId, 'thumb')
+                  // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL
+                  return src ? <img key={p.id} src={src} alt="" loading="lazy" /> : <span key={p.id} />
+                })}
+              </div>
+            </>
+          )}
+          <a className={styles.submit} href={`/painel/${provider.id}/fotos`}
+             style={{ display: 'inline-block', textDecoration: 'none' }}>
+            {photos.length === 0 ? 'Adicionar fotografias' : 'Gerir fotografias'}
+          </a>
+        </div>
 
         {/* ---- bookings ---- */}
         <div className={styles.card}>

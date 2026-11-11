@@ -14,8 +14,8 @@ import { createReview, replyToReview } from '@/lib/reviews'
 const star = z.coerce.number().int().min(1).max(5)
 
 const reviewForm = z.object({
-  providerId: z.string().uuid(),
-  bookingId: z.string().uuid(),
+  providerId: z.guid(),
+  bookingId: z.guid(),
   ratingOverall: star,
   ratingQuality: star.optional(),
   ratingService: star.optional(),
@@ -72,8 +72,8 @@ export async function doLeaveReview(formData: FormData): Promise<void> {
 }
 
 const replyForm = z.object({
-  reviewId: z.string().uuid(),
-  providerId: z.string().uuid(),
+  reviewId: z.guid(),
+  providerId: z.guid(),
   reply: z.string().trim().min(1).max(2000),
 })
 

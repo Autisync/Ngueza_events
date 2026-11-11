@@ -8,6 +8,8 @@ import {
   updateResource,
   serviceInput, removeService, submitForVerification, updateProvider,
 } from '@/lib/onboarding'
+import { movePhoto, removePhoto, setCover, updateCaption } from '@/lib/photos'
+import { mediaStore } from '@/lib/media'
 
 /** Plain server actions, so every screen works without JavaScript. */
 
@@ -30,7 +32,7 @@ export async function doRegisterBusiness(formData: FormData): Promise<void> {
     yearsActiveDeclared: str(formData, 'yearsActiveDeclared'),
   })
   if (!parsed.success) {
-    redirect(`/registar-negocio?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/registar-negocio?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
 
   const result = await createProvider(profile.id, parsed.data)
@@ -54,7 +56,7 @@ export async function doUpdateBusiness(formData: FormData): Promise<void> {
     yearsActiveDeclared: str(formData, 'yearsActiveDeclared'),
   })
   if (!parsed.success) {
-    redirect(`/painel/${providerId}?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/painel/${providerId}?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   await updateProvider(profile.id, providerId, parsed.data)
   redirect(`/painel/${providerId}?guardado=1`)
@@ -76,7 +78,7 @@ export async function doAddService(formData: FormData): Promise<void> {
     maxCapacity: str(formData, 'maxCapacity'),
   })
   if (!parsed.success) {
-    redirect(`/painel/${providerId}?erro=servico_${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
   await addService(profile.id, providerId, parsed.data)
   redirect(`/painel/${providerId}?guardado=1#servicos`)
@@ -139,4 +141,56 @@ export async function doSubmitForVerification(formData: FormData): Promise<void>
       ? `/painel/${providerId}?erro=sem_documentos#verificacao`
       : `/painel/${providerId}?submetido=1`,
   )
+}
+
+// ---------------------------------------------------------------------
+// Photographs (slice 27). Uploading needs JavaScript (the browser PUTs to
+// storage); arranging what was uploaded does not.
+// ---------------------------------------------------------------------
+
+function photoTarget(formData: FormData): { providerId: string; mediaId: string } {
+  const providerId = String(formData.get('providerId') ?? '')
+  const mediaId = String(formData.get('mediaId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
+  if (!isUuid(mediaId)) redirect(`/painel/${providerId}/fotos?erro=dados`)
+  return { providerId, mediaId }
+}
+
+export async function doSetCover(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const { providerId, mediaId } = photoTarget(formData)
+  const ok = await setCover(profile.id, providerId, mediaId)
+  redirect(`/painel/${providerId}/fotos?${ok ? 'feito=capa' : 'erro=dados'}`)
+}
+
+export async function doMovePhoto(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const { providerId, mediaId } = photoTarget(formData)
+  const direction = formData.get('direction') === 'up' ? 'up' : 'down'
+  await movePhoto(profile.id, providerId, mediaId, direction)
+  redirect(`/painel/${providerId}/fotos#foto-${mediaId}`)
+}
+
+export async function doUpdateCaption(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const { providerId, mediaId } = photoTarget(formData)
+  const ok = await updateCaption(profile.id, providerId, mediaId, String(formData.get('altText') ?? ''))
+  redirect(`/painel/${providerId}/fotos?${ok ? 'feito=descricao' : 'erro=dados'}#foto-${mediaId}`)
+}
+
+export async function doRemovePhoto(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const { providerId, mediaId } = photoTarget(formData)
+  const objectId = await removePhoto(profile.id, providerId, mediaId)
+  if (!objectId) redirect(`/painel/${providerId}/fotos?erro=dados`)
+  // A removed photograph should be gone, not merely unlisted: imgproxy
+  // would keep serving it to anyone holding an old URL. Best effort: the
+  // row is already gone, so the listing no longer shows it either way.
+  try {
+    const deleted = await mediaStore().deleteObject(objectId)
+    if (!deleted) console.error(`photo ${objectId}: removed from listing, storage delete failed`)
+  } catch (error) {
+    console.error(`photo ${objectId}: removed from listing, storage not configured`, error)
+  }
+  redirect(`/painel/${providerId}/fotos?feito=removida`)
 }
