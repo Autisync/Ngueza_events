@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 40 migrations from empty · 393 tests · 59 database assertions |
+| Verified | 41 migrations from empty · 397 tests · 59 database assertions |
 
 ### Done
 
@@ -64,6 +64,7 @@ make contact.
 | 36 | Actionable notifications — `/conta/notificacoes` with unread counts, every email and inbox item opens the screen where the person acts (the specific booking, not a dashboard or public page); see `spec/slices/36-notification-inbox.md` |
 | 37 | Kill switches and runbooks — pause new bookings (enforced by the database) or sign-ups from the admin in seconds, with a public notice and an audit entry; `docs/runbooks.md` for each likely incident; see `spec/slices/37-kill-switches.md` |
 | 38 | The support console — `/admin/consola` searches by reference, email, phone or name; each booking's full timeline (states, payments, emails, help requests, notes); append-only internal notes; see `spec/slices/38-support-console.md` |
+| 39 | An example catalogue, honestly labelled — 24 fictional suppliers, flagged «Exemplo», never bookable or verified or indexed, sorted after real supply, removable in one script; see `spec/slices/39-example-catalogue.md` |
 
 ### Infrastructure
 

@@ -25,6 +25,8 @@ export interface SearchQuery {
 
 /** Keyset, never OFFSET — this is built to hold 100k+ suppliers. */
 export interface Cursor {
+  /** Examples (0041) sort after every real supplier; the cursor carries it. */
+  isDemo?: boolean
   hasPrice: boolean
   name: string
   id: string
@@ -48,6 +50,8 @@ export interface SearchHit {
   hasPrice: boolean
   ratingAverage: number | null
   reviewCount: number
+  /** An example profile (0041): labelled, never bookable. */
+  isDemo: boolean
 }
 
 export interface SearchResult {
@@ -66,6 +70,7 @@ interface Row {
   location_name: string
   capacity: number | null
   cover_image_id: string | null
+  is_demo: boolean
   price_mode: Price['mode'] | null
   price_minor: string | null
   price_max_minor: string | null
@@ -103,7 +108,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       `
       with candidate as (
         select
-          p.id, p.slug, p.name, p.description, p.supplier_type,
+          p.id, p.slug, p.name, p.description, p.supplier_type, p.is_demo,
           cat.name  as category_name,
           loc.name  as location_name,
           r.id      as resource_id,
@@ -169,7 +174,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       ranked as (
         select distinct on (id)
           id, slug, name, description, supplier_type, category_name, extra_category_names,
-          location_name, capacity, cover_image_id, price_mode, price_minor, price_max_minor,
+          location_name, capacity, cover_image_id, is_demo, price_mode, price_minor, price_max_minor,
           rating_average, review_count,
           (price_mode is not null and price_mode <> 'on_request') as has_price
         from candidate
@@ -180,9 +185,11 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
        -- compares on (not has_price) to keep every column ascending —
        -- a plain tuple comparison against a mixed ASC/DESC order silently
        -- repeats and skips rows.
+       -- Real suppliers always before examples (0041): is_demo leads the
+       -- key, ascending, so false sorts first.
        where ($7::boolean is null
-              or ((not has_price), name, id) > ((not $7::boolean), $8::text, $9::uuid))
-       order by (not has_price) asc, name asc, id asc
+              or (is_demo, (not has_price), name, id) > ($11::boolean, (not $7::boolean), $8::text, $9::uuid))
+       order by is_demo asc, (not has_price) asc, name asc, id asc
        limit $10
       `,
       [
@@ -196,6 +203,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
         query.cursor?.name ?? null,
         query.cursor?.id ?? null,
         limit + 1,
+        query.cursor?.isDemo ?? false,
       ],
     )
     return rows
@@ -222,9 +230,10 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       hasPrice: row.has_price,
       ratingAverage: row.rating_average === null ? null : Number(row.rating_average),
       reviewCount: Number(row.review_count),
+      isDemo: Boolean(row.is_demo),
     })),
     nextCursor:
-      hasMore && last ? { hasPrice: last.has_price, name: last.name, id: last.id } : null,
+      hasMore && last ? { isDemo: last.is_demo, hasPrice: last.has_price, name: last.name, id: last.id } : null,
   }
 }
 

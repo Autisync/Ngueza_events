@@ -54,7 +54,7 @@ function decodeCursor(raw?: string): Cursor | undefined {
   try {
     const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'))
     if (isUuid(parsed?.id) && typeof parsed?.name === 'string' && parsed.name.length <= 200) {
-      return { hasPrice: Boolean(parsed.hasPrice), name: parsed.name, id: parsed.id }
+      return { isDemo: Boolean(parsed.isDemo), hasPrice: Boolean(parsed.hasPrice), name: parsed.name, id: parsed.id }
     }
   } catch {
     // A malformed cursor is a first page, not an error page.

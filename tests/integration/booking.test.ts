@@ -812,3 +812,65 @@ describe('payment terms (0035)', () => {
     expect(ctx.payment_instructions).toBe('Multicaixa Express 923 000 000')
   })
 })
+
+describe('example profiles (0041)', () => {
+  const flag = (on: boolean) => asSystem((c) => c.query(`update providers set is_demo = $2 where id = $1`, [HORIZONTE, on]))
+
+  it('refuses a booking request for an example profile, in the database', async () => {
+    await flag(true)
+    try {
+      expect(await requestBooking(JOAO, {
+        providerId: HORIZONTE, resourceId: SALAO,
+        startsAt: at('2028-06-01T09:00:00Z'), endsAt: at('2028-06-01T22:00:00Z'),
+      })).toEqual({ ok: false, reason: 'not_allowed' })
+    } finally {
+      await flag(false)
+    }
+  })
+
+  it('labels it, and never shows it as verified', async () => {
+    const { getProvider } = await import('@/lib/provider')
+    const { search } = await import('@/lib/search')
+    await flag(true)
+    try {
+      const p = await getProvider('salao-horizonte-talatona')
+      expect(p?.isDemo).toBe(true)
+      expect(p?.verifiedAt).toBeNull()
+      const hit = (await search({ limit: 50 })).hits.find((h) => h.id === HORIZONTE)
+      expect(hit?.isDemo).toBe(true)
+    } finally {
+      await flag(false)
+    }
+  })
+
+  it('sorts examples after every real supplier, without repeating or skipping across pages', async () => {
+    const { search } = await import('@/lib/search')
+    const all = (await search({ limit: 50 })).hits.map((h) => h.id)
+    await flag(true)
+    try {
+      const seen: Array<{ id: string; isDemo: boolean }> = []
+      let cursor
+      do {
+        const page = await search({ limit: 2, cursor })
+        seen.push(...page.hits.map((h) => ({ id: h.id, isDemo: h.isDemo })))
+        cursor = page.nextCursor ?? undefined
+      } while (cursor)
+      expect(seen.map((h) => h.id).sort()).toEqual([...all].sort())
+      expect(new Set(seen.map((h) => h.id)).size).toBe(seen.length)
+      expect(seen.at(-1)).toEqual({ id: HORIZONTE, isDemo: true })
+    } finally {
+      await flag(false)
+    }
+  })
+
+  it('never matches it to a quote request', async () => {
+    await flag(true)
+    try {
+      const matched = await asSystem(async (c) => (await c.query<{ ok: boolean }>(
+        `select bool_or(quote_request_open_and_matches(qr.id, $1)) as ok from quote_requests qr`, [HORIZONTE])).rows[0]!.ok)
+      expect(matched ?? false).toBe(false)
+    } finally {
+      await flag(false)
+    }
+  })
+})

@@ -52,6 +52,8 @@ export interface PublicProvider {
   website: string | null
   yearsActiveDeclared: number | null
   verifiedAt: string | null
+  /** An example profile (0041): labelled, never bookable, never "verificado". */
+  isDemo: boolean
   /** Cover first, then sort_order — lib/media.ts's coverImageUrl() turns
    *  an externalId into a real, resized photo URL when media is
    *  configured, null otherwise (never throws). */
@@ -89,7 +91,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       // included the owner's email and the rejection reason.
       `select p.id, p.slug, p.name, p.description, p.supplier_type, p.category_id,
               p.location_id, p.address_line, p.lat, p.lng, p.phone, p.whatsapp,
-              p.website, p.years_active_declared, p.verified_at,
+              p.website, p.years_active_declared, p.verified_at, p.is_demo,
               cat.name as category_name,
               (select array_agg(l.name order by depth desc)
                  from (
@@ -158,7 +160,9 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       whatsapp: p.whatsapp,
       website: p.website,
       yearsActiveDeclared: p.years_active_declared,
-      verifiedAt: p.verified_at ? new Date(p.verified_at).toISOString() : null,
+      // Nobody verified a fictional business: an example never shows the seal.
+      verifiedAt: p.verified_at && !p.is_demo ? new Date(p.verified_at).toISOString() : null,
+      isDemo: Boolean(p.is_demo),
       photos: photos.rows.map((m) => ({ externalId: m.external_id, altText: m.alt_text })),
       resources: resources.rows,
       services: services.rows.map((s) => ({
