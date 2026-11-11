@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 41 migrations from empty · 400 tests · 59 database assertions |
+| Verified | 42 migrations from empty · 406 tests · 59 database assertions |
 
 ### Done
 
@@ -66,6 +66,7 @@ make contact.
 | 38 | The support console — `/admin/consola` searches by reference, email, phone or name; each booking's full timeline (states, payments, emails, help requests, notes); append-only internal notes; see `spec/slices/38-support-console.md` |
 | 39 | An example catalogue, honestly labelled — 24 fictional suppliers, flagged «Exemplo», never bookable or verified or indexed, sorted after real supply, removable in one script; see `spec/slices/39-example-catalogue.md` |
 | 40 | Two-factor sign-in for administrators — authenticator app via Supabase Auth, enforced on every admin page and action with `ADMIN_REQUIRE_MFA=1`; see `spec/slices/40-admin-mfa.md` |
+| 41 | Legal hooks — versioned Terms, Privacy and cancellation documents; who accepted which version, when and where, at sign-up and with each booking request; a "Pedido enviado" acknowledgement to the client; see `spec/slices/41-legal-acceptance.md` |
 
 ### Infrastructure
 

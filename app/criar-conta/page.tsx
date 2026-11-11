@@ -17,6 +17,7 @@ const ERRORS: Record<string, string> = {
   email_taken: 'Já existe uma conta com este email. Tente entrar.',
   weak_password: 'Escolha uma palavra-passe mais forte.',
   rate_limited: 'Demasiadas tentativas. Aguarde alguns minutos.',
+  aceitar: 'Para criar conta, confirme que leu os Termos de Utilização e a Política de Privacidade.',
   unknown: 'Não foi possível criar a conta. Tente novamente.',
 }
 
@@ -85,6 +86,13 @@ export default async function CriarConta({
           <span className={styles.hint}>
             Pelo menos 10 caracteres. Uma frase que só você saiba é mais segura — e mais fácil de
             lembrar — do que uma palavra curta com símbolos.
+          </span>
+        </label>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 18px', fontSize: '0.9rem' }}>
+          <input type="checkbox" name="aceito" required style={{ marginTop: 3 }} />
+          <span>
+            Li e aceito os <a href="/termos" target="_blank">Termos de Utilização</a> e a{' '}
+            <a href="/privacidade" target="_blank">Política de Privacidade</a>.
           </span>
         </label>
         <button className={styles.submit} type="submit">Criar conta</button>

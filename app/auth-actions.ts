@@ -11,6 +11,7 @@ import {
 import { safeNext } from '@/lib/safe'
 import { LIMITS, allow, allowAll, clientIp } from '@/lib/rate-limit'
 import { pausedNotice } from '@/lib/switches'
+import { recordSignupAcceptance } from '@/lib/legal'
 
 /**
  * Plain server actions bound to <form action={...}>, so every auth screen
@@ -76,12 +77,15 @@ export async function doSignUp(formData: FormData): Promise<void> {
   }
 
   if (await pausedNotice('signups_paused')) redirect(`/criar-conta?erro=pausado${back}`)
+  // Recorded against the versions in force (0042) once the account exists.
+  if (formData.get('aceito') !== 'on') redirect(`/criar-conta?erro=aceitar${back}`)
   const ip = clientIp(await headers())
   if (!(await allow(LIMITS.signUpIp, ip))) redirect(`/criar-conta?erro=rate_limited${back}`)
 
   const fullName = String(formData.get('nome') ?? '').trim().slice(0, 120) || undefined
   const result = await signUp(parsed.data.email, parsed.data.password, fullName, ip)
   if (!result.ok) redirect(`/criar-conta?erro=${result.error}${back}`)
+  if (result.userId) await recordSignupAcceptance(result.userId).catch((e) => console.error('legal acceptance', e))
 
   if (result.session) {
     await storeSession(result.session)

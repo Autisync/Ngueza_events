@@ -99,7 +99,7 @@ afterAll(async () => {
 })
 
 describe('booking transitions enqueue the right notification', () => {
-  it('tells the supplier when a request arrives', async () => {
+  it('tells the supplier when a request arrives, and acknowledges it to the client (0042)', async () => {
     const result = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
       startsAt: at(400), endsAt: at(400, 20),
@@ -108,9 +108,11 @@ describe('booking transitions enqueue the right notification', () => {
 
     const eventId = await lastBookingEventId(result.bookingId)
     const rows = await notificationsFor('booking_events', eventId)
-    expect(rows).toEqual([
+    expect(rows).toEqual(expect.arrayContaining([
       { kind: 'booking_requested', to_email: 'dono.horizonte@exemplo.ao', status: 'pending' },
-    ])
+      { kind: 'booking_requested_client', to_email: 'joao.cliente@exemplo.ao', status: 'pending' },
+    ]))
+    expect(rows).toHaveLength(2)
   })
 
   it('notifies both parties on confirmation, as two independent rows', async () => {
@@ -344,7 +346,8 @@ describe('admin visibility', () => {
     })
     if (!result.ok) throw new Error('booking failed')
 
-    expect(await pendingNotificationCount(ADMIN)).toBe(before + 1)
+    // The supplier's alert and the client's acknowledgement (0042).
+    expect(await pendingNotificationCount(ADMIN)).toBe(before + 2)
     await claimAndSend(500)
     expect(await pendingNotificationCount(ADMIN)).toBe(before)
 

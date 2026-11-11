@@ -22,6 +22,7 @@ export type NotificationKind =
   | 'booking_payment_submitted' | 'booking_released_provider'
   | 'booking_unavailable'
   | 'support_request_new'
+  | 'booking_requested_client'
 
 export interface RenderedMail {
   subject: string
@@ -229,6 +230,23 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           'Esperamos que tenha corrido tudo bem.',
         ].join('\n'),
       }
+    case 'booking_requested_client':
+      // The client's acknowledgement (0042): what they asked for, that it
+      // is not yet a reservation, and where to follow it.
+      return {
+        subject: `Pedido enviado — ${c.provider_name}`,
+        text: [
+          `Recebemos o seu pedido de reserva para ${c.provider_name}.`,
+          '',
+          `Data: ${when(c)}`,
+          '',
+          'Ainda não é uma reserva: o fornecedor tem até 48 horas para responder, e a data só fica',
+          'guardada para si depois de aceite e paga. Avisamos por email em cada passo.',
+          '',
+          'Acompanhe o pedido aqui:',
+          link(kind, c) ?? `${siteUrl()}/reservas`,
+        ].join('\n'),
+      }
     case 'booking_unavailable': {
       // Another booking took the date (0033). Say so plainly — not
       // "expired", not "rejected" — and hand them the same search on the
@@ -401,7 +419,7 @@ const BOOKING_KINDS = new Set<NotificationKind>([
   'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
   'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
   'booking_completed', 'booking_no_show', 'booking_payment_submitted', 'booking_released_provider',
-  'booking_unavailable',
+  'booking_unavailable', 'booking_requested_client',
 ])
 
 const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received', 'quote_offer_accepted'])
