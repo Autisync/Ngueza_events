@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { blockDate, requestBooking, transition, type BookingStatus } from '@/lib/booking'
-import { calendarDate, isUuid, normalizePhone, todayInLuanda } from '@/lib/safe'
+import { isUuid, normalizePhone, todayInLuanda } from '@/lib/safe'
+import { eventWindow } from '@/lib/booking-labels'
 import { parseMajor } from '@/lib/money'
 import { sessionId } from '@/lib/session'
 
@@ -27,6 +28,8 @@ const requestForm = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'escolha uma data'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).default('09:00'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).default('23:59'),
+  /** Multi-day events (slice 44): the last day, optional. */
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   partySize: z.coerce.number().int().positive().max(100000).optional(),
   notes: z.string().max(1000).optional(),
 })
@@ -44,18 +47,22 @@ const REASON_ERROR: Record<string, string> = {
  * from 20:00 to 02:00 is the normal case here, not an error. Returns null
  * for a date that does not exist or a window longer than a day.
  */
-function eventWindow(date: string, startTime: string, endTime: string): { startsAt: Date; endsAt: Date } | null {
-  if (!calendarDate(date)) return null
-  const startsAt = new Date(`${date}T${startTime}:00+01:00`) // Africa/Luanda, UTC+1
-  let endsAt = new Date(`${date}T${endTime}:00+01:00`)
-  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) return null
-  if (!(endsAt > startsAt)) endsAt = new Date(endsAt.getTime() + 24 * 3600_000)
-  return { startsAt, endsAt }
-}
 
 export async function doRequestBooking(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const slug = String(formData.get('providerSlug') ?? '')
+  // Back to the form with the error, keeping the day and space the client
+  // chose (slice 44) — except when that day is the problem.
+  const rawDate = str(formData, 'date')
+  const rawSpace = str(formData, 'resourceId')
+  const back: (erro: string) => never = (erro) => {
+    const q = new URLSearchParams({ erro })
+    if (rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) && erro !== 'data_indisponivel' && erro !== 'passado') {
+      q.set('mes', rawDate.slice(0, 7)); q.set('data', rawDate)
+    }
+    if (rawSpace && isUuid(rawSpace)) q.set('espaco', rawSpace)
+    redirect(`/fornecedor/${slug}?${q.toString()}#reservar`)
+  }
   const parsed = requestForm.safeParse({
     providerId: str(formData, 'providerId') ?? '',
     providerSlug: slug,
@@ -63,24 +70,25 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
     date: str(formData, 'date') ?? '',
     startTime: str(formData, 'startTime') ?? '09:00',
     endTime: str(formData, 'endTime') ?? '23:59',
+    endDate: str(formData, 'endDate'),
     partySize: str(formData, 'partySize'),
     notes: str(formData, 'notes'),
   })
   if (!parsed.success) {
-    redirect(`/fornecedor/${slug}?erro=dados#reservar`)
+    back('dados')
   }
 
   // The supplier's only way to reach the client once they accept (0034).
   // Required, and normalised to E.164 so the WhatsApp link works however
   // it was typed.
   const clientPhone = normalizePhone(str(formData, 'phone'))
-  if (!clientPhone) redirect(`/fornecedor/${slug}?erro=telefone#reservar`)
-  if (formData.get('aceito') !== 'on') redirect(`/fornecedor/${slug}?erro=aceitar#reservar`)
+  if (!clientPhone) back('telefone')
+  if (formData.get('aceito') !== 'on') back('aceitar')
 
-  const { date, startTime, endTime } = parsed.data
-  const window = eventWindow(date, startTime, endTime)
-  if (!window) redirect(`/fornecedor/${slug}?erro=dados#reservar`)
-  if (date < todayInLuanda()) redirect(`/fornecedor/${slug}?erro=passado#reservar`)
+  const { date, startTime, endTime, endDate } = parsed.data
+  const window = eventWindow(date, startTime, endTime, endDate)
+  if (!window) back(endDate ? 'fim' : 'dados')
+  if (date < todayInLuanda()) back('passado')
   const { startsAt, endsAt } = window
 
   const result = await requestBooking(profile.id, {
@@ -95,7 +103,7 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
   })
 
   if (!result.ok) {
-    redirect(`/fornecedor/${slug}?erro=${REASON_ERROR[result.reason] ?? 'dados'}#reservar`)
+    back(REASON_ERROR[result.reason] ?? 'dados')
   }
   redirect(`/reservas/${result.bookingId}?novo=1`)
 }

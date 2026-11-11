@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { datedTierSteps, nextStep, relativeTierSteps } from '@/lib/booking-labels'
+import { clampMonth, datedTierSteps, eventWindow, monthGrid, nextStep, relativeTierSteps } from '@/lib/booking-labels'
 
 /**
  * Slice 32. The words must say exactly what compute_refund_pct() (0026)
@@ -91,5 +91,67 @@ describe('the next step on a booking', () => {
     expect(nextStep({ ...base, status: 'completed', canReview: true })?.action?.href).toBe('#avaliar')
     expect(nextStep({ ...base, status: 'completed' })).toBeNull()
     expect(nextStep({ ...base, status: 'rejected' })).toBeNull()
+  })
+})
+
+/**
+ * Slice 44. The month calendar is a plain grid computed on the server, so
+ * the arithmetic has to be right on its own: Monday first, real month
+ * lengths, and never a month in the past.
+ */
+describe('monthGrid', () => {
+  it('starts on Monday: a month beginning on Sunday has six blanks', () => {
+    // 1 November 2026 is a Sunday.
+    expect(monthGrid('2026-11')).toMatchObject({ first: '2026-11-01', days: 30, leading: 6 })
+  })
+  it('a month beginning on Monday has none', () => {
+    // 1 June 2026 is a Monday.
+    expect(monthGrid('2026-06').leading).toBe(0)
+  })
+  it('knows February in a leap year', () => {
+    expect(monthGrid('2028-02').days).toBe(29)
+    expect(monthGrid('2027-02').days).toBe(28)
+  })
+  it('crosses the year both ways, and names the month in Portuguese', () => {
+    expect(monthGrid('2026-12')).toMatchObject({ next: '2027-01', label: 'dezembro de 2026' })
+    expect(monthGrid('2027-01').prev).toBe('2026-12')
+  })
+})
+
+describe('clampMonth', () => {
+  it('defaults to the current month for missing or malformed input', () => {
+    expect(clampMonth(undefined, '2026-11')).toBe('2026-11')
+    expect(clampMonth('2026-13', '2026-11')).toBe('2026-11')
+    expect(clampMonth('nov', '2026-11')).toBe('2026-11')
+  })
+  it('never shows the past, and stops 18 months ahead', () => {
+    expect(clampMonth('2026-01', '2026-11')).toBe('2026-11')
+    expect(clampMonth('2027-03', '2026-11')).toBe('2027-03')
+    expect(clampMonth('2030-01', '2026-11')).toBe('2028-05')
+  })
+})
+
+describe('eventWindow', () => {
+  const hours = (w: { startsAt: Date; endsAt: Date } | null) =>
+    w ? (w.endsAt.getTime() - w.startsAt.getTime()) / 3600_000 : null
+
+  it('a party past midnight ends the next day', () => {
+    expect(hours(eventWindow('2026-12-15', '20:00', '02:00'))).toBe(6)
+  })
+  it('is Luanda time', () => {
+    expect(eventWindow('2026-12-15', '09:00', '12:00')?.startsAt.toISOString()).toBe('2026-12-15T08:00:00.000Z')
+  })
+  it('spans two days with an end date', () => {
+    expect(hours(eventWindow('2026-12-15', '09:00', '18:00', '2026-12-16'))).toBe(33)
+  })
+  it('an end date equal to the start is a single day', () => {
+    expect(hours(eventWindow('2026-12-15', '09:00', '18:00', '2026-12-15'))).toBe(9)
+  })
+  it('refuses an end date before the start, a missing day, or more than a week', () => {
+    expect(eventWindow('2026-12-15', '09:00', '18:00', '2026-12-14')).toBeNull()
+    expect(eventWindow('2026-12-15', '09:00', '18:00', '2026-02-30')).toBeNull()
+    expect(eventWindow('2026-02-30', '09:00', '18:00')).toBeNull()
+    expect(eventWindow('2026-12-15', '09:00', '18:00', '2026-12-23')).toBeNull()
+    expect(eventWindow('2026-12-15', '09:00', '09:00', '2026-12-22')).not.toBeNull()
   })
 })
