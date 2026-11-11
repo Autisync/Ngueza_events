@@ -23,6 +23,7 @@ export type NotificationKind =
   | 'booking_unavailable'
   | 'support_request_new'
   | 'booking_requested_client'
+  | 'refund_sent' | 'refund_disputed'
 
 export interface RenderedMail {
   subject: string
@@ -445,6 +446,7 @@ export function render(kind: string, context: Record<string, unknown>): Rendered
     }
   }
   if (QUOTE_KINDS.has(k)) return quoteMail(k, context)
+  if (k === 'refund_sent' || k === 'refund_disputed') return refundMail(k, context)
 
   // Every booking/provider template names the supplier, so this one
   // check catches a malformed row regardless of which kind it is —
@@ -493,7 +495,54 @@ export function notificationPath(kind: string, context: Record<string, unknown>)
       return c.provider_id ? `/painel/${c.provider_id}/reservas` : '/painel'
     case 'support_request_new':
       return '/admin/apoio'
+    case 'refund_sent':
+      return c.booking_id ? `/reservas/${c.booking_id}#devolucao` : null
+    case 'refund_disputed':
+      return c.booking_id && c.provider_id ? `/painel/${c.provider_id}/reservas/${c.booking_id}#devolucao` : null
     default:
       return null
+  }
+}
+
+
+// ---------------------------------------------------------------------
+// Refunds between supplier and client (0045, slice 47). Statements by the
+// two parties: NGUEZA relays them and moves no money.
+// ---------------------------------------------------------------------
+const REFUND_METHOD_WORDS: Record<string, string> = {
+  transferencia: 'transferência bancária', multicaixa_express: 'Multicaixa Express',
+  numerario: 'numerário', outro: 'outro meio',
+}
+
+function refundMail(kind: 'refund_sent' | 'refund_disputed', context: Record<string, unknown>): RenderedMail {
+  const c = context as {
+    provider_name?: string; amount_minor?: number | string; method?: string; reference?: string | null
+    client_note?: string | null; starts_at?: string
+  }
+  const amount = c.amount_minor === undefined ? '—' : formatMinor(BigInt(c.amount_minor))
+  const how = `${REFUND_METHOD_WORDS[c.method ?? ''] ?? 'outro meio'}${c.reference ? ` (ref. ${c.reference})` : ''}`
+  const url = notificationPath(kind, context)
+  if (kind === 'refund_sent') {
+    return {
+      subject: `${c.provider_name ?? 'O fornecedor'} registou uma devolução de ${amount}`,
+      text: [
+        `${c.provider_name ?? 'O fornecedor'} diz que lhe devolveu ${amount} por ${how}.`,
+        '',
+        'Confirme se recebeu, ou diga-nos que não recebeu — o fornecedor vê a sua resposta:',
+        url ? `${siteUrl()}${url}` : `${siteUrl()}/reservas`,
+        '',
+        'A NGUEZA não guarda nem transfere dinheiro; regista o que cada parte diz.',
+      ].join('\n'),
+    }
+  }
+  return {
+    subject: `O cliente diz que não recebeu a devolução de ${amount}`,
+    text: [
+      `Registou uma devolução de ${amount} por ${how}. O cliente respondeu que não a recebeu.`,
+      ...(c.client_note ? ['', ...c.client_note.split('\n').map((l) => `> ${l}`)] : []),
+      '',
+      'Confirme a transferência com o cliente. A reserva:',
+      url ? `${siteUrl()}${url}` : `${siteUrl()}/painel`,
+    ].join('\n'),
   }
 }

@@ -261,3 +261,26 @@ describe('the client\'s acknowledgement of a request (slice 41)', () => {
     expect(mail.text).toContain('/reservas/b9')
   })
 })
+
+describe('refund notifications (slice 47)', () => {
+  const ctx = {
+    booking_id: 'b0000000-0000-0000-0000-000000000001', provider_id: 'p0000000-0000-0000-0000-000000000001',
+    provider_name: 'Salão Horizonte', provider_slug: 'salao-horizonte', starts_at: '2026-12-15T09:00:00+01:00',
+    amount_minor: 45000000, method: 'multicaixa_express', reference: 'MX-123', client_note: 'Não chegou nada.',
+  }
+
+  it('tells the client the amount, how, and where to answer', () => {
+    const m = render('refund_sent', ctx)
+    expect(m.subject).toContain('Salão Horizonte')
+    expect(m.text).toContain('Multicaixa Express (ref. MX-123)')
+    expect(m.text).toContain(`/reservas/${ctx.booking_id}#devolucao`)
+    expect(m.text).toContain('não guarda nem transfere dinheiro')
+  })
+
+  it("tells the supplier the client disputes it, quoting the client's words", () => {
+    const m = render('refund_disputed', ctx)
+    expect(m.text).toContain('> Não chegou nada.')
+    expect(m.text).toContain(`/painel/${ctx.provider_id}/reservas/${ctx.booking_id}#devolucao`)
+    expect(notificationPath('refund_disputed', ctx)).toBe(`/painel/${ctx.provider_id}/reservas/${ctx.booking_id}#devolucao`)
+  })
+})

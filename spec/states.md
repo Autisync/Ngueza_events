@@ -16,7 +16,7 @@ transition; the database decides whether it is legal.
 | `expired` | no | — | Nobody acted in time. Date released automatically. |
 | `rejected` | no | — | Supplier declined. |
 | `cancelled_client` | no | — | Client cancelled. Policy decides the refund. |
-| `cancelled_provider` | no | — | Supplier cancelled. |
+| `cancelled_provider` | no | — | Supplier cancelled. Requires `cancellation_reason` (except unblocking a manual block), set in the same update and never edited afterwards (0045). |
 | `no_show` | no | — | Client did not appear. |
 | `blocked` | **yes** | — | Supplier blocking a date booked off-platform (§27). No client. |
 | `unavailable` | no | — | Another booking took the date (0033). Set by the database only. |

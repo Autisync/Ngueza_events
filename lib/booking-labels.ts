@@ -50,6 +50,8 @@ export const TRANSITION_ERROR: Record<string, string> = {
   already_reviewed: 'Esta reserva já tem uma avaliação.',
   terms_required: 'Indique o valor total acordado para pedir o pagamento.',
   invalid_terms: 'O sinal não pode ser maior do que o total. Use valores como 450.000 ou 450.000,50.',
+  reason_required: 'Diga ao cliente porque está a cancelar.',
+  refund_amount: 'Indique o valor devolvido, por exemplo 450.000.',
   dados: 'Verifique os dados introduzidos.',
 }
 
