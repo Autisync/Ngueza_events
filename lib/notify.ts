@@ -21,6 +21,7 @@ export type NotificationKind =
   | 'quote_request_new' | 'quote_offer_received' | 'quote_offer_accepted'
   | 'booking_payment_submitted' | 'booking_released_provider'
   | 'booking_unavailable'
+  | 'support_request_new'
 
 export interface RenderedMail {
   subject: string
@@ -402,6 +403,23 @@ const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer
 /** Turns one outbox row's `kind` and `context` into a subject and body. */
 export function render(kind: string, context: Record<string, unknown>): RenderedMail {
   const k = kind as NotificationKind
+  if (k === 'support_request_new') {
+    // To every administrator (0038). The person's own words, quoted, so
+    // the team can triage from the email without opening the admin.
+    const c = context as { topic?: string; email?: string; booking_ref?: string | null; message?: string }
+    return {
+      subject: `Pedido de ajuda — ${c.topic ?? 'outro'}${c.booking_ref ? ` · ref. ${c.booking_ref}` : ''}`,
+      text: [
+        `De: ${c.email ?? '—'}`,
+        `Assunto: ${c.topic ?? '—'}${c.booking_ref ? ` · reserva ${c.booking_ref}` : ''}`,
+        '',
+        ...(c.message ?? '').split('\n').map((l) => `> ${l}`),
+        '',
+        'Responder e marcar como resolvido:',
+        `${siteUrl()}/admin/apoio`,
+      ].join('\n'),
+    }
+  }
   if (QUOTE_KINDS.has(k)) return quoteMail(k, context)
 
   // Every booking/provider template names the supplier, so this one

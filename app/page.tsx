@@ -214,7 +214,7 @@ export default async function Home() {
           <p>
             NGUEZA · Luanda, Angola ·{' '}
             <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a>
+            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
           </p>
         </footer>
       </div>

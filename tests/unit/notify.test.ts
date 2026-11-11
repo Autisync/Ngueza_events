@@ -21,6 +21,19 @@ beforeEach(() => {
   delete process.env.VERCEL_PROJECT_PRODUCTION_URL
 })
 
+describe('help requests (slice 35)', () => {
+  it('quotes the person\'s own words to the team, with topic, reference and a link', () => {
+    const mail = render('support_request_new', {
+      topic: 'fraude', email: 'ana@exemplo.ao', booking_ref: '81A0F3C2',
+      message: 'Pediram-me outra conta.\nCom pressa.',
+    })
+    expect(mail.subject).toBe('Pedido de ajuda — fraude · ref. 81A0F3C2')
+    expect(mail.text).toContain('De: ana@exemplo.ao')
+    expect(mail.text).toContain('> Pediram-me outra conta.\n> Com pressa.')
+    expect(mail.text).toContain('/admin/apoio')
+  })
+})
+
 describe('booking notifications', () => {
   it('tells the client how much to pay and how, when the supplier set terms (slice 31)', () => {
     const mail = render('booking_awaiting_payment', {

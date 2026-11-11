@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { requireProfile } from '@/lib/auth'
 import { isUuid } from '@/lib/safe'
+import { resolveSupportRequest } from '@/lib/support'
 import {
   decideDocument, decidePayment, rejectProvider, reinstateProvider, resolveReport,
   setAccountStatus, suspendProvider, verifyProvider,
@@ -87,4 +88,13 @@ export async function doDecidePayment(formData: FormData): Promise<void> {
   const decision = id(formData, 'decision') === 'confirmed' ? 'confirmed' : 'failed'
   const decided = await decidePayment(admin.id, uuid(formData, 'paymentId'), decision)
   redirect(decided ? '/admin/pagamentos' : '/admin/pagamentos?erro=ja_decidido')
+}
+
+
+/** Marks a help request answered (slice 35). The answer itself is an
+ *  email the team sends; this only takes it off the open queue. */
+export async function doResolveSupport(formData: FormData): Promise<void> {
+  const admin = await requireProfile('admin')
+  await resolveSupportRequest(admin.id, uuid(formData, 'requestId'))
+  redirect('/admin/apoio')
 }

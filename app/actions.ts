@@ -4,6 +4,8 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { confirm, subscribe, subscribeSchema, unsubscribe } from '@/lib/newsletter'
 import { LIMITS, allow, clientIp } from '@/lib/rate-limit'
+import { currentProfile } from '@/lib/auth'
+import { fileSupportRequest, supportInput } from '@/lib/support'
 
 /**
  * A plain server action bound to <form action={...}>, so the waitlist works
@@ -56,4 +58,25 @@ export async function doUnsubscribe(formData: FormData): Promise<void> {
   const token = String(formData.get('token') ?? '')
   const result = /^[0-9a-f]{48}$/.test(token) ? await unsubscribe(token) : 'unknown'
   redirect(`/cancelar/${encodeURIComponent(token)}?r=${result}`)
+}
+
+/**
+ * The help form (slice 35). Works signed out — someone locked out of their
+ * account is exactly who needs it — and is rate limited like every form
+ * anyone can submit.
+ */
+export async function doAskForHelp(formData: FormData): Promise<void> {
+  const profile = await currentProfile()
+  const parsed = supportInput.safeParse({
+    email: profile?.email ?? formData.get('email') ?? '',
+    topic: formData.get('topic') ?? 'outro',
+    bookingRef: String(formData.get('bookingRef') ?? '').trim() || undefined,
+    message: formData.get('message') ?? '',
+  })
+  if (!parsed.success) {
+    redirect(`/ajuda?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}#contacto`)
+  }
+  if (!(await allow(LIMITS.supportIp, clientIp(await headers())))) redirect('/ajuda?erro=limite#contacto')
+  await fileSupportRequest(profile?.id ?? null, parsed.data)
+  redirect('/ajuda?enviado=1#contacto')
 }

@@ -29,6 +29,7 @@ export const LIMITS = {
   resetIp: { bucket: 'reset:ip', limit: 5, windowSeconds: 3600 },
   resetEmail: { bucket: 'reset:email', limit: 3, windowSeconds: 3600 },
   waitlistIp: { bucket: 'waitlist:ip', limit: 10, windowSeconds: 3600 },
+  supportIp: { bucket: 'support:ip', limit: 5, windowSeconds: 3600 },
 } satisfies Record<string, Limit>
 
 const hash = (bucket: string, raw: string) =>

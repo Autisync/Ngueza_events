@@ -231,6 +231,11 @@ export default async function ReservaDetalhe({
 
         <SupplierContact booking={booking} />
 
+        <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: 'var(--tinta-3)' }}>
+          Algo não está bem com esta reserva?{' '}
+          <a href={`/ajuda?assunto=reserva&ref=${bookingRef(booking.id)}#contacto`}>Peça ajuda à NGUEZA</a>.
+        </p>
+
         {booking.status === 'unavailable' ? (
           <div className={styles.card}>
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Esta data foi reservada por outro cliente</h2>
