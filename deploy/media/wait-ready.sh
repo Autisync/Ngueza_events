@@ -49,13 +49,16 @@ for bucket in "${MEDIA_BUCKET:-ngueza-media}" "${DOCUMENTS_BUCKET:-ngueza-docume
   fi
 done
 
-# The documents bucket holds identity papers. Assert it is NOT readable
-# without a signature — a wrong policy here is a data breach, not a bug.
-probe="http://localhost:${MINIO_PORT:-9000}/${DOCUMENTS_BUCKET:-ngueza-documents}/"
-code=$(curl -s -o /dev/null -w '%{http_code}' "$probe")
-if [ "$code" = "200" ]; then
-  echo "REFUSING TO CONTINUE: ${DOCUMENTS_BUCKET:-ngueza-documents} is anonymously listable"
-  exit 1
-fi
+# Neither bucket may answer without a signature. Documents hold identity
+# papers; media holds original photographs with their EXIF (GPS) intact.
+# Only imgproxy's stripped derivatives are meant to be public.
+for bucket in "${DOCUMENTS_BUCKET:-ngueza-documents}" "${MEDIA_BUCKET:-ngueza-media}"; do
+  probe="http://localhost:${MINIO_PORT:-9000}/${bucket}/"
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$probe")
+  if [ "$code" = "200" ]; then
+    echo "REFUSING TO CONTINUE: ${bucket} is anonymously listable"
+    exit 1
+  fi
+done
 
 echo "media stack ready"

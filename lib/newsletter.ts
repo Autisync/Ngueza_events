@@ -23,8 +23,8 @@ export const CONSENT_TEXT =
 export const subscribeSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   audience: z.enum(['client', 'provider']).default('client'),
-  categories: z.array(z.string().uuid()).max(20).default([]),
-  locations: z.array(z.string().uuid()).max(20).default([]),
+  categories: z.array(z.guid()).max(20).default([]),
+  locations: z.array(z.guid()).max(20).default([]),
   // Free text for "isn't in the list yet" — categories and locations stay
   // rows an administrator manages at runtime (§6, §44); this is not a
   // parallel way to create one, only evidence for recruitment that
@@ -34,7 +34,7 @@ export const subscribeSchema = z.object({
   eventMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   source: z.enum(['waitlist', 'footer', 'zero_result', 'signup', 'booking']).default('waitlist'),
   sourceDetail: z.string().max(500).optional(),
-  consent: z.literal(true, { errorMap: () => ({ message: 'consentimento obrigatório' }) }),
+  consent: z.literal(true, { message: 'consentimento obrigatório' }),
 })
 
 export type SubscribeInput = z.infer<typeof subscribeSchema>

@@ -25,25 +25,28 @@ import { normalizePhone } from '@/lib/safe'
 // Stored as E.164 (+244…), so the WhatsApp button and tel: links work no
 // matter how the supplier typed it. A local "923 456 789" used to become
 // wa.me/923456789 — country code 92, Pakistan.
-const phoneField = z.string().trim().max(40).optional().transform((v, ctx) => {
+// .optional() wraps the transform, so the key stays optional in the
+// output type (zod 4 makes a transformed key required otherwise).
+const phoneField = z.string().trim().max(40).transform((v, ctx) => {
   if (!v) return undefined
   const e164 = normalizePhone(v)
   if (!e164) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'número de telefone inválido' })
+    ctx.addIssue({ code: 'custom', message: 'número de telefone inválido' })
     return z.NEVER
   }
   return e164
-})
+}).optional()
 
 export const providerInput = z.object({
   name: z.string().trim().min(3).max(120),
   description: z.string().trim().max(2000).optional(),
-  categoryId: z.string().uuid(),
-  locationId: z.string().uuid(),
+  categoryId: z.guid(),
+  locationId: z.guid(),
   addressLine: z.string().trim().max(200).optional(),
   phone: phoneField,
   whatsapp: phoneField,
-  website: z.string().trim().url().max(200).optional().or(z.literal('')),
+  // http(s) only: url() accepts anything the URL parser does, javascript: included.
+  website: z.string().trim().max(200).url().refine((v) => /^https?:\/\//i.test(v)).optional().or(z.literal('')),
   yearsActiveDeclared: z.coerce.number().int().min(0).max(120).optional(),
 })
 export type ProviderInput = z.infer<typeof providerInput>
@@ -59,7 +62,7 @@ const kwanza = z.string().trim().min(1).transform((v, ctx) => {
     if (minor < 0n) throw new Error('negative')
     return minor
   } catch {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'valor inválido' })
+    ctx.addIssue({ code: 'custom', message: 'valor inválido' })
     return z.NEVER
   }
 })
@@ -68,7 +71,7 @@ export const serviceInput = z
   .object({
     name: z.string().trim().min(3).max(120),
     description: z.string().trim().max(1000).optional(),
-    categoryId: z.string().uuid(),
+    categoryId: z.guid(),
     priceMode: z.enum(['exact', 'from', 'range', 'on_request']),
     price: kwanza.optional(),
     priceMax: kwanza.optional(),

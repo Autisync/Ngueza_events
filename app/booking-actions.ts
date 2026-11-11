@@ -20,9 +20,9 @@ const str = (f: FormData, k: string) => {
 }
 
 const requestForm = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.guid(),
   providerSlug: z.string().min(1),
-  resourceId: z.string().uuid().optional(),
+  resourceId: z.guid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'escolha uma data'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).default('09:00'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).default('23:59'),
@@ -118,8 +118,8 @@ export async function doSupplierTransition(formData: FormData): Promise<void> {
 }
 
 const blockForm = z.object({
-  providerId: z.string().uuid(),
-  resourceId: z.string().uuid(),
+  providerId: z.guid(),
+  resourceId: z.guid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).default('00:00'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).default('23:59'),

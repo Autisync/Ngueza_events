@@ -73,8 +73,12 @@ export default async function ProviderPage({
     resource: r,
     days: days.filter((d) => d.resourceId === r.id),
   }))
-  const heroPhoto = provider.photos[0]
-  const heroUrl = coverImageUrl(heroPhoto?.externalId ?? null, 'hero')
+  // Cover first (lib/provider.ts orders them). coverImageUrl() is null
+  // when media is not configured, and then the placeholder shows instead.
+  const gallery = provider.photos.flatMap((photo) => {
+    const url = coverImageUrl(photo.externalId, 'hero')
+    return url ? [{ ...photo, url }] : []
+  })
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -111,9 +115,30 @@ export default async function ProviderPage({
       />
 
       <div className={styles.hero}>
-        {heroUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
-          <img className={styles.heroImg} src={heroUrl} alt={heroPhoto?.altText ?? ''} />
+        {gallery.length > 0 ? (
+          // Swipe on a phone, scroll on a trackpad — CSS scroll-snap, no
+          // script. The first photo is the LCP element and loads at high
+          // priority; the rest are lazy, which keeps them off the first
+          // paint (browsers still prefetch near neighbours, so this is
+          // ordering, not a data saving).
+          <ul className={styles.gallery} aria-label={`Fotografias de ${provider.name}`}
+              // Keyboard users scroll it with the arrow keys once focused.
+              tabIndex={gallery.length > 1 ? 0 : undefined}>
+            {gallery.map((photo, i) => (
+              <li className={styles.slide} key={photo.externalId}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise */}
+                <img className={styles.heroImg} src={photo.url}
+                     alt={photo.altText ?? `${provider.name} — fotografia ${i + 1}`}
+                     loading={i === 0 ? 'eager' : 'lazy'}
+                     fetchPriority={i === 0 ? 'high' : undefined}
+                     decoding="async" />
+                {gallery.length > 1 ? (
+                  <span className={styles.slideCount}>{i + 1} / {gallery.length}</span>
+                ) : null}
+                {photo.altText ? <span className={styles.slideCaption}>{photo.altText}</span> : null}
+              </li>
+            ))}
+          </ul>
         ) : (
           <svg className={styles.heroIcon} width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
             <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -121,16 +146,6 @@ export default async function ProviderPage({
             <path d="M21 15l-5-5-9 9" />
           </svg>
         )}
-        {provider.photos.length > 1 ? (
-          <div className={styles.heroDots}>
-            {provider.photos.map((photo, i) => (
-              <span
-                className={i === 0 ? `${styles.heroDot} ${styles.heroDotActive}` : styles.heroDot}
-                key={photo.externalId}
-              />
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <section className={styles.top}>

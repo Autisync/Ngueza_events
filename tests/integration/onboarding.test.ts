@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { asSystem, asUser } from '@/lib/db'
 import {
-  addResource, addService, createProvider, recordDocument,
+  addResource, addService, createProvider, providerInput, recordDocument,
   removeService, serviceInput, submitForVerification, updateProvider, updateService,
 } from '@/lib/onboarding'
 
@@ -386,5 +386,17 @@ describe('editing a service in place (slice 29)', () => {
     await removeService(NEWCOMER, serviceId)
     expect(await updateService(NEWCOMER, providerId, serviceId,
       serviceInput.parse({ name: 'Voltou', categoryId: SALOES, priceMode: 'on_request' }))).toBe(false)
+  })
+})
+
+describe('the website field', () => {
+  const base = { name: 'Salão Teste', categoryId: SALOES, locationId: TALATONA }
+  it('accepts http(s) and an empty value', () => {
+    expect(providerInput.safeParse({ ...base, website: 'https://salao.ao' }).success).toBe(true)
+    expect(providerInput.safeParse({ ...base, website: '' }).success).toBe(true)
+  })
+  it('refuses a javascript: or data: link, which url() alone would accept', () => {
+    expect(providerInput.safeParse({ ...base, website: 'javascript:alert(1)' }).success).toBe(false)
+    expect(providerInput.safeParse({ ...base, website: 'data:text/html,x' }).success).toBe(false)
   })
 })

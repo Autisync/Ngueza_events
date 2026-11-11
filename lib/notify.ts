@@ -1,5 +1,6 @@
 import { siteUrl } from '@/lib/env'
 import { formatMinor } from '@/lib/money'
+import { todayInLuanda } from '@/lib/safe'
 
 /**
  * Rendering for the notification outbox (§17).
@@ -19,6 +20,7 @@ export type NotificationKind =
   | 'provider_verified' | 'provider_rejected' | 'provider_suspended' | 'provider_reinstated'
   | 'quote_request_new' | 'quote_offer_received' | 'quote_offer_accepted'
   | 'booking_payment_submitted' | 'booking_released_provider'
+  | 'booking_unavailable'
 
 export interface RenderedMail {
   subject: string
@@ -32,6 +34,8 @@ interface BookingContext {
   starts_at: string
   ends_at: string
   from_status?: string | null
+  category_id?: string | null
+  location_id?: string | null
 }
 
 interface ProviderContext {
@@ -197,6 +201,26 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           'Esperamos que tenha corrido tudo bem.',
         ].join('\n'),
       }
+    case 'booking_unavailable': {
+      // Another booking took the date (0033). Say so plainly — not
+      // "expired", not "rejected" — and hand them the same search on the
+      // same day, which is what they actually need next.
+      const search = new URLSearchParams({ data: todayInLuanda(new Date(c.starts_at)) })
+      if (c.location_id) search.set('zona', c.location_id)
+      if (c.category_id) search.set('categoria', c.category_id)
+      return {
+        subject: `Data indisponível — ${c.provider_name}`,
+        text: [
+          `A data que pediu a ${c.provider_name}, em ${when(c)}, foi reservada por outro cliente.`,
+          '',
+          'O seu pedido foi encerrado e não tem nada a pagar. Estes espaços estão livres nesse dia:',
+          `${siteUrl()}/procurar?${search.toString()}`,
+          '',
+          'Se a data voltar a ficar livre, pode fazer um novo pedido:',
+          publicPage(c.provider_slug),
+        ].join('\n'),
+      }
+    }
     case 'booking_no_show':
       // Sent to the CLIENT (0031): the supplier set the status themselves
       // and does not need telling; the client does, and needs a way to say
@@ -349,6 +373,7 @@ const BOOKING_KINDS = new Set<NotificationKind>([
   'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
   'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
   'booking_completed', 'booking_no_show', 'booking_payment_submitted', 'booking_released_provider',
+  'booking_unavailable',
 ])
 
 const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received', 'quote_offer_accepted'])

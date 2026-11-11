@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { imgproxyUrl, presignGet, presignPut } from '@/lib/media'
+import { imgproxyUrl, presignDelete, presignGet, presignPut } from '@/lib/media'
 
 /**
  * The media stack, end to end, against real MinIO and real imgproxy.
@@ -98,6 +98,53 @@ describe('media round-trip', () => {
       method: 'PUT', headers: { 'content-type': 'text/html' }, body: '<script>x</script>',
     })
     expect(response.ok).toBe(false)
+  })
+})
+
+describe('size-bound uploads and removal (slice 27)', () => {
+  const sizedKey = `test/sized-${Date.now()}.png`
+
+  it('accepts a body of exactly the signed length', async () => {
+    const url = presignPut({
+      ...CFG, objectKey: sizedKey, contentType: 'image/png',
+      contentLength: source.length, expiresInSeconds: 300,
+    })
+    const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'image/png' }, body: source })
+    expect(r.ok).toBe(true)
+  })
+
+  it('refuses a body larger than the signed length — the size limit is real', async () => {
+    const url = presignPut({
+      ...CFG, objectKey: `test/oversized-${Date.now()}.png`, contentType: 'image/png',
+      contentLength: 1000, expiresInSeconds: 300,
+    })
+    const r = await fetch(url, { method: 'PUT', headers: { 'content-type': 'image/png' }, body: source })
+    expect(r.ok).toBe(false)
+  })
+
+  // The original keeps whatever EXIF the phone wrote — GPS included.
+  // Only imgproxy's stripped derivatives may be public.
+  it('keeps originals private: no anonymous read, no listing', async () => {
+    const naked = await fetch(`${CFG.endpoint}/${CFG.bucket}/${sizedKey}`)
+    expect([401, 403]).toContain(naked.status)
+    const listing = await fetch(`${CFG.endpoint}/${CFG.bucket}/`)
+    expect(listing.ok).toBe(false)
+  })
+
+  it('still serves the photo through imgproxy, which reads with its own credentials', async () => {
+    const url = imgproxyUrl({
+      baseUrl: CFG.imgproxy, bucket: CFG.bucket, objectId: sizedKey,
+      variant: 'thumb', keyHex: CFG.key, saltHex: CFG.salt,
+    })
+    expect((await fetch(url)).status).toBe(200)
+  })
+
+  it('deletes a removed photo from storage', async () => {
+    const signedRead = () => fetch(presignGet({ ...CFG, objectKey: sizedKey, expiresInSeconds: 60 }))
+    expect((await signedRead()).status).toBe(200)
+    const del = await fetch(presignDelete({ ...CFG, objectKey: sizedKey, expiresInSeconds: 60 }), { method: 'DELETE' })
+    expect(del.ok).toBe(true)
+    expect((await signedRead()).status).toBe(404)
   })
 })
 

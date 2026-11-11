@@ -18,8 +18,8 @@ const str = (f: FormData, k: string) => {
 }
 
 const requestInput = z.object({
-  categoryId: z.string().uuid(),
-  locationId: z.string().uuid(),
+  categoryId: z.guid(),
+  locationId: z.guid(),
   description: z.string().trim().min(10).max(2000),
   // A real date, today or later — it used to be any string into a date column.
   eventDate: z.string().trim().optional().refine(
@@ -39,7 +39,7 @@ export async function doPostQuoteRequest(formData: FormData): Promise<void> {
     capacity: str(formData, 'capacity'),
   })
   if (!parsed.success) {
-    redirect(`/pedir-orcamento?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/pedir-orcamento?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
 
   const result = await postQuoteRequest(profile.id, parsed.data)

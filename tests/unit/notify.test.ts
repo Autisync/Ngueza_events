@@ -22,6 +22,19 @@ beforeEach(() => {
 })
 
 describe('booking notifications', () => {
+  it('tells a displaced client the date went to someone else, with the same-day search (0033)', () => {
+    const mail = render('booking_unavailable', {
+      ...BOOKING_CONTEXT, category_id: 'cat-1', location_id: 'loc-1',
+      // 23:30 UTC is already the next day in Luanda (UTC+1).
+      starts_at: '2027-04-01T23:30:00Z',
+    })
+    expect(mail.subject).toContain('Data indisponível')
+    expect(mail.text).toContain('reservada por outro cliente')
+    expect(mail.text).toContain('não tem nada a pagar')
+    expect(mail.text).toContain('/procurar?data=2027-04-02&zona=loc-1&categoria=cat-1')
+    expect(mail.text).not.toMatch(/expirou|rejeit/i)
+  })
+
   it('tells the supplier a request arrived, with a link to their dashboard', () => {
     const mail = render('booking_requested', BOOKING_CONTEXT)
     expect(mail.subject).toContain('Salão Horizonte')
