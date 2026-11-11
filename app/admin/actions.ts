@@ -5,6 +5,7 @@ import { requireProfile } from '@/lib/auth'
 import { isUuid } from '@/lib/safe'
 import { resolveSupportRequest } from '@/lib/support'
 import { setSwitch } from '@/lib/switches'
+import { addNote } from '@/lib/console'
 import {
   decideDocument, decidePayment, rejectProvider, reinstateProvider, resolveReport,
   setAccountStatus, suspendProvider, verifyProvider,
@@ -108,4 +109,16 @@ export async function doSetSwitch(formData: FormData): Promise<void> {
   if (key !== 'bookings_paused' && key !== 'signups_paused') redirect('/admin')
   await setSwitch(admin.id, key, formData.get('on') === '1', text(formData, 'message') ?? null)
   redirect('/admin#interruptores')
+}
+
+
+/** An internal note on a booking, supplier or person (slice 38). */
+export async function doAddNote(formData: FormData): Promise<void> {
+  const admin = await requireProfile('admin')
+  const targetType = String(formData.get('targetType') ?? '')
+  if (targetType !== 'booking' && targetType !== 'provider' && targetType !== 'profile') redirect('/admin/consola')
+  const targetId = uuid(formData, 'targetId')
+  await addNote(admin.id, targetType, targetId, String(formData.get('body') ?? ''))
+  const back = String(formData.get('back') ?? '')
+  redirect(back.startsWith('/admin/') ? back : '/admin/consola')
 }

@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 39 migrations from empty · 386 tests · 59 database assertions |
+| Verified | 40 migrations from empty · 393 tests · 59 database assertions |
 
 ### Done
 
@@ -63,6 +63,7 @@ make contact.
 | 35 | Help centre and support inbox — `/ajuda` (how booking works, paying safely, what «Verificado» means, a form that works signed out), `/admin/apoio`, safety notes and help links in context; see `spec/slices/35-help-and-safety.md` |
 | 36 | Actionable notifications — `/conta/notificacoes` with unread counts, every email and inbox item opens the screen where the person acts (the specific booking, not a dashboard or public page); see `spec/slices/36-notification-inbox.md` |
 | 37 | Kill switches and runbooks — pause new bookings (enforced by the database) or sign-ups from the admin in seconds, with a public notice and an audit entry; `docs/runbooks.md` for each likely incident; see `spec/slices/37-kill-switches.md` |
+| 38 | The support console — `/admin/consola` searches by reference, email, phone or name; each booking's full timeline (states, payments, emails, help requests, notes); append-only internal notes; see `spec/slices/38-support-console.md` |
 
 ### Infrastructure
 
