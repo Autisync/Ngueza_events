@@ -85,11 +85,22 @@ export type AuthError =
   | 'rate_limited'
   | 'unknown'
 
-async function gotrue(path: string, body: unknown): Promise<Response> {
+/**
+ * clientIp: the visitor's address, forwarded so Supabase Auth's per-IP
+ * limits apply to the visitor rather than to this server — every call
+ * reaches it from the app's own IP otherwise, so one person's failed
+ * attempts throttled everybody (slice 33). Whether hosted Supabase honours
+ * X-Forwarded-For from this caller is not verified here; if it does not,
+ * nothing changes, and lib/rate-limit.ts limits per visitor regardless.
+ */
+async function gotrue(path: string, body: unknown, clientIp?: string | null): Promise<Response> {
   const { url, anonKey } = publicConfig()
   return fetch(`${url}/auth/v1${path}`, {
     method: 'POST',
-    headers: { apikey: anonKey, 'content-type': 'application/json' },
+    headers: {
+      apikey: anonKey, 'content-type': 'application/json',
+      ...(clientIp ? { 'x-forwarded-for': clientIp } : {}),
+    },
     body: JSON.stringify(body),
     cache: 'no-store',
   })
@@ -116,8 +127,8 @@ function toSession(data: { access_token: string; refresh_token: string; expires_
 
 export type SignInResult = { ok: true; session: Session } | { ok: false; error: AuthError }
 
-export async function signIn(email: string, password: string): Promise<SignInResult> {
-  const response = await gotrue('/token?grant_type=password', { email, password })
+export async function signIn(email: string, password: string, clientIp?: string | null): Promise<SignInResult> {
+  const response = await gotrue('/token?grant_type=password', { email, password }, clientIp)
   const data = await response.json().catch(() => ({}))
   if (!response.ok) return { ok: false, error: classify(response.status, data) }
   return { ok: true, session: toSession(data) }
@@ -131,6 +142,7 @@ export async function signUp(
   email: string,
   password: string,
   fullName?: string,
+  clientIp?: string | null,
 ): Promise<SignUpResult> {
   // `data` lands in raw_user_meta_data, which the person controls. The
   // 0016 trigger reads the role from raw_APP_meta_data instead, so
@@ -139,7 +151,7 @@ export async function signUp(
     email,
     password,
     data: fullName ? { full_name: fullName } : {},
-  })
+  }, clientIp)
   const data = await response.json().catch(() => ({}))
   if (!response.ok) return { ok: false, error: classify(response.status, data) }
 
@@ -156,10 +168,10 @@ export async function refreshSession(refreshToken: string): Promise<Session | nu
   return data?.access_token ? toSession(data) : null
 }
 
-export async function requestPasswordReset(email: string, redirectTo: string): Promise<void> {
+export async function requestPasswordReset(email: string, redirectTo: string, clientIp?: string | null): Promise<void> {
   // Always resolves. Telling a stranger whether an address has an account
   // is an enumeration oracle.
-  await gotrue(`/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { email }).catch(() => {})
+  await gotrue(`/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { email }, clientIp).catch(() => {})
 }
 
 export async function updatePassword(accessToken: string, password: string): Promise<boolean> {

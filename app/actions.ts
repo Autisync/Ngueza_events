@@ -3,6 +3,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { confirm, subscribe, subscribeSchema, unsubscribe } from '@/lib/newsletter'
+import { LIMITS, allow, clientIp } from '@/lib/rate-limit'
 
 /**
  * A plain server action bound to <form action={...}>, so the waitlist works
@@ -28,8 +29,11 @@ export async function joinWaitlist(formData: FormData): Promise<void> {
   }
 
   const h = await headers()
+  // Each sign-up sends a confirmation email; unthrottled, this form is a
+  // way to mail-bomb strangers from NGUEZA's domain (slice 33).
+  if (!(await allow(LIMITS.waitlistIp, clientIp(h)))) redirect('/lista-de-espera?erro=limite#inscrever')
   await subscribe(parsed.data, {
-    ip: h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ip: clientIp(h),
     userAgent: h.get('user-agent'),
     url: '/lista-de-espera',
   })

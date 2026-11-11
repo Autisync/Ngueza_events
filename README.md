@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 35 migrations from empty · 353 tests · 59 database assertions |
+| Verified | 36 migrations from empty · 362 tests · 59 database assertions |
 
 ### Done
 
@@ -58,6 +58,7 @@ make contact.
 | 30 | The two sides of a booking can reach each other — the client's +244 number on the request, name always and phone/email once accepted for the supplier, WhatsApp with a prefilled reference both ways; job functions closed to visitors; see `spec/slices/30-booking-contacts.md` |
 | 31 | Payment terms on the booking — the supplier sets total, sinal and how to pay when asking for payment; both sides see what was declared and what is left; the supplier sees the proof before confirming; "Plausível" no longer reads as "Confirmado"; see `spec/slices/31-payment-terms.md` |
 | 32 | The booking page as one hub — "Próximo passo" with the real deadline and the one action to take, venue and reference; cancellation tiers as dated steps on the booking and relative ones on the supplier page before booking; see `spec/slices/32-booking-hub.md` |
+| 33 | Rate limits on sign-in, sign-up, password reset and the waitlist — per visitor and per address, in Postgres, hashed keys; the visitor's IP forwarded to Supabase Auth; see `spec/slices/33-rate-limits.md` |
 
 ### Infrastructure
 
