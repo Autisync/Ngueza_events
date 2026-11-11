@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { currentProfile } from '@/lib/auth'
 import { queueCounts, recentAudit } from '@/lib/admin'
+import { jobHealth, recentRuns } from '@/lib/jobs'
 import { Chrome } from './Chrome'
 import styles from './admin.module.css'
 
@@ -9,7 +10,15 @@ export const dynamic = 'force-dynamic'
 
 export default async function Admin() {
   const profile = (await currentProfile())!
-  const [counts, audit] = await Promise.all([queueCounts(profile.id), recentAudit(profile.id, 12)])
+  const [counts, audit, health, runs] = await Promise.all([
+    queueCounts(profile.id), recentAudit(profile.id, 12),
+    jobHealth().catch(() => null), recentRuns(profile.id, 6),
+  ])
+  const JOB_LABEL: Record<string, string> = {
+    expire: 'Libertar datas e expirar pedidos (cada 5 min)',
+    notify: 'Enviar emails (cada 2 min)',
+    outbox: 'Fila de emails',
+  }
 
   return (
     <main>
@@ -33,6 +42,39 @@ export default async function Admin() {
             <a className={`${styles.btn} ${styles.mute}`} href="/admin/fornecedores"
                style={{ textDecoration: 'none' }}>Rever fornecedores</a>
           </div>
+        </div>
+
+        {/* Slice 34: if the cron container stops, held dates are never
+            released and no email goes out — say so here, loudly. */}
+        <div className={styles.card}>
+          <h2>Tarefas agendadas</h2>
+          <p className={styles.note}>
+            O mesmo estado que <a href="/api/saude">/api/saude</a> mostra ao serviço de monitorização.
+          </p>
+          {health === null ? (
+            <p className={styles.empty}>Não foi possível ler o estado.</p>
+          ) : (
+            health.map((h) => (
+              <div className={styles.row} key={h.check}>
+                <span>{JOB_LABEL[h.check] ?? h.check}</span>
+                <span style={{ color: h.healthy ? 'var(--bom)' : 'var(--erro)', fontWeight: 700 }}>
+                  {h.healthy ? 'OK' : 'Atenção'} · <span style={{ fontWeight: 400 }}>{h.detail}</span>
+                </span>
+              </div>
+            ))
+          )}
+          {runs.some((r) => r.ok === false) ? (
+            <div style={{ marginTop: 12 }}>
+              {runs.filter((r) => r.ok === false).slice(0, 3).map((r) => (
+                <div className={styles.audit} key={r.startedAt}>
+                  <span className={styles.when}>
+                    {new Date(r.startedAt).toLocaleString('pt-PT', { timeZone: 'Africa/Luanda' })}
+                  </span>{' '}
+                  <b>{r.job}</b> falhou: {r.error}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className={styles.card}>
