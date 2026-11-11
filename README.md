@@ -73,6 +73,7 @@ make contact.
 | 45 | Amenities per space — admin-managed rows (Gerador, Estacionamento, Coberto…) ticked per space in the painel, shown on the profile, and a search filter that needs them all on the same space; see `spec/slices/45-amenities.md` |
 | 46 | The verification document checklist — document kinds as rows, required per supplier type; the supplier sees what is missing, waiting, accepted or rejected and why, can withdraw a mistaken upload, and can only submit once everything required is sent; the database refuses to verify without an accepted document; two-step reject and suspend; see `spec/slices/46-document-checklist.md` |
 | 47 | A supplier's cancellation says why (two steps, required reason, never edited afterwards); refunds on the record — the supplier states what they returned, the client confirms or disputes, each side is emailed; NGUEZA moves no money; see `spec/slices/47-supplier-cancellation-refunds.md` |
+| 48 | "As minhas reservas" grouped into Precisa de si / Próximas / Anteriores, with date tiles and a next-step line per booking; see `spec/slices/48-reservas-list.md` |
 
 ### Infrastructure
 

@@ -155,3 +155,31 @@ describe('eventWindow', () => {
     expect(eventWindow('2026-12-15', '09:00', '09:00', '2026-12-22')).not.toBeNull()
   })
 })
+
+describe('the client list (slice 48)', () => {
+  const now = new Date('2026-11-11T12:00:00Z')
+  const B = (id: string, status: string, start: string) =>
+    ({ id, status, startsAt: `${start}T09:00:00+01:00`, endsAt: `${start}T22:00:00+01:00` })
+
+  it('puts payment due first, then upcoming soonest first, then the past newest first', async () => {
+    const { groupClientBookings } = await import('@/lib/booking-labels')
+    const g = groupClientBookings([
+      B('a', 'confirmed', '2026-12-20'), B('b', 'awaiting_payment', '2026-12-01'),
+      B('c', 'requested', '2026-11-20'), B('d', 'completed', '2026-10-01'),
+      B('e', 'cancelled_provider', '2026-12-05'), B('f', 'confirmed', '2026-09-01'),
+    ], now)
+    expect(g.action.map((b) => b.id)).toEqual(['b'])
+    expect(g.upcoming.map((b) => b.id)).toEqual(['c', 'a'])
+    // A cancelled future date and a confirmed past date are both "past".
+    expect(g.past.map((b) => b.id)).toEqual(['e', 'd', 'f'])
+  })
+
+  it('counts days in Luanda, and says today and tomorrow in words', async () => {
+    const { listHint, dateTile } = await import('@/lib/booking-labels')
+    expect(listHint(B('x', 'confirmed', '2026-11-11'), now)).toBe('É hoje')
+    expect(listHint(B('x', 'confirmed', '2026-11-12'), now)).toBe('Amanhã')
+    expect(listHint(B('x', 'confirmed', '2026-11-21'), now)).toBe('Daqui a 10 dias')
+    expect(listHint(B('x', 'requested', '2026-11-21'), now)).toBe('À espera da resposta do fornecedor')
+    expect(dateTile('2026-12-15T00:30:00+01:00')).toEqual({ day: '15', month: 'dez' })
+  })
+})

@@ -281,3 +281,44 @@ export function eventWindow(
   if (endsAt.getTime() - startsAt.getTime() > 7 * 24 * 3600_000) return null
   return { startsAt, endsAt }
 }
+
+// ---------------------------------------------------------------------
+// The client's list of bookings (slice 48): what needs them, what is
+// coming, what is past — rather than one undifferentiated column.
+// ---------------------------------------------------------------------
+// startsAt is typed as a string, but pg hands back a Date at runtime; every
+// comparison below goes through new Date() so either works.
+type Listable = { id: string; status: string; startsAt: string | Date; endsAt: string | Date }
+const LIVE = new Set(['requested', 'accepted', 'awaiting_payment', 'confirmed'])
+const MONTHS_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+export function groupClientBookings<T extends Listable>(bookings: T[], now: Date = new Date()) {
+  const live = bookings.filter((b) => LIVE.has(b.status) && new Date(b.endsAt) >= now)
+  const byStart = (a: T, b: T) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+  return {
+    /** Something only the client can do: pay and send proof. */
+    action: live.filter((b) => b.status === 'awaiting_payment').sort(byStart),
+    upcoming: live.filter((b) => b.status !== 'awaiting_payment').sort(byStart),
+    past: bookings.filter((b) => !live.includes(b)).sort((a, b) => byStart(b, a)),
+  }
+}
+
+/** "15" and "dez", in Luanda — the tile on each row. */
+export function dateTile(iso: string | Date): { day: string; month: string } {
+  const ymd = new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Africa/Luanda' })
+  return { day: String(Number(ymd.slice(8, 10))), month: MONTHS_SHORT[Number(ymd.slice(5, 7)) - 1]! }
+}
+
+/** One short line under the supplier's name: what is happening next. */
+export function listHint(b: Listable, now: Date = new Date()): string | null {
+  const days = Math.round((Date.parse(new Date(b.startsAt).toLocaleDateString('en-CA', { timeZone: 'Africa/Luanda' }))
+    - Date.parse(now.toLocaleDateString('en-CA', { timeZone: 'Africa/Luanda' }))) / 86_400_000)
+  const when = days === 0 ? 'É hoje' : days === 1 ? 'Amanhã' : days > 1 ? `Daqui a ${days} dias` : null
+  switch (b.status) {
+    case 'requested': return 'À espera da resposta do fornecedor'
+    case 'accepted': return 'Aceite — o fornecedor vai pedir o pagamento'
+    case 'awaiting_payment': return 'Pague ao fornecedor e envie o comprovativo'
+    case 'confirmed': return when
+    default: return null
+  }
+}
