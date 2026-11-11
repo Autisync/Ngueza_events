@@ -42,6 +42,8 @@ export async function generateMetadata({
       provider.description ??
       `${provider.categoryName} em ${where}. Veja preços, capacidade e datas disponíveis.`,
     alternates: { canonical: `/fornecedor/${provider.slug}` },
+    // An example profile is not a business a search engine should list.
+    ...(provider.isDemo ? { robots: { index: false, follow: true } } : {}),
   }
 }
 
@@ -115,10 +117,12 @@ export default async function ProviderPage({
 
   return (
     <main>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonForScript(jsonLd) }}
-      />
+      {provider.isDemo ? null : (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonForScript(jsonLd) }}
+        />
+      )}
 
       <div className={styles.hero}>
         {gallery.length > 0 ? (
@@ -180,6 +184,12 @@ export default async function ProviderPage({
           {/* Reviews are necessarily empty at launch, so credibility comes
               from what exists on day one: verification, declared history,
               and a complete profile. Each is labelled for what it is. */}
+          {provider.isDemo ? (
+            <p style={{ margin: '12px 0 0', padding: '8px 12px', borderRadius: 8, fontSize: '0.88rem',
+                        background: 'var(--aviso-fundo)', color: 'var(--aviso)', display: 'inline-block' }}>
+              Perfil de exemplo — mostra como a NGUEZA funciona. Não é um fornecedor real.
+            </p>
+          ) : null}
           <div className={styles.seals}>
             {provider.verifiedAt ? (
               <a className={`${styles.seal} ${styles.sealStrong}`} href="/ajuda#verificado"
@@ -335,7 +345,16 @@ export default async function ProviderPage({
             </details>
           ) : null}
 
-          {!profile ? (
+          {provider.isDemo ? (
+            // An example profile (0041): the database refuses a request for
+            // it anyway; this says why, and where to go instead.
+            <p className={styles.p} role="status" style={{
+              padding: '12px 14px', borderRadius: 'var(--raio)', background: 'var(--aviso-fundo)', color: 'var(--aviso)',
+            }}>
+              Este é um perfil de exemplo e não aceita reservas. <a href="/procurar">Veja os fornecedores</a>{' '}
+              ou <a href="/pedir-orcamento">peça um orçamento</a> a fornecedores reais.
+            </p>
+          ) : !profile ? (
             <p className={styles.p}>
               <a href={`/entrar?next=/fornecedor/${provider.slug}%23reservar`}>Entre na sua conta</a>{' '}
               para solicitar uma reserva. Ainda não tem conta?{' '}

@@ -25,7 +25,9 @@ export function SupplierCard({ hit }: { hit: SearchHit }) {
         {/* Every search result is already verification_status = 'verified' —
             this restates a fact the query itself guarantees, the same trust
             signal on every card rather than a differentiator within results. */}
-        <span className={styles.pillTopLeft}>✓ Verificado</span>
+        {hit.isDemo
+          ? <span className={styles.pillTopLeft} style={{ background: 'var(--aviso-fundo)', color: 'var(--aviso)' }}>Exemplo</span>
+          : <span className={styles.pillTopLeft}>✓ Verificado</span>}
         {hit.reviewCount > 0 ? (
           <span className={styles.pillBottomRight}>★ {formatRating(hit.ratingAverage ?? 0)} ({hit.reviewCount})</span>
         ) : null}

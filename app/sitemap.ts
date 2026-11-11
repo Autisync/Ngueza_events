@@ -22,7 +22,8 @@ export const dynamic = 'force-dynamic'
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const providers = await asVisitor(async (c) => {
     const { rows } = await c.query<{ slug: string; updated_at: Date }>(
-      `select slug, updated_at from providers order by updated_at desc limit 5000`,
+      // Visitors (RLS) see only public suppliers; examples (0041) stay out.
+      `select slug, updated_at from providers where not is_demo order by updated_at desc limit 5000`,
     )
     return rows
   })

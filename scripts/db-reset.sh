@@ -51,4 +51,14 @@ if [ "${WITH_DEMO:-1}" = "1" ]; then
   done
 fi
 
+# The example catalogue (slice 39): 24 labelled, unbookable suppliers so
+# the site does not look empty. Off by default — the test fixtures assume
+# the six demo suppliers above. WITH_EXAMPLES=1 npm run db:reset to see it.
+if [ "${WITH_EXAMPLES:-0}" = "1" ]; then
+  for f in "$ROOT"/seed/examples/*.sql; do
+    echo "→ examples $(basename "$f")"
+    psql -q -v ON_ERROR_STOP=1 -f "$f"
+  done
+fi
+
 echo "✓ $PGDATABASE ready"
