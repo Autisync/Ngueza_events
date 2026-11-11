@@ -12,8 +12,8 @@ import { publicPolicy } from '@/lib/cancellation-policy'
 import { CategoryIcon } from '@/app/CategoryIcon'
 import cardStyles from '@/app/supplier-card.module.css'
 import { pausedNotice } from '@/lib/switches'
-import { jsonForScript, todayInLuanda } from '@/lib/safe'
-import { formatRating, relativeTierSteps, reviewCountLabel } from '@/lib/booking-labels'
+import { calendarDate, jsonForScript, todayInLuanda } from '@/lib/safe'
+import { clampMonth, formatRating, monthGrid, relativeTierSteps, reviewCountLabel } from '@/lib/booking-labels'
 import { PhoneLink } from './PhoneLink'
 import styles from './provider.module.css'
 
@@ -53,7 +53,7 @@ export default async function ProviderPage({
   params, searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ erro?: string; oferta?: string }>
+  searchParams: Promise<{ erro?: string; oferta?: string; mes?: string; data?: string; espaco?: string }>
 }) {
   const { slug } = await params
   const [provider, flags, profile] = await Promise.all([
@@ -72,8 +72,18 @@ export default async function ProviderPage({
     await recordProviderView(provider.id, await sessionId())
   }
 
+  // The month on show (slice 44): this month by default, never the past,
+  // at most 18 months ahead; ?data= is a day tapped on the calendar.
+  const today = todayInLuanda()
+  const grid = monthGrid(clampMonth(flags.mes, today.slice(0, 7)))
+  const pickedDate = flags.data && calendarDate(flags.data) && flags.data >= today ? flags.data : undefined
+  const pickedSpace = provider.resources.find((r) => r.id === flags.espaco)?.id
+  // Lowest published price, for the sticky bar. bigint comparison only.
+  const fromMinor = provider.services.reduce<bigint | null>((low, sv) =>
+    sv.price.mode === 'on_request' || (low !== null && low <= sv.price.minor) ? low : sv.price.minor, null)
+  const dateErr = ['passado', 'fim', 'dados', 'data_indisponivel'].includes(flags.erro ?? '')
   const [days, policy, bookingsPaused] = await Promise.all([
-    availability(provider.id, todayInLuanda(), 28),
+    availability(provider.id, grid.first, grid.days),
     publicPolicy(provider.id),
     pausedNotice('bookings_paused'),
   ])
@@ -259,7 +269,19 @@ export default async function ProviderPage({
 
         {provider.supplierType === 'venue' && calendars.length > 0 ? (
           <section className={styles.sec}>
-            <h2 className={styles.h}>Disponibilidade nos próximos 28 dias</h2>
+            {/* A real month (slice 44, review R007): month by month, Monday
+                first, and a free day is a link that opens the booking form
+                with that date and that space chosen. No JavaScript. */}
+            <div className={styles.calHead} id="calendario">
+              <h2 className={styles.h} style={{ margin: 0 }}>Disponibilidade</h2>
+              <nav className={styles.calNav} aria-label="Mês">
+                {grid.prev >= today.slice(0, 7)
+                  ? <a href={`/fornecedor/${provider.slug}?mes=${grid.prev}#calendario`} aria-label="Mês anterior">‹</a>
+                  : <span aria-hidden="true">‹</span>}
+                <strong>{grid.label}</strong>
+                <a href={`/fornecedor/${provider.slug}?mes=${grid.next}#calendario`} aria-label="Mês seguinte">›</a>
+              </nav>
+            </div>
             {calendars.map(({ resource, days: cal }) => (
               <div key={resource.id} style={{ marginBottom: 18 }}>
                 {calendars.length > 1 || resource.capacity ? (
@@ -268,19 +290,29 @@ export default async function ProviderPage({
                   </p>
                 ) : null}
                 <div className={styles.cal}>
-                  {cal.map((d) => (
-                    <span
-                      key={d.date}
-                      className={`${styles.day} ${d.free ? styles.free : styles.busy}`}
-                      title={`${d.date.split('-').reverse().join('/')} — ${d.free ? 'livre' : 'ocupado'}`}
-                    >
-                      {d.date.slice(-2)}
-                    </span>
+                  {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((w) => (
+                    <span key={w} className={styles.wd} aria-hidden="true">{w}</span>
                   ))}
+                  {Array.from({ length: grid.leading }, (_, i) => <span key={`b${i}`} aria-hidden="true" />)}
+                  {cal.map((d) => {
+                    const past = d.date < today
+                    const label = `${Number(d.date.slice(-2))} — ${past ? 'já passou' : d.free ? 'livre' : 'ocupado'}`
+                    const cls = `${styles.day} ${past ? styles.past : d.free ? styles.free : styles.busy} ${
+                      pickedDate === d.date && (pickedSpace ?? provider.resources[0]?.id) === resource.id ? styles.picked : ''}`
+                    return !past && d.free && !provider.isDemo ? (
+                      <a key={d.date} className={cls} aria-label={`${label}: pedir esta data`}
+                         href={`/fornecedor/${provider.slug}?mes=${grid.month}&data=${d.date}&espaco=${resource.id}#reservar`}>
+                        {Number(d.date.slice(-2))}
+                      </a>
+                    ) : (
+                      <span key={d.date} className={cls} aria-label={label}>{Number(d.date.slice(-2))}</span>
+                    )
+                  })}
                 </div>
               </div>
             ))}
             <p className={styles.legend}>
+              <span>Toque num dia livre para o pedir.</span>
               <span>
                 <i className={styles.dot} style={{ background: 'var(--bom)' }} />
                 Livre
@@ -305,7 +337,7 @@ export default async function ProviderPage({
             </p>
           ) : null}
           {flags.erro ? (
-            <p className={styles.svcPriceQuiet} style={{
+            <p className={styles.svcPriceQuiet} role="alert" style={{
               color: 'var(--erro)', background: 'var(--erro-fundo)',
               padding: '10px 14px', borderRadius: 'var(--raio)', marginBottom: 14,
             }}>
@@ -321,6 +353,8 @@ export default async function ProviderPage({
                       ? 'Os novos pedidos de reserva estão temporariamente suspensos.'
                       : flags.erro === 'telefone'
                       ? 'Indique um número de telemóvel válido, por exemplo 923 456 789.'
+                      : flags.erro === 'fim'
+                      ? 'A data de fim tem de ser igual ou posterior à de início, até 7 dias.'
                       : 'Verifique os dados introduzidos.'}
             </p>
           ) : null}
@@ -372,6 +406,8 @@ export default async function ProviderPage({
             }}>{bookingsPaused}</p>
           ) : (
             <form action={doRequestBooking}>
+              {/* Inline errors (slice 44, review R014): the field that was
+                  wrong is outlined and says why, next to it. */}
               <input type="hidden" name="providerId" value={provider.id} />
               <input type="hidden" name="providerSlug" value={provider.slug} />
               <div style={{ display: 'grid', gap: 14, gridTemplateColumns: '1fr', marginBottom: 14 }}>
@@ -380,7 +416,7 @@ export default async function ProviderPage({
                     <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
                       Espaço
                     </span>
-                    <select name="resourceId" required style={{
+                    <select name="resourceId" required defaultValue={pickedSpace} style={{
                       width: '100%', padding: '11px 12px', font: 'inherit',
                       border: '1px solid var(--linha)', borderRadius: 'var(--raio)',
                     }}>
@@ -395,33 +431,44 @@ export default async function ProviderPage({
                   <input type="hidden" name="resourceId" value={provider.resources[0].id} />
                 ) : null}
 
-                <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                {/* Two by two: on a phone three date/time fields across are
+                    too cramped to tap. "Até ao dia" makes a multi-day event. */}
+                <div className={styles.when}>
                   <label>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
-                      Data
-                    </span>
-                    <input type="date" name="date" required
-                           min={todayInLuanda()}
-                           style={{ width: '100%', padding: '11px 12px', font: 'inherit',
-                                    border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                    <span className={styles.fl}>Data</span>
+                    <input type="date" name="date" required min={today} defaultValue={pickedDate}
+                           className={`${styles.ctl} ${dateErr ? styles.ctlBad : ''}`}
+                           aria-invalid={dateErr || undefined}
+                           aria-describedby={dateErr ? 'erro-data' : undefined} />
                   </label>
                   <label>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
-                      Hora de início
+                    <span className={styles.fl}>
+                      Até ao dia <span className={styles.opt}>(opcional)</span>
                     </span>
-                    <input type="time" name="startTime" defaultValue="09:00"
-                           style={{ width: '100%', padding: '11px 12px', font: 'inherit',
-                                    border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                    <input type="date" name="endDate" min={pickedDate ?? today}
+                           className={`${styles.ctl} ${flags.erro === 'fim' ? styles.ctlBad : ''}`}
+                           aria-invalid={flags.erro === 'fim' || undefined} />
                   </label>
                   <label>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
-                      Hora de fim
-                    </span>
-                    <input type="time" name="endTime"
-                           defaultValue={provider.supplierType === 'venue' ? '23:59' : '12:00'}
-                           style={{ width: '100%', padding: '11px 12px', font: 'inherit',
-                                    border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                    <span className={styles.fl}>Hora de início</span>
+                    <input type="time" name="startTime" defaultValue="09:00" className={styles.ctl} />
                   </label>
+                  <label>
+                    <span className={styles.fl}>Hora de fim</span>
+                    <input type="time" name="endTime" className={styles.ctl}
+                           defaultValue={provider.supplierType === 'venue' ? '23:59' : '12:00'} />
+                  </label>
+                  {dateErr ? (
+                    <span id="erro-data" className={styles.fieldErr}>
+                      {flags.erro === 'fim'
+                        ? 'O último dia tem de ser igual ou posterior ao primeiro, até 7 dias depois.'
+                        : flags.erro === 'passado'
+                          ? 'Essa data já passou.'
+                          : flags.erro === 'data_indisponivel'
+                            ? 'Essa data já está ocupada. Escolha outra no calendário.'
+                            : 'Confirme a data e as horas.'}
+                    </span>
+                  ) : null}
                 </div>
 
                 <label>
@@ -430,8 +477,14 @@ export default async function ProviderPage({
                   </span>
                   <input type="tel" name="phone" required maxLength={40} autoComplete="tel"
                          inputMode="tel" placeholder="923 456 789" defaultValue={profile.phone ?? ''}
-                         style={{ width: '100%', padding: '11px 12px', font: 'inherit',
-                                  border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                         className={`${styles.ctl} ${flags.erro === 'telefone' ? styles.ctlBad : ''}`}
+                         aria-invalid={flags.erro === 'telefone' || undefined}
+                         aria-describedby={flags.erro === 'telefone' ? 'erro-telefone' : undefined} />
+                  {flags.erro === 'telefone' ? (
+                    <span id="erro-telefone" className={styles.fieldErr}>
+                      Um número angolano, por exemplo 923 456 789.
+                    </span>
+                  ) : null}
                   <span style={{ display: 'block', marginTop: 5, fontSize: '0.83rem', color: 'var(--tinta-3)' }}>
                     O fornecedor só vê o seu número depois de aceitar o pedido, para combinar os
                     detalhes consigo. Nunca aparece publicamente.
@@ -455,8 +508,10 @@ export default async function ProviderPage({
                                      resize: 'vertical' }} />
                 </label>
               </div>
-              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 14px', fontSize: '0.9rem' }}>
-                <input type="checkbox" name="aceito" required style={{ marginTop: 3 }} />
+              <label className={flags.erro === 'aceitar' ? styles.acceptBad : undefined}
+                     style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 14px', fontSize: '0.9rem' }}>
+                <input type="checkbox" name="aceito" required style={{ marginTop: 3 }}
+                       aria-invalid={flags.erro === 'aceitar' || undefined} />
                 <span>
                   Li e aceito os <a href="/termos" target="_blank">Termos de Utilização</a> e a política de
                   cancelamento acima{policy ? ` («${policy.name}»)` : ''}.
@@ -544,6 +599,19 @@ export default async function ProviderPage({
           </p>
         </div>
       </div>
+      {/* Sticky call to action on a phone (slice 44, review R011): the form
+          is far down a long page. Sticky, not fixed, so it rides along
+          inside <main> and never covers the footer. */}
+      {!provider.isDemo && !bookingsPaused ? (
+        <div className={styles.stickyCta}>
+          <span>
+            {fromMinor !== null
+              ? <>Desde <strong>{formatMinor(fromMinor, { compact: true })}</strong></>
+              : <strong>{provider.name}</strong>}
+          </span>
+          <a href="#reservar" className={`${styles.btn} ${styles.btnMain}`}>Solicitar reserva</a>
+        </div>
+      ) : null}
     </main>
   )
 }

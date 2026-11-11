@@ -69,6 +69,7 @@ make contact.
 | 41 | Legal hooks — versioned Terms, Privacy and cancellation documents; who accepted which version, when and where, at sign-up and with each booking request; a "Pedido enviado" acknowledgement to the client; see `spec/slices/41-legal-acceptance.md` |
 | 42 | Search: budget, sort (price, rating) exact across pages, price units on cards, only categories with supply in the filter; see `spec/slices/42-search-filters.md` |
 | 43 | One site shell — a shared header (navigation, notifications, account) and footer on every page; a painel dashboard of tiles with live counts; category illustrations instead of grey placeholders; an expired session explained at sign-in; see `spec/slices/43-site-shell.md` |
+| 44 | A month calendar on the supplier page — Monday first, month by month, a free day opens the form with that date and space; multi-day events ("Até ao dia"); errors shown next to the field; a sticky "Solicitar reserva" bar on phones; see `spec/slices/44-calendar-and-booking-form.md` |
 
 ### Infrastructure
 

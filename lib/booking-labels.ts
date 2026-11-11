@@ -1,4 +1,5 @@
 import type { BookingStatus } from '@/lib/booking'
+import { calendarDate } from '@/lib/safe'
 
 /**
  * Portuguese labels and the pill colour for each booking state. Pure and
@@ -212,4 +213,69 @@ export function nextStep(b: {
     default:
       return null
   }
+}
+
+// ---------------------------------------------------------------------
+// The month calendar (slice 44, review R007). Pure date arithmetic on
+// YYYY-MM-DD strings — no time zone can shift a day here, because no
+// instant is ever constructed for a calendar day.
+// ---------------------------------------------------------------------
+export interface MonthGrid {
+  month: string          // YYYY-MM
+  label: string          // "dezembro de 2026"
+  first: string          // YYYY-MM-01
+  days: number
+  /** Blank cells before the 1st, Monday-first. */
+  leading: number
+  prev: string
+  next: string
+}
+
+const MONTHS_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
+                   'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+
+const shift = (month: string, by: number): string => {
+  const [y, m] = month.split('-').map(Number) as [number, number]
+  const t = y * 12 + (m - 1) + by
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`
+}
+
+/** A valid YYYY-MM within [from, from + 18 months], or `from` itself. */
+export function clampMonth(raw: string | undefined, from: string): string {
+  if (!raw || !/^\d{4}-(0[1-9]|1[0-2])$/.test(raw)) return from
+  if (raw < from) return from
+  return raw > shift(from, 18) ? shift(from, 18) : raw
+}
+
+export function monthGrid(month: string): MonthGrid {
+  const [y, m] = month.split('-').map(Number) as [number, number]
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const weekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay()   // 0 = Sunday
+  return {
+    month, label: `${MONTHS_PT[m - 1]} de ${y}`, first: `${month}-01`, days,
+    leading: (weekday + 6) % 7, prev: shift(month, -1), next: shift(month, 1),
+  }
+}
+
+/**
+ * The start and end of an event, in Luanda time (slice 44 adds endDate).
+ * An end time at or before the start time means the event runs past
+ * midnight — a party from 20:00 to 02:00 is the normal case here. Returns
+ * null for a day that does not exist, an end before the start, or more
+ * than a week in all.
+ */
+export function eventWindow(
+  date: string, startTime: string, endTime: string, endDate?: string,
+): { startsAt: Date; endsAt: Date } | null {
+  if (!calendarDate(date)) return null
+  // Multi-day (slice 44): the last day must exist, not precede the first,
+  // and the whole event stays within a week — longer is a lease, not an event.
+  if (endDate !== undefined && (!calendarDate(endDate) || endDate < date)) return null
+  const lastDay = endDate && endDate > date ? endDate : date
+  const startsAt = new Date(`${date}T${startTime}:00+01:00`) // Africa/Luanda, UTC+1
+  let endsAt = new Date(`${lastDay}T${endTime}:00+01:00`)
+  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) return null
+  if (!(endsAt > startsAt)) endsAt = new Date(endsAt.getTime() + 24 * 3600_000)
+  if (endsAt.getTime() - startsAt.getTime() > 7 * 24 * 3600_000) return null
+  return { startsAt, endsAt }
 }
