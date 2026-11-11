@@ -17,6 +17,14 @@ const DOC_KINDS: Record<string, string> = {
   commercial_registration: 'Certidão comercial',
   proof_of_address: 'Comprovativo de morada', other: 'Outro',
 }
+const DOC_REJECT_REASONS = [
+  'Documento ilegível', 'Documento expirado',
+  'Não corresponde ao nome declarado', 'Documento incompleto',
+]
+const PROVIDER_REJECT_REASONS = [
+  'Documentos insuficientes', 'Dados não coincidem com os documentos',
+  'Negócio não verificável', 'Morada não confere',
+]
 const DONE: Record<string, string> = {
   verificado: 'Fornecedor verificado e publicado.',
   rejeitado: 'Fornecedor rejeitado. O motivo fica visível no painel dele.',
@@ -92,8 +100,13 @@ export default async function Rever({
         <div className={styles.card} id="documentos">
           <h2>Documentos</h2>
           <p className={styles.note}>
-            As ligações abrem o ficheiro por três minutos e não ficam no histórico da página.
+            As ligações abrem o ficheiro por três minutos e não ficam no histórico da página —
+            cada documento é reaberto por pedido, nunca embutido na página (§40).
           </p>
+          <div className={styles.row} style={{ marginBottom: 10 }}>
+            <span>A comparar com</span>
+            <span><strong>{p.name}</strong> · responsável <strong>{p.ownerName ?? p.ownerEmail}</strong></span>
+          </div>
           {p.documents.length === 0 ? (
             <p className={styles.empty}>Sem documentos anexados.</p>
           ) : (
@@ -128,7 +141,15 @@ export default async function Rever({
                     <input type="hidden" name="providerId" value={p.id} />
                     <input type="hidden" name="documentId" value={d.id} />
                     <input type="hidden" name="decision" value="rejected" />
-                    <input className={styles.input} name="note" placeholder="Motivo"
+                    <div className={styles.chips}>
+                      {DOC_REJECT_REASONS.map((r) => (
+                        <button key={r} className={styles.chip} type="submit"
+                                name="noteCanned" value={r}>
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                    <input className={styles.input} name="noteText" placeholder="Outro motivo"
                            style={{ marginBottom: 6, minWidth: 180 }} />
                     <button className={`${styles.btn} ${styles.no}`} type="submit">Rejeitar</button>
                   </form>
@@ -175,8 +196,15 @@ export default async function Rever({
 
           <form action={doReject} style={{ marginBottom: 14 }}>
             <input type="hidden" name="providerId" value={p.id} />
-            <input className={styles.input} name="reason" required
-                   placeholder="Motivo — o fornecedor vê este texto" />
+            <div className={styles.chips}>
+              {PROVIDER_REJECT_REASONS.map((r) => (
+                <button key={r} className={styles.chip} type="submit" name="reasonCanned" value={r}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input className={styles.input} name="reasonText"
+                   placeholder="Outro motivo — o fornecedor vê este texto" />
             <button className={`${styles.btn} ${styles.no}`} type="submit">Rejeitar</button>
           </form>
 

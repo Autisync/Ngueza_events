@@ -118,6 +118,15 @@
 .no:hover { background: var(--erro-fundo); }
 .mute { background: var(--branco); color: var(--tinta-2); border: 1px solid var(--linha); }
 .mute:hover { background: var(--azul-050); border-color: var(--azul-300); }
+/* A canned reason — its own small submit button, not a style of .btn.
+   Clicking one submits the rejection immediately with that reason; the
+   free-text field next to it stays for anything these don't cover. */
+.chip { padding: 6px 11px; font: inherit; font-size: 0.82rem; font-weight: 600;
+        border-radius: 999px; cursor: pointer; background: var(--azul-050);
+        color: var(--tinta-2); border: 1px solid var(--linha);
+        transition: background 0.15s ease, border-color 0.15s ease; }
+.chip:hover { background: var(--erro-fundo); color: var(--erro); border-color: var(--erro); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
 .input { width: 100%; padding: 11px 12px; font: inherit; font-size: 0.95rem;
          border: 1px solid var(--linha); border-radius: 9px; margin-bottom: 10px;
          transition: border-color 0.15s ease; }

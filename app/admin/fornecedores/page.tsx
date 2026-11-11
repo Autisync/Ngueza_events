@@ -16,6 +16,18 @@ const FILTERS = [
   { key: 'all', label: 'Todos' },
 ]
 
+/** The queue is already sorted oldest-first (verificationQueue's own
+ *  `order by p.updated_at asc`) — this just makes that age visible, so
+ *  working top-to-bottom is the obvious thing to do, not something an
+ *  admin has to remember on their own. */
+function daysWaiting(updatedAt: string): string {
+  const ms = Date.now() - new Date(updatedAt).getTime()
+  const days = Math.floor(ms / 86_400_000)
+  if (days <= 0) return 'Hoje'
+  if (days === 1) return '1 dia em análise'
+  return `${days} dias em análise`
+}
+
 export default async function Fornecedores({
   searchParams,
 }: { searchParams: Promise<{ estado?: string }> }) {
@@ -75,6 +87,9 @@ export default async function Fornecedores({
                   {p.serviceCount} {p.serviceCount === 1 ? 'serviço' : 'serviços'}
                 </span>
                 {p.isPublished ? <span className={`${styles.pill} ${styles.ok}`}>Visível</span> : null}
+                {status === 'pending' ? (
+                  <span className={`${styles.pill} ${styles.wait}`}>{daysWaiting(p.submittedAt)}</span>
+                ) : null}
               </span>
             </a>
           ))
