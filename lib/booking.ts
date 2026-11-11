@@ -346,6 +346,9 @@ export interface BookingDetail extends BookingSummary {
   contactShared: boolean | null
   providerPhone: string | null
   providerWhatsapp: string | null
+  /** Where the event is: the supplier's street address and município. */
+  providerAddress: string | null
+  providerZone: string | null
   /** The sinal and how to pay, set by the supplier when asking for payment (0035). */
   depositMinor: string | null
   paymentInstructions: string | null
@@ -367,6 +370,8 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       `select b.*, p.name as provider_name, p.slug as provider_slug,
               p.category_id as provider_category_id, p.location_id as provider_location_id,
               p.phone as provider_phone, p.whatsapp as provider_whatsapp,
+              p.address_line as provider_address,
+              (select l.name from locations l where l.id = p.location_id) as provider_zone,
               coalesce(pr.full_name, cc.full_name) as client_name,
               coalesce(pr.email, cc.email) as client_email,
               coalesce(pr.phone, cc.phone) as client_phone,
@@ -399,6 +404,7 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       clientPhone: row.client_phone, contactShared: row.contact_shared ?? null,
       providerPhone: row.provider_phone, providerWhatsapp: row.provider_whatsapp,
       depositMinor: row.deposit_minor, paymentInstructions: row.payment_instructions,
+      providerAddress: row.provider_address, providerZone: row.provider_zone,
       history: history.rows.map((h) => ({
         fromStatus: h.from_status, toStatus: h.to_status, createdAt: h.created_at,
       })),

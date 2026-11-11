@@ -8,8 +8,9 @@ import { acceptedOfferPrice } from '@/lib/quotes'
 import { isCrawler, sessionId } from '@/lib/session'
 import { currentProfile } from '@/lib/auth'
 import { doRequestBooking } from '@/app/booking-actions'
+import { publicPolicy } from '@/lib/cancellation-policy'
 import { jsonForScript, todayInLuanda } from '@/lib/safe'
-import { formatRating, reviewCountLabel } from '@/lib/booking-labels'
+import { formatRating, relativeTierSteps, reviewCountLabel } from '@/lib/booking-labels'
 import { PhoneLink } from './PhoneLink'
 import styles from './provider.module.css'
 
@@ -66,7 +67,10 @@ export default async function ProviderPage({
     await recordProviderView(provider.id, await sessionId())
   }
 
-  const days = await availability(provider.id, todayInLuanda(), 28)
+  const [days, policy] = await Promise.all([
+    availability(provider.id, todayInLuanda(), 28),
+    publicPolicy(provider.id),
+  ])
   // One calendar per space: a two-salão venue used to show only the first,
   // so a free second room looked unavailable.
   const calendars = provider.resources.map((r) => ({
@@ -298,6 +302,30 @@ export default async function ProviderPage({
                       ? 'Indique um número de telemóvel válido, por exemplo 923 456 789.'
                       : 'Verifique os dados introduzidos.'}
             </p>
+          ) : null}
+
+          {policy && policy.tiers.length > 0 ? (
+            // Before anyone commits: what cancelling costs, relative to the
+            // event (slice 32). The dated version appears on the booking.
+            <details style={{ margin: '0 0 16px', padding: '12px 14px', borderRadius: 'var(--raio)',
+                              border: '1px solid var(--linha)', background: 'var(--azul-050)' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.92rem' }}>
+                Se tiver de cancelar — política «{policy.name}»
+              </summary>
+              <div style={{ marginTop: 10 }}>
+                {relativeTierSteps(policy.tiers).map((step) => (
+                  <div key={step.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12,
+                                                 fontSize: '0.9rem', padding: '6px 0',
+                                                 borderBottom: '1px solid var(--linha)' }}>
+                    <span>{step.label}</span><strong>{step.refundPct}% de volta</strong>
+                  </div>
+                ))}
+                <p style={{ margin: '8px 0 0', fontSize: '0.83rem', color: 'var(--tinta-3)' }}>
+                  Conta a partir da hora de início do evento. Depois de pedir, vê estas datas
+                  concretas na página da reserva.
+                </p>
+              </div>
+            </details>
           ) : null}
 
           {!profile ? (

@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { bookingDetail } from '@/lib/booking'
-import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import {
+  bookingRef, datedTierSteps, eventDay, formatWhen, nextStep, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR,
+} from '@/lib/booking-labels'
 import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { reviewExistsForBooking } from '@/lib/reviews'
 import { bookingPayments } from '@/lib/payments'
@@ -50,6 +52,21 @@ export default async function ReservaDetalhe({
   const dueNow = deposit !== null && progress.declaredMinor < deposit
     ? deposit - progress.declaredMinor
     : progress.remainingMinor && progress.remainingMinor > 0n ? progress.remainingMinor : null
+  // "Via S8, Talatona" already names the município; don't say it twice.
+  const zone = booking.providerZone && !booking.providerAddress?.toLowerCase().includes(booking.providerZone.toLowerCase())
+    ? booking.providerZone : null
+  const location = [booking.providerAddress, zone].filter(Boolean).join(', ') || null
+  const next = nextStep({
+    status: booking.status,
+    providerName: booking.providerName,
+    startsAt: booking.startsAt,
+    expiresAt: booking.expiresAt,
+    proofSubmitted: payments.some((p) => p.status === 'submitted' || p.status === 'confirmed'),
+    dueNow: dueNow === null ? null : formatMinor(dueNow),
+    canReview,
+    address: location,
+    canContact: Boolean(booking.providerPhone || booking.providerWhatsapp),
+  })
   const showEntitlement = canCancel
     || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
@@ -90,6 +107,25 @@ export default async function ReservaDetalhe({
           </p>
         ) : null}
 
+        {next ? (
+          // The one thing to do next, first — before any of the detail.
+          <div className={styles.card} style={{
+            borderLeft: `4px solid ${next.tone === 'act' ? 'var(--azul-600)' : next.tone === 'done' ? 'var(--bom)' : 'var(--azul-300)'}`,
+          }}>
+            <p style={{ margin: '0 0 2px', fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em',
+                        textTransform: 'uppercase', color: 'var(--tinta-3)' }}>Próximo passo</p>
+            <h2 style={{ fontSize: '1.08rem', margin: '0 0 6px' }}>{next.title}</h2>
+            <p style={{ margin: next.action ? '0 0 14px' : 0, color: 'var(--tinta-2)', fontSize: '0.93rem' }}>{next.detail}</p>
+            {next.action ? (
+              <a className={shared.button} style={{ display: 'inline-block', textDecoration: 'none' }}
+                 href={next.action.href}
+                 {...(next.action.href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+                {next.action.label}
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className={styles.card}>
           <span className={`${styles.pill} ${styles[STATUS_CLASS[booking.status]]}`}>
             {STATUS_LABEL[booking.status]}
@@ -113,6 +149,8 @@ export default async function ReservaDetalhe({
             <span>Fornecedor</span>
             <span><a href={`/fornecedor/${booking.providerSlug}`}>{booking.providerName}</a></span>
           </div>
+          {location ? <div className={styles.row}><span>Local</span><span>{location}</span></div> : null}
+          <div className={styles.row}><span>Referência</span><span><strong>{bookingRef(booking.id)}</strong></span></div>
         </div>
 
         {weather || tips ? (
@@ -235,6 +273,17 @@ export default async function ReservaDetalhe({
               <span>{entitlement.isFinal ? 'Reembolso' : 'Reembolso estimado agora'}</span>
               <span><strong>{entitlement.refundPct}%</strong></span>
             </div>
+            {!entitlement.isFinal && entitlement.tiers.length > 0 ? (
+              <>
+                <p style={{ margin: '14px 0 4px', fontSize: '0.88rem', fontWeight: 600 }}>Se cancelar…</p>
+                {datedTierSteps(entitlement.tiers, booking.startsAt).map((step) => (
+                  <div className={styles.row} key={step.label}
+                       style={step.past ? { color: 'var(--tinta-3)', textDecoration: 'line-through' } : undefined}>
+                    <span>{step.label}</span><span>{step.refundPct}% de volta</span>
+                  </div>
+                ))}
+              </>
+            ) : null}
           </div>
         ) : null}
 
@@ -246,7 +295,7 @@ export default async function ReservaDetalhe({
         ) : null}
 
         {canReview ? (
-          <div className={styles.card}>
+          <div className={styles.card} id="avaliar">
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Deixe a sua avaliação</h2>
             <p style={{ margin: '0 0 16px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
               Como a reserva foi feita através da NGUEZA, a sua avaliação fica marcada como
@@ -302,7 +351,7 @@ function SupplierContact({ booking }: { booking: NonNullable<Awaited<ReturnType<
   if (!whatsapp && !phone) return null
   const hello = `Olá! Escrevo sobre o meu pedido de reserva na NGUEZA para ${eventDay(booking.startsAt)} (ref. ${bookingRef(booking.id)}).`
   return (
-    <div className={styles.card}>
+    <div className={styles.card} id="contacto">
       <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Falar com {booking.providerName}</h2>
       <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
         Referência da reserva: <strong>{bookingRef(booking.id)}</strong>. Indique-a ao fornecedor.
