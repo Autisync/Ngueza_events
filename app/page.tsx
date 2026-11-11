@@ -5,6 +5,7 @@ import { CategoryThumb } from './CategoryIcon'
 import { EmptyState } from './EmptyState'
 import { SupplierCard } from './SupplierCard'
 import styles from './page.module.css'
+import { todayInLuanda } from '@/lib/safe'
 
 /**
  * Slice 24 — the real homepage.
@@ -88,7 +89,7 @@ export default async function Home() {
             <label className={styles.f}>
               <span className={styles.lab}>O que procura</span>
               <select className={styles.ctl} name="categoria" defaultValue="">
-                <option value="">Todos os espaços</option>
+                <option value="">Todas as categorias</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
@@ -105,7 +106,7 @@ export default async function Home() {
             </label>
             <label className={styles.f}>
               <span className={styles.lab}>Data</span>
-              <input className={styles.ctl} type="date" name="data" />
+              <input className={styles.ctl} type="date" name="data" min={todayInLuanda()} />
             </label>
             <button className={styles.go} type="submit">Procurar fornecedores</button>
           </form>
@@ -213,7 +214,7 @@ export default async function Home() {
           <p>
             NGUEZA · Luanda, Angola ·{' '}
             <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a>
+            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
           </p>
         </footer>
       </div>

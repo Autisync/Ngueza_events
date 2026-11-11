@@ -1,0 +1,17 @@
+.list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--linha);
+        border-radius: 12px; overflow: hidden; background: var(--branco); }
+.item { border-bottom: 1px solid var(--linha); }
+.item:last-child { border-bottom: 0; }
+.open { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 14px 16px;
+        cursor: pointer; }
+.open:hover { background: var(--azul-050); }
+.open:focus-visible { outline: 3px solid var(--azul-500); outline-offset: -3px; }
+.subject { display: block; font-weight: 500; color: var(--tinta-2); line-height: 1.35; }
+.unread .subject { font-weight: 700; color: var(--tinta); }
+.unread .subject::before { content: ''; display: inline-block; width: 8px; height: 8px;
+                           border-radius: 50%; background: var(--azul-600); margin-right: 8px;
+                           vertical-align: middle; }
+.when { display: block; margin-top: 4px; font-size: 0.83rem; color: var(--tinta-3); }
+.empty { color: var(--tinta-3); padding: 28px 16px; text-align: center; border: 1px dashed var(--linha);
+         border-radius: 12px; }
+.all { all: unset; cursor: pointer; color: var(--azul-700); font-weight: 600; font-size: 0.9rem; }

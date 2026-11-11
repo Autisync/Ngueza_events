@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { blockDate, requestBooking, transition, type BookingStatus } from '@/lib/booking'
+import { calendarDate, isUuid, normalizePhone, todayInLuanda } from '@/lib/safe'
+import { parseMajor } from '@/lib/money'
 import { sessionId } from '@/lib/session'
 
 /**
@@ -19,9 +21,9 @@ const str = (f: FormData, k: string) => {
 }
 
 const requestForm = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.guid(),
   providerSlug: z.string().min(1),
-  resourceId: z.string().uuid().optional(),
+  resourceId: z.guid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'escolha uma data'),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).default('09:00'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).default('23:59'),
@@ -31,6 +33,24 @@ const requestForm = z.object({
 
 const REASON_ERROR: Record<string, string> = {
   slot_taken: 'data_indisponivel',
+  not_allowed: 'indisponivel',
+  paused: 'pausado',
+  invalid: 'dados',
+}
+
+/**
+ * The start and end of an event on `date`, in Luanda time. An end time at
+ * or before the start time means the event runs past midnight — a party
+ * from 20:00 to 02:00 is the normal case here, not an error. Returns null
+ * for a date that does not exist or a window longer than a day.
+ */
+function eventWindow(date: string, startTime: string, endTime: string): { startsAt: Date; endsAt: Date } | null {
+  if (!calendarDate(date)) return null
+  const startsAt = new Date(`${date}T${startTime}:00+01:00`) // Africa/Luanda, UTC+1
+  let endsAt = new Date(`${date}T${endTime}:00+01:00`)
+  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) return null
+  if (!(endsAt > startsAt)) endsAt = new Date(endsAt.getTime() + 24 * 3600_000)
+  return { startsAt, endsAt }
 }
 
 export async function doRequestBooking(formData: FormData): Promise<void> {
@@ -50,12 +70,18 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
     redirect(`/fornecedor/${slug}?erro=dados#reservar`)
   }
 
+  // The supplier's only way to reach the client once they accept (0034).
+  // Required, and normalised to E.164 so the WhatsApp link works however
+  // it was typed.
+  const clientPhone = normalizePhone(str(formData, 'phone'))
+  if (!clientPhone) redirect(`/fornecedor/${slug}?erro=telefone#reservar`)
+  if (formData.get('aceito') !== 'on') redirect(`/fornecedor/${slug}?erro=aceitar#reservar`)
+
   const { date, startTime, endTime } = parsed.data
-  const startsAt = new Date(`${date}T${startTime}:00+01:00`) // Africa/Luanda, UTC+1
-  const endsAt = new Date(`${date}T${endTime}:00+01:00`)
-  if (!(endsAt > startsAt)) {
-    redirect(`/fornecedor/${slug}?erro=horario#reservar`)
-  }
+  const window = eventWindow(date, startTime, endTime)
+  if (!window) redirect(`/fornecedor/${slug}?erro=dados#reservar`)
+  if (date < todayInLuanda()) redirect(`/fornecedor/${slug}?erro=passado#reservar`)
+  const { startsAt, endsAt } = window
 
   const result = await requestBooking(profile.id, {
     providerId: parsed.data.providerId,
@@ -64,6 +90,8 @@ export async function doRequestBooking(formData: FormData): Promise<void> {
     partySize: parsed.data.partySize,
     notes: parsed.data.notes,
     sessionId: await sessionId(),
+    clientPhone,
+    acceptsLegal: true,
   })
 
   if (!result.ok) {
@@ -76,18 +104,21 @@ async function doTransition(
   bookingId: string, to: BookingStatus, back: string,
 ): Promise<void> {
   const profile = await requireProfile()
+  if (!isUuid(bookingId)) redirect(`${back}?erro=not_found`)
   const result = await transition(profile.id, bookingId, to)
   redirect(result.ok ? `${back}?feito=1` : `${back}?erro=${result.reason}`)
 }
 
 export async function doClientCancel(formData: FormData): Promise<void> {
   const bookingId = String(formData.get('bookingId') ?? '')
+  if (!isUuid(bookingId)) redirect('/reservas')
   await doTransition(bookingId, 'cancelled_client', `/reservas/${bookingId}`)
 }
 
 export async function doSupplierTransition(formData: FormData): Promise<void> {
   const bookingId = String(formData.get('bookingId') ?? '')
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(bookingId) || !isUuid(providerId)) redirect('/painel')
   const to = String(formData.get('to') ?? '') as BookingStatus
   const allowed: BookingStatus[] = [
     'accepted', 'rejected', 'awaiting_payment', 'confirmed',
@@ -97,9 +128,43 @@ export async function doSupplierTransition(formData: FormData): Promise<void> {
   await doTransition(bookingId, to, `/painel/${providerId}/reservas/${bookingId}`)
 }
 
+/**
+ * The supplier asks for payment (slice 31): the agreed total, the sinal
+ * due now (optional — blank means the whole total), and how to pay. All
+ * three are written in the same UPDATE as accepted -> awaiting_payment,
+ * the only moment the database lets anyone write them (0035).
+ */
+export async function doRequestPayment(formData: FormData): Promise<void> {
+  const bookingId = String(formData.get('bookingId') ?? '')
+  const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(bookingId) || !isUuid(providerId)) redirect('/painel')
+  const back = `/painel/${providerId}/reservas/${bookingId}`
+  const profile = await requireProfile()
+
+  const amount = (raw: string | undefined): bigint | null | 'bad' => {
+    if (!raw) return null
+    try {
+      const v = parseMajor(raw)
+      return v < 0n ? 'bad' : v
+    } catch {
+      return 'bad'
+    }
+  }
+  const total = amount(str(formData, 'total'))
+  const deposit = amount(str(formData, 'deposit'))
+  if (total === null || total === 'bad' || total === 0n) redirect(`${back}?erro=terms_required#pagamento`)
+  if (deposit === 'bad' || (deposit !== null && deposit > total)) redirect(`${back}?erro=invalid_terms#pagamento`)
+  const instructions = str(formData, 'instructions')?.slice(0, 500) ?? null
+
+  const result = await transition(profile.id, bookingId, 'awaiting_payment', {
+    totalMinor: total, depositMinor: deposit, instructions,
+  })
+  redirect(result.ok ? `${back}?feito=1` : `${back}?erro=${result.reason}#pagamento`)
+}
+
 const blockForm = z.object({
-  providerId: z.string().uuid(),
-  resourceId: z.string().uuid(),
+  providerId: z.guid(),
+  resourceId: z.guid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).default('00:00'),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).default('23:59'),
@@ -116,10 +181,12 @@ export async function doBlockDate(formData: FormData): Promise<void> {
     startTime: str(formData, 'startTime') ?? '00:00',
     endTime: str(formData, 'endTime') ?? '23:59',
   })
+  if (!isUuid(providerId)) redirect('/painel')
   if (!parsed.success) redirect(`/painel/${providerId}/reservas?erro=dados#bloquear`)
 
-  const startsAt = new Date(`${parsed.data.date}T${parsed.data.startTime}:00+01:00`)
-  const endsAt = new Date(`${parsed.data.date}T${parsed.data.endTime}:00+01:00`)
+  const window = eventWindow(parsed.data.date, parsed.data.startTime, parsed.data.endTime)
+  if (!window) redirect(`/painel/${providerId}/reservas?erro=dados#bloquear`)
+  const { startsAt, endsAt } = window
   const result = await blockDate(profile.id, {
     providerId, resourceId: parsed.data.resourceId, startsAt, endsAt,
   })

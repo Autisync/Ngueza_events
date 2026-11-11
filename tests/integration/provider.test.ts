@@ -35,7 +35,7 @@ describe('public supplier page', () => {
     const p = await getProvider('quinta-das-palmeiras')
     const jardim = p!.resources.find((r) => r.name === 'Jardim')!
     // The seed blocks the Jardim for 20 December 2026.
-    const days = await availability(p!.id, new Date('2026-12-18T00:00:00Z'), 5)
+    const days = await availability(p!.id, '2026-12-18', 5)
     const forJardim = Object.fromEntries(
       days.filter((d) => d.resourceId === jardim.id).map((d) => [d.date, d.free]),
     )
@@ -47,7 +47,7 @@ describe('public supplier page', () => {
   it('leaves the other space in the same venue bookable that day', async () => {
     const p = await getProvider('quinta-das-palmeiras')
     const coberta = p!.resources.find((r) => r.name === 'Área Coberta')!
-    const days = await availability(p!.id, new Date('2026-12-20T00:00:00Z'), 1)
+    const days = await availability(p!.id, '2026-12-20', 1)
     expect(days.find((d) => d.resourceId === coberta.id)?.free).toBe(true)
   })
 

@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { isUuid } from '@/lib/safe'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { createReview, replyToReview } from '@/lib/reviews'
@@ -13,8 +14,8 @@ import { createReview, replyToReview } from '@/lib/reviews'
 const star = z.coerce.number().int().min(1).max(5)
 
 const reviewForm = z.object({
-  providerId: z.string().uuid(),
-  bookingId: z.string().uuid(),
+  providerId: z.guid(),
+  bookingId: z.guid(),
   ratingOverall: star,
   ratingQuality: star.optional(),
   ratingService: star.optional(),
@@ -36,6 +37,7 @@ const str = (f: FormData, k: string) => {
 export async function doLeaveReview(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const bookingId = String(formData.get('bookingId') ?? '')
+  if (!isUuid(bookingId)) redirect('/reservas')
   const parsed = reviewForm.safeParse({
     providerId: str(formData, 'providerId'),
     bookingId,
@@ -70,14 +72,15 @@ export async function doLeaveReview(formData: FormData): Promise<void> {
 }
 
 const replyForm = z.object({
-  reviewId: z.string().uuid(),
-  providerId: z.string().uuid(),
+  reviewId: z.guid(),
+  providerId: z.guid(),
   reply: z.string().trim().min(1).max(2000),
 })
 
 export async function doReplyToReview(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
   const parsed = replyForm.safeParse({
     reviewId: str(formData, 'reviewId'),
     providerId,

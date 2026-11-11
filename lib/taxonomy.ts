@@ -24,7 +24,7 @@ import { asUser, isAlreadyExists, isCheckViolation } from '@/lib/db'
 const slugPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 export const categoryInput = z.object({
-  parentId: z.string().uuid().nullable(),
+  parentId: z.guid().nullable(),
   slug: z.string().trim().toLowerCase().min(2).max(60).regex(slugPattern,
     'letras minúsculas, números e hífens'),
   name: z.string().trim().min(2).max(80),
@@ -36,7 +36,7 @@ export const categoryInput = z.object({
 export type CategoryInput = z.infer<typeof categoryInput>
 
 export const locationInput = z.object({
-  parentId: z.string().uuid().nullable(),
+  parentId: z.guid().nullable(),
   level: z.enum(['country', 'province', 'municipality', 'district']),
   slug: z.string().trim().toLowerCase().min(2).max(60).regex(slugPattern,
     'letras minúsculas, números e hífens'),
@@ -111,7 +111,8 @@ export async function updateCategory(
     await asUser(adminId, (c) =>
       c.query(
         `update categories
-            set parent_id = $2, slug = $3, name = $4, description = $5, icon = $6,
+            -- The edit form has no icon field; a blank must not erase it.
+            set parent_id = $2, slug = $3, name = $4, description = $5, icon = coalesce($6, icon),
                 default_supplier_type = $7, sort_order = $8
           where id = $1`,
         [id, input.parentId, input.slug, input.name, input.description ?? null,

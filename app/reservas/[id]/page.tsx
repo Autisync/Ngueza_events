@@ -2,11 +2,15 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
 import { bookingDetail } from '@/lib/booking'
-import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import {
+  bookingRef, datedTierSteps, eventDay, formatWhen, nextStep, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR,
+} from '@/lib/booking-labels'
+import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { reviewExistsForBooking } from '@/lib/reviews'
-import { clientPayments } from '@/lib/payments'
+import { bookingPayments } from '@/lib/payments'
 import { PAYMENT_STATUS_CLASS, PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
-import { formatMinor } from '@/lib/money'
+import { formatMinor, majorInput } from '@/lib/money'
+import { paymentProgress } from '@/lib/payments'
 import { refundEntitlement } from '@/lib/cancellation-policy'
 import { eventTips } from '@/lib/event-tips'
 import { planningContext } from '@/lib/provider'
@@ -15,6 +19,8 @@ import { doClientCancel } from '@/app/booking-actions'
 import { doLeaveReview } from '@/app/review-actions'
 import { PaymentProofUpload } from './PaymentProofUpload'
 import styles from '../reservas.module.css'
+import shared from '@/app/shared.module.css'
+import { todayInLuanda } from '@/lib/safe'
 
 export const metadata: Metadata = { title: 'A minha reserva', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -37,8 +43,30 @@ export default async function ReservaDetalhe({
   const canCancel = ['requested', 'accepted', 'awaiting_payment', 'confirmed'].includes(booking.status)
   const canReview = booking.status === 'completed' && !(await reviewExistsForBooking(profile.id, booking.id))
   const payments = ['awaiting_payment', 'confirmed'].includes(booking.status)
-    ? await clientPayments(profile.id, booking.id)
+    ? await bookingPayments(profile.id, booking.id)
     : []
+  // What to prefill as "valor pago": the rest of the sinal while it is
+  // outstanding, then the rest of the total (slice 31).
+  const progress = paymentProgress(booking.totalMinor, payments)
+  const deposit = booking.depositMinor === null ? null : BigInt(booking.depositMinor)
+  const dueNow = deposit !== null && progress.declaredMinor < deposit
+    ? deposit - progress.declaredMinor
+    : progress.remainingMinor && progress.remainingMinor > 0n ? progress.remainingMinor : null
+  // "Via S8, Talatona" already names the município; don't say it twice.
+  const zone = booking.providerZone && !booking.providerAddress?.toLowerCase().includes(booking.providerZone.toLowerCase())
+    ? booking.providerZone : null
+  const location = [booking.providerAddress, zone].filter(Boolean).join(', ') || null
+  const next = nextStep({
+    status: booking.status,
+    providerName: booking.providerName,
+    startsAt: booking.startsAt,
+    expiresAt: booking.expiresAt,
+    proofSubmitted: payments.some((p) => p.status === 'submitted' || p.status === 'confirmed'),
+    dueNow: dueNow === null ? null : formatMinor(dueNow),
+    canReview,
+    address: location,
+    canContact: Boolean(booking.providerPhone || booking.providerWhatsapp),
+  })
   const showEntitlement = canCancel
     || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
@@ -79,6 +107,25 @@ export default async function ReservaDetalhe({
           </p>
         ) : null}
 
+        {next ? (
+          // The one thing to do next, first — before any of the detail.
+          <div className={styles.card} style={{
+            borderLeft: `4px solid ${next.tone === 'act' ? 'var(--azul-600)' : next.tone === 'done' ? 'var(--bom)' : 'var(--azul-300)'}`,
+          }}>
+            <p style={{ margin: '0 0 2px', fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.06em',
+                        textTransform: 'uppercase', color: 'var(--tinta-3)' }}>Próximo passo</p>
+            <h2 style={{ fontSize: '1.08rem', margin: '0 0 6px' }}>{next.title}</h2>
+            <p style={{ margin: next.action ? '0 0 14px' : 0, color: 'var(--tinta-2)', fontSize: '0.93rem' }}>{next.detail}</p>
+            {next.action ? (
+              <a className={shared.button} style={{ display: 'inline-block', textDecoration: 'none' }}
+                 href={next.action.href}
+                 {...(next.action.href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+                {next.action.label}
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className={styles.card}>
           <span className={`${styles.pill} ${styles[STATUS_CLASS[booking.status]]}`}>
             {STATUS_LABEL[booking.status]}
@@ -102,6 +149,8 @@ export default async function ReservaDetalhe({
             <span>Fornecedor</span>
             <span><a href={`/fornecedor/${booking.providerSlug}`}>{booking.providerName}</a></span>
           </div>
+          {location ? <div className={styles.row}><span>Local</span><span>{location}</span></div> : null}
+          <div className={styles.row}><span>Referência</span><span><strong>{bookingRef(booking.id)}</strong></span></div>
         </div>
 
         {weather || tips ? (
@@ -129,12 +178,35 @@ export default async function ReservaDetalhe({
         ) : null}
 
         {payments.length > 0 || booking.status === 'awaiting_payment' ? (
-          <div className={styles.card}>
+          <div className={styles.card} id="pagamento">
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Pagamento</h2>
-            <p style={{ margin: '0 0 16px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
-              O pagamento é feito directamente ao fornecedor, fora da NGUEZA. Submeta o
-              comprovativo aqui para o fornecedor confirmar a reserva.
+            <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Paga directamente ao fornecedor, fora da NGUEZA. Depois envie aqui o comprovativo;
+              a reserva fica confirmada quando o fornecedor confirmar que recebeu.
             </p>
+            {booking.totalMinor !== null ? (
+              <>
+                <div className={styles.row}><span>Total acordado</span><span>{formatMinor(BigInt(booking.totalMinor))}</span></div>
+                {booking.depositMinor !== null ? (
+                  <div className={styles.row}><span>Sinal a pagar agora</span><strong>{formatMinor(BigInt(booking.depositMinor))}</strong></div>
+                ) : null}
+                <div className={styles.row}><span>Já declarado</span><span>{formatMinor(progress.declaredMinor)}</span></div>
+                {progress.remainingMinor !== null ? (
+                  <div className={styles.row}><span>Por pagar</span><span>{formatMinor(progress.remainingMinor)}</span></div>
+                ) : null}
+              </>
+            ) : null}
+            {booking.paymentInstructions ? (
+              <div style={{ margin: '14px 0', padding: '12px 14px', borderRadius: 9,
+                            background: 'var(--azul-050)', border: '1px solid var(--linha)' }}>
+                <strong style={{ display: 'block', fontSize: '0.88rem', marginBottom: 4 }}>Como pagar</strong>
+                <span style={{ whiteSpace: 'pre-line', fontSize: '0.92rem' }}>{booking.paymentInstructions}</span>
+                <span style={{ display: 'block', marginTop: 6, fontSize: '0.85rem', color: 'var(--tinta-3)' }}>
+                  Indique a referência {bookingRef(booking.id)} no pagamento. A NGUEZA nunca lhe pede
+                  para pagar para outra conta.
+                </span>
+              </div>
+            ) : null}
             {payments.map((p) => (
               <div className={styles.row} key={p.id}>
                 <span>
@@ -151,9 +223,45 @@ export default async function ReservaDetalhe({
             ))}
             {booking.status === 'awaiting_payment' ? (
               <div style={{ marginTop: payments.length > 0 ? 16 : 0 }}>
-                <PaymentProofUpload bookingId={booking.id} />
+                <PaymentProofUpload bookingId={booking.id} defaultAmount={dueNow === null ? undefined : majorInput(dueNow)} />
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        <SupplierContact booking={booking} />
+
+        <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: 'var(--tinta-3)' }}>
+          Algo não está bem com esta reserva?{' '}
+          <a href={`/ajuda?assunto=reserva&ref=${bookingRef(booking.id)}#contacto`}>Peça ajuda à NGUEZA</a>.
+        </p>
+
+        {booking.status === 'unavailable' ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Esta data foi reservada por outro cliente</h2>
+            <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              O seu pedido foi encerrado e não tem nada a pagar. Veja o que ainda está livre
+              nesse dia, na mesma zona.
+            </p>
+            <a className={shared.button} style={{ display: 'inline-block', textDecoration: 'none' }} href={`/procurar?${new URLSearchParams({
+              data: todayInLuanda(new Date(booking.startsAt)),
+              zona: booking.providerLocationId,
+              categoria: booking.providerCategoryId,
+              ...(booking.partySize ? { pessoas: String(booking.partySize) } : {}),
+            }).toString()}`}>
+              Ver espaços livres nesse dia
+            </a>
+          </div>
+        ) : null}
+
+        {booking.status === 'cancelled_provider' ? (
+          <div className={styles.card}>
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Cancelada pelo fornecedor</h2>
+            <p style={{ margin: 0, color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Os prazos de cancelamento da política aplicam-se quando é o cliente a cancelar,
+              por isso não se aplicam aqui. Se já tinha pago, combine a devolução com o
+              fornecedor ou contacte a NGUEZA — a NGUEZA não guarda nem transfere dinheiro.
+            </p>
           </div>
         ) : null}
 
@@ -170,6 +278,17 @@ export default async function ReservaDetalhe({
               <span>{entitlement.isFinal ? 'Reembolso' : 'Reembolso estimado agora'}</span>
               <span><strong>{entitlement.refundPct}%</strong></span>
             </div>
+            {!entitlement.isFinal && entitlement.tiers.length > 0 ? (
+              <>
+                <p style={{ margin: '14px 0 4px', fontSize: '0.88rem', fontWeight: 600 }}>Se cancelar…</p>
+                {datedTierSteps(entitlement.tiers, booking.startsAt).map((step) => (
+                  <div className={styles.row} key={step.label}
+                       style={step.past ? { color: 'var(--tinta-3)', textDecoration: 'line-through' } : undefined}>
+                    <span>{step.label}</span><span>{step.refundPct}% de volta</span>
+                  </div>
+                ))}
+              </>
+            ) : null}
           </div>
         ) : null}
 
@@ -181,7 +300,7 @@ export default async function ReservaDetalhe({
         ) : null}
 
         {canReview ? (
-          <div className={styles.card}>
+          <div className={styles.card} id="avaliar">
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Deixe a sua avaliação</h2>
             <p style={{ margin: '0 0 16px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
               Como a reserva foi feita através da NGUEZA, a sua avaliação fica marcada como
@@ -190,17 +309,21 @@ export default async function ReservaDetalhe({
             <form action={doLeaveReview}>
               <input type="hidden" name="bookingId" value={booking.id} />
               <input type="hidden" name="providerId" value={booking.providerId} />
-              <label className={styles.field}>
-                <span className={styles.label}>Avaliação geral</span>
-                <span className={styles.stars} role="radiogroup" aria-label="Avaliação geral">
+              {/* A fieldset, not a label wrapping labels; no star pre-selected,
+                  so the score is the client's choice rather than a default
+                  they forgot to change. */}
+              <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: '0 0 18px' }}>
+                <legend className={styles.label}>Avaliação geral</legend>
+                <span className={styles.stars}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <label className={styles.star} key={n}>
-                      <input type="radio" name="ratingOverall" value={n} required defaultChecked={n === 5} />
-                      ★
+                      <input type="radio" name="ratingOverall" value={n} required
+                             aria-label={n === 1 ? '1 estrela' : `${n} estrelas`} />
+                      <span aria-hidden="true">★</span>
                     </label>
                   ))}
                 </span>
-              </label>
+              </fieldset>
               <label className={styles.field}>
                 <span className={styles.label}>Comentário <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span></span>
                 <textarea className={styles.area} name="comment" maxLength={2000} rows={3} />
@@ -221,5 +344,39 @@ export default async function ReservaDetalhe({
         </div>
       </div>
     </main>
+  )
+}
+
+/** How the client reaches the supplier. Straight to the supplier's own
+ *  number — not through /api/contacto, which counts pre-booking contact
+ *  (§32 leakage); talking about a booking already made is not leakage. */
+function SupplierContact({ booking }: { booking: NonNullable<Awaited<ReturnType<typeof bookingDetail>>> }) {
+  const whatsapp = normalizePhone(booking.providerWhatsapp)
+  const phone = normalizePhone(booking.providerPhone)
+  if (!whatsapp && !phone) return null
+  const hello = `Olá! Escrevo sobre o meu pedido de reserva na NGUEZA para ${eventDay(booking.startsAt)} (ref. ${bookingRef(booking.id)}).`
+  return (
+    <div className={styles.card} id="contacto">
+      <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Falar com {booking.providerName}</h2>
+      <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+        Referência da reserva: <strong>{bookingRef(booking.id)}</strong>. Indique-a ao fornecedor.
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {whatsapp ? (
+          <a className={shared.button} style={{ display: 'inline-block', textDecoration: 'none' }}
+             href={whatsappUrl(whatsapp, hello)} target="_blank" rel="noopener noreferrer">
+            WhatsApp
+          </a>
+        ) : null}
+        {phone ? (
+          <a className={shared.button}
+             style={{ display: 'inline-block', textDecoration: 'none', background: 'var(--branco)',
+                      color: 'var(--azul-700)', border: '1px solid var(--azul-500)' }}
+             href={`tel:${phone}`}>
+            Ligar
+          </a>
+        ) : null}
+      </div>
+    </div>
   )
 }

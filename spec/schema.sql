@@ -3410,3 +3410,2098 @@ create trigger quote_offers_guard_transitions
   before update on quote_offers
   for each row execute function quote_offers_guard_transitions();
 
+-- ─────────────── 0030_quote_lifecycle.sql ───────────────
+-- =====================================================================
+-- 0030 — the quote lifecycle, finished
+--
+-- Found in the competitive review (bugs B25, B26, B45):
+--
+-- 1. Losing offers were marked 'withdrawn' when the client accepted
+--    another one, so a supplier who lost looked as if they had pulled
+--    out themselves. They are now 'declined'.
+-- 2. The winning supplier was never told. A quote_offer_accepted
+--    notification now goes to them.
+-- 3. Quote requests never expired: 'expired' and expires_at existed but
+--    nothing ever set them. expire_stale_quote_requests() does, called
+--    from the existing /api/cron/expire sweep, and the matching function
+--    stops treating a past-expiry request as open even if the job lags.
+-- 4. At most one accepted offer per request, enforced by the database.
+-- =====================================================================
+
+-- ---- 1. 'declined' --------------------------------------------------
+alter table quote_offers drop constraint quote_offers_status_check;
+alter table quote_offers add constraint quote_offers_status_check
+  check (status in ('submitted', 'withdrawn', 'accepted', 'declined'));
+
+-- Offers that lost to an accepted offer before this migration were
+-- written as 'withdrawn' by the requester's accept. Re-label them: the
+-- accepted sibling on the same request is the evidence.
+update quote_offers lost
+   set status = 'declined'
+ where lost.status = 'withdrawn'
+   and exists (
+     select 1 from quote_offers won
+      where won.quote_request_id = lost.quote_request_id
+        and won.status = 'accepted'
+   );
+
+create or replace function quote_offers_guard_transitions()
+returns trigger language plpgsql as $$
+begin
+  if is_admin() then
+    return new;
+  end if;
+
+  if (
+    new.quote_request_id is distinct from old.quote_request_id or
+    new.provider_id      is distinct from old.provider_id or
+    new.price_minor      is distinct from old.price_minor or
+    new.message           is distinct from old.message or
+    new.created_at        is distinct from old.created_at
+  ) then
+    raise exception 'an offer''s own terms may not be edited'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  if owns_provider(old.provider_id) then
+    if old.status = 'submitted' and new.status = 'withdrawn' then
+      return new;
+    end if;
+    raise exception 'an offer may only be withdrawn, not edited'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  if owns_quote_request(old.quote_request_id) then
+    if old.status = 'submitted' and new.status in ('accepted', 'declined') then
+      return new;
+    end if;
+    raise exception 'a requester may only accept or decline a live offer'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  raise exception 'not permitted' using errcode = 'insufficient_privilege';
+end $$;
+
+-- ---- 4. one winner per request ------------------------------------------
+create unique index quote_offers_one_accepted_per_request
+  on quote_offers (quote_request_id) where status = 'accepted';
+
+-- ---- 3. expiry -------------------------------------------------------------
+create or replace function quote_request_open_and_matches(p_quote_request_id uuid, p_provider_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from quote_requests qr, providers p
+     where qr.id = p_quote_request_id
+       and p.id = p_provider_id
+       and qr.status = 'open'
+       and qr.expires_at > now()
+       and (qr.event_date is null or qr.event_date >= (now() at time zone 'Africa/Luanda')::date)
+       and p.is_published and p.verification_status = 'verified'
+       and p.location_id in (select id from location_descendants(qr.location_id))
+       and (
+         p.category_id in (select id from category_descendants(qr.category_id))
+         or exists (
+           select 1 from services sv
+            where sv.provider_id = p.id and sv.is_active
+              and sv.category_id in (select id from category_descendants(qr.category_id))
+         )
+       )
+  );
+$$;
+
+-- Called by the cron sweep as service_role. Closes requests past their
+-- own expiry, and requests whose event date has already gone by.
+create or replace function expire_stale_quote_requests()
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  v_count integer;
+begin
+  update quote_requests
+     set status = 'expired'
+   where status = 'open'
+     and (
+       expires_at < now()
+       or (event_date is not null and event_date < (now() at time zone 'Africa/Luanda')::date)
+     );
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+
+revoke all on function expire_stale_quote_requests() from public;
+grant execute on function expire_stale_quote_requests() to service_role;
+
+-- ---- 2. tell the winner ---------------------------------------------------
+alter table notification_outbox drop constraint notification_outbox_kind_check;
+alter table notification_outbox add constraint notification_outbox_kind_check
+  check (kind in (
+    'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
+    'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
+    'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
+    'booking_completed', 'booking_no_show',
+    'provider_verified', 'provider_rejected', 'provider_suspended', 'provider_reinstated',
+    'quote_request_new', 'quote_offer_received',
+    -- new in 0030 and 0031
+    'quote_offer_accepted', 'booking_payment_submitted', 'booking_released_provider'
+  ));
+
+create or replace function enqueue_quote_offer_accepted_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id    uuid;
+  v_owner_email citext;
+  v_provider    providers%rowtype;
+  v_request     quote_requests%rowtype;
+begin
+  if not (old.status = 'submitted' and new.status = 'accepted') then
+    return null;
+  end if;
+
+  select * into v_provider from providers where id = new.provider_id;
+  select * into v_request  from quote_requests where id = new.quote_request_id;
+  select p.id, p.email into v_owner_id, v_owner_email
+    from profiles p where p.id = v_provider.owner_id;
+  if v_owner_email is null then
+    return null;
+  end if;
+
+  insert into notification_outbox
+    (kind, to_email, recipient_id, context, source_table, source_id)
+  values (
+    'quote_offer_accepted', v_owner_email, v_owner_id,
+    jsonb_build_object(
+      'quote_request_id', new.quote_request_id,
+      'offer_id', new.id,
+      'provider_id', v_provider.id,
+      'provider_name', v_provider.name,
+      'provider_slug', v_provider.slug,
+      'price_minor', new.price_minor,
+      'event_date', v_request.event_date,
+      'category_name', (select name from categories where id = v_request.category_id),
+      'location_name', (select name from locations where id = v_request.location_id)
+    ),
+    'quote_offers', new.id::text
+  )
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  return null;
+end $$;
+
+create trigger quote_offers_notify_accepted
+  after update of status on quote_offers
+  for each row execute function enqueue_quote_offer_accepted_notification();
+
+-- ─────────────── 0031_booking_review_integrity.sql ───────────────
+-- =====================================================================
+-- 0031 — integrity fixes from the competitive review
+--
+-- Every change here closes a path where one party could make the record
+-- say something untrue, or where the system silently did the wrong
+-- thing. Bug numbers refer to the review's verified bug list.
+--
+--  B13  bookings_set_shape fired LAST (triggers fire in name order), so
+--       bookings_enforce_concurrency saw blocks_calendar = false on every
+--       venue INSERT and ran the service capacity check on venues.
+--  B14  Booking parties could rewrite dates, provider, price or the
+--       frozen policy_snapshot with a plain UPDATE (the actor guard only
+--       looked at status). Inserts trusted a client-supplied snapshot.
+--  B8   A supplier could book their own listing, mark it completed at
+--       once, and leave themselves a 'Reserva verificada' review.
+--  B9   Reviews could name someone else's booking (and so block that
+--       client's real review), authors could rewrite any column, and
+--       unverified reviews counted in public averages (handled in app).
+--  B10  Nothing ever moved confirmed bookings to completed.
+--  B6   Uploading proof of payment did not pause the 24h payment
+--       window, so a client who had paid could lose the date.
+--  B11  Suspending an owner left their listings public and bookable.
+--  B12  A rejected supplier could never resubmit.
+--  B28  anon could read every providers column, including email,
+--       owner_id and rejection_reason.
+--  B29  The no-show notice went to the supplier who set it.
+--  B44  The supplier was never told a held date was released.
+--  B32  The verification queue's "submitted" clock was updated_at.
+--  B33  Payment and report decisions were unaudited.
+--  B35  Outbox rows could stay in 'sending' forever.
+--  B43  provider_health's "median" was a mean over acceptances only.
+--
+-- Nothing here moves money or decides a dispute: a paid-but-silent
+-- booking is held and flagged, never refunded or confirmed by the system.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- Helpers
+-- ---------------------------------------------------------------------
+
+-- Is this provider visible and bookable by the public: published,
+-- verified, and owned by an active account? SECURITY DEFINER so policies
+-- can call it without re-entering RLS on profiles.
+create or replace function provider_is_public(p_provider_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from providers p join profiles pr on pr.id = p.owner_id
+     where p.id = p_provider_id
+       and p.is_published and p.verification_status = 'verified'
+       and pr.status = 'active'
+  );
+$$;
+
+-- Is a person acting directly through the API (PostgREST or asUser), as
+-- opposed to a SECURITY DEFINER function or the service role? Column
+-- guards below apply only to the former.
+create or replace function acting_as_end_user()
+returns boolean language sql stable as $$
+  select current_user in ('authenticated', 'anon') and auth.uid() is not null;
+$$;
+
+-- ---------------------------------------------------------------------
+-- B13 — shape first
+-- ---------------------------------------------------------------------
+drop trigger bookings_set_shape on bookings;
+create trigger bookings_00_set_shape
+  before insert or update on bookings
+  for each row execute function bookings_set_shape();
+
+-- Belt and braces: the concurrency check derives the type itself rather
+-- than trusting a column another trigger sets.
+create or replace function bookings_enforce_concurrency()
+returns trigger language plpgsql as $$
+declare
+  v_limit integer;
+  v_count integer;
+  v_type  text;
+begin
+  select supplier_type, concurrency_limit into v_type, v_limit
+    from providers where id = new.provider_id;
+  if v_type = 'venue' then
+    return new;                                   -- venues use the constraint
+  end if;
+  if not (new.status = any (booking_occupying_statuses())) then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(new.provider_id::text, 0));
+
+  select count(*) into v_count
+    from bookings
+   where provider_id = new.provider_id
+     and id <> new.id
+     and status = any (booking_occupying_statuses())
+     and tstzrange(starts_at, ends_at) && tstzrange(new.starts_at, new.ends_at);
+
+  if v_count >= v_limit then
+    raise exception 'provider % is at capacity (% concurrent) for that window',
+      new.provider_id, v_limit
+      using errcode = '23P01';
+  end if;
+
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- B14 — a booking's terms are frozen once written
+-- ---------------------------------------------------------------------
+create or replace function bookings_guard_columns()
+returns trigger language plpgsql as $$
+begin
+  if not acting_as_end_user() or is_admin() then
+    return new;
+  end if;
+
+  if new.provider_id     is distinct from old.provider_id
+     or new.client_id    is distinct from old.client_id
+     or new.resource_id  is distinct from old.resource_id
+     or new.service_id   is distinct from old.service_id
+     or new.starts_at    is distinct from old.starts_at
+     or new.ends_at      is distinct from old.ends_at
+     or new.party_size   is distinct from old.party_size
+     or new.total_minor  is distinct from old.total_minor
+     or new.currency     is distinct from old.currency
+     or new.policy_snapshot is distinct from old.policy_snapshot
+     or new.created_at   is distinct from old.created_at
+     or (new.expires_at is distinct from old.expires_at and new.status is not distinct from old.status)
+  then
+    raise exception 'a booking''s terms may not be edited, only moved through its states'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_01_guard_columns
+  before update on bookings
+  for each row execute function bookings_guard_columns();
+
+-- On INSERT by an end user, the cancellation terms and any total come
+-- from the database, never from the request.
+-- Deliberately NOT security definer: acting_as_end_user() reads
+-- current_user, which a definer function would replace with its owner.
+create or replace function bookings_set_terms()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if not acting_as_end_user() or is_admin() then
+    return new;
+  end if;
+  new.total_minor := null;
+  new.currency := 'AOA';
+  if new.status = 'requested' then
+    new.policy_snapshot := (
+      select to_jsonb(cp) from cancellation_policies cp
+       where cp.is_active
+         and (cp.provider_id = new.provider_id or cp.provider_id is null)
+       order by cp.provider_id nulls last
+       limit 1
+    );
+  else
+    new.policy_snapshot := null;               -- a manual block has no client terms
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_01_set_terms
+  before insert on bookings
+  for each row execute function bookings_set_terms();
+
+-- ---------------------------------------------------------------------
+-- B8 + B11 — who may request a booking, and for when
+-- ---------------------------------------------------------------------
+drop policy bookings_client_insert on bookings;
+create policy bookings_client_insert on bookings
+  for insert with check (
+    (
+      client_id = auth.uid()
+      and status = 'requested'
+      and starts_at > now()
+      and not owns_provider(provider_id)        -- no booking your own listing
+      and provider_is_public(provider_id)       -- published, verified, active owner
+    )
+    or (owns_provider(provider_id) and status = 'blocked')   -- §27 manual block
+    or is_admin()
+  );
+
+-- 'completed' only once the event has actually ended. The supplier could
+-- previously complete a booking for next year the moment it confirmed.
+create or replace function bookings_guard_completion()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed'
+     and acting_as_end_user() and not is_admin()
+     and now() < old.ends_at then
+    raise exception 'a booking can only be completed after it ends'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_02_guard_completion
+  before update on bookings
+  for each row execute function bookings_guard_completion();
+
+-- ---------------------------------------------------------------------
+-- B10 — the completion sweep spec/states.md always described
+-- ---------------------------------------------------------------------
+create or replace function complete_past_bookings()
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  v_count integer;
+begin
+  -- A day's grace after the end, so a supplier can still record a
+  -- no-show before the sweep closes the booking.
+  update bookings
+     set status = 'completed'
+   where status = 'confirmed'
+     and ends_at < now() - interval '24 hours';
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+
+revoke all on function complete_past_bookings() from public;
+grant execute on function complete_past_bookings() to service_role;
+
+-- ---------------------------------------------------------------------
+-- B6 — proof of payment holds the date
+-- ---------------------------------------------------------------------
+-- How long a submitted proof holds a date while the supplier checks that
+-- the money arrived. A human decision with a sensible default; NGUEZA
+-- should confirm the number. Nothing is ever confirmed automatically.
+create or replace function payment_proof_hold_window()
+returns interval language sql immutable as $$ select interval '72 hours' $$;
+
+create or replace function payments_hold_booking()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status <> 'submitted' then
+    return null;
+  end if;
+  update bookings
+     set expires_at = greatest(coalesce(expires_at, now()), now() + payment_proof_hold_window())
+   where id = new.booking_id and status = 'awaiting_payment';
+  return null;
+end $$;
+
+create trigger payments_hold_booking
+  after insert on payments
+  for each row execute function payments_hold_booking();
+
+-- And the sweep itself never releases a date with a proof still under
+-- review, even if the hold above lapsed.
+create or replace function expire_stale_bookings()
+returns integer language plpgsql as $$
+declare
+  v_count integer;
+begin
+  with expired as (
+    update bookings b
+       set status = 'expired'
+     where b.expires_at is not null
+       and b.expires_at < now()
+       and b.status in ('requested', 'accepted', 'awaiting_payment')
+       and not (
+         b.status = 'awaiting_payment'
+         and exists (select 1 from payments p where p.booking_id = b.id and p.status = 'submitted')
+       )
+    returning 1
+  )
+  select count(*) into v_count from expired;
+  return v_count;
+end $$;
+
+-- Tell the supplier a proof arrived.
+create or replace function enqueue_payment_submitted_notification()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_booking  bookings%rowtype;
+  v_provider providers%rowtype;
+  v_email    citext;
+begin
+  if new.status <> 'submitted' then
+    return null;
+  end if;
+  select * into v_booking  from bookings  where id = new.booking_id;
+  select * into v_provider from providers where id = v_booking.provider_id;
+  select email into v_email from profiles where id = v_provider.owner_id;
+  if v_email is null then
+    return null;
+  end if;
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  values (
+    'booking_payment_submitted', v_email, v_provider.owner_id,
+    jsonb_build_object(
+      'booking_id', v_booking.id, 'provider_id', v_provider.id,
+      'provider_name', v_provider.name, 'provider_slug', v_provider.slug,
+      'starts_at', v_booking.starts_at, 'ends_at', v_booking.ends_at
+    ),
+    'payments', new.id::text
+  )
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  return null;
+end $$;
+
+create trigger payments_notify_submitted
+  after insert on payments
+  for each row execute function enqueue_payment_submitted_notification();
+
+-- ---------------------------------------------------------------------
+-- B9 + B8 — reviews
+-- ---------------------------------------------------------------------
+create or replace function booking_is_authors(p_booking_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from bookings where id = p_booking_id and client_id = auth.uid());
+$$;
+
+drop policy reviews_author_insert on reviews;
+create policy reviews_author_insert on reviews
+  for insert with check (
+    author_id = auth.uid()
+    and (booking_id is null or booking_is_authors(booking_id))
+    and not owns_provider(provider_id)
+  );
+
+-- Verified also means the author is not the business itself.
+create or replace function reviews_derive_verified()
+returns trigger language plpgsql as $$
+declare
+  v_ok boolean;
+begin
+  if new.booking_id is null then
+    new.is_verified := false;
+    return new;
+  end if;
+
+  select (b.status = 'completed'
+          and b.client_id = new.author_id
+          and b.provider_id = new.provider_id
+          and p.owner_id is distinct from new.author_id)
+    into v_ok
+    from bookings b join providers p on p.id = b.provider_id
+   where b.id = new.booking_id;
+
+  new.is_verified := coalesce(v_ok, false);
+  return new;
+end $$;
+
+-- An author may edit their own words and stars, nothing else: not the
+-- moderation status, not the booking it hangs on, not the reply.
+create or replace function reviews_guard_author()
+returns trigger language plpgsql as $$
+begin
+  if acting_as_end_user() and not is_admin()
+     and old.author_id = auth.uid() and not owns_provider(old.provider_id) then
+    if new.provider_id        is distinct from old.provider_id
+       or new.author_id       is distinct from old.author_id
+       or new.booking_id      is distinct from old.booking_id
+       or new.status          is distinct from old.status
+       or new.provider_reply  is distinct from old.provider_reply
+       or new.provider_replied_at is distinct from old.provider_replied_at
+       or new.created_at      is distinct from old.created_at
+    then
+      raise exception 'a review''s author may only edit its rating and comment'
+        using errcode = 'insufficient_privilege';
+    end if;
+  end if;
+  return new;
+end $$;
+
+create trigger reviews_guard_author
+  before update on reviews
+  for each row execute function reviews_guard_author();
+
+-- ---------------------------------------------------------------------
+-- B11 — a suspended owner's listings leave public view
+-- ---------------------------------------------------------------------
+drop policy providers_public_read on providers;
+create policy providers_public_read on providers
+  for select using (
+    provider_is_public(id)
+    or owner_id = auth.uid()
+    or is_admin()
+  );
+
+-- ---------------------------------------------------------------------
+-- B28 — the public sees display columns only
+-- ---------------------------------------------------------------------
+revoke select on providers from anon;
+grant select (
+  id, supplier_type, slug, name, description, category_id, location_id,
+  address_line, lat, lng, phone, whatsapp, website,
+  verification_status, verified_at, years_active_declared,
+  is_published, published_at, created_at, updated_at
+) on providers to anon;
+
+-- ---------------------------------------------------------------------
+-- B12 + B32 — resubmission, and a real submission clock
+-- ---------------------------------------------------------------------
+alter table providers add column submitted_at timestamptz;
+
+update providers set submitted_at = updated_at where verification_status = 'pending';
+
+create or replace function providers_guard_verification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.verification_status is not distinct from old.verification_status then
+    return new;
+  end if;
+
+  if new.verification_status = 'pending' then
+    new.submitted_at := now();
+  end if;
+
+  if is_admin() then
+    return new;
+  end if;
+
+  -- Re-queuing after a rejection is the supplier's to do; the decision
+  -- itself stays with an administrator. Suspended stays an admin matter.
+  if old.verification_status in ('unverified', 'rejected')
+     and new.verification_status = 'pending'
+     and owns_provider(new.id) then
+    return new;
+  end if;
+
+  raise exception 'verification % -> % is an administrator''s decision',
+    old.verification_status, new.verification_status
+    using errcode = 'insufficient_privilege';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- B33 — payment and report decisions are audited
+-- ---------------------------------------------------------------------
+alter table audit_log drop constraint audit_log_target_type_check;
+alter table audit_log add constraint audit_log_target_type_check
+  check (target_type in ('provider', 'document', 'profile', 'service', 'report', 'payment'));
+
+create trigger payments_audit
+  after update on payments
+  for each row execute function audit_changes('payment', 'status', 'confirmed_by', 'confirmed_at');
+
+create trigger reports_audit
+  after update on reports
+  for each row execute function audit_changes('report', 'status', 'resolved_by', 'resolution_note');
+
+-- ---------------------------------------------------------------------
+-- B35 — outbox rows can be reclaimed
+-- ---------------------------------------------------------------------
+alter table notification_outbox add column claimed_at timestamptz;
+
+-- ---------------------------------------------------------------------
+-- B29 + B44 — the right person hears about no-shows and released dates
+-- ---------------------------------------------------------------------
+create or replace function enqueue_booking_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_booking      bookings%rowtype;
+  v_provider     providers%rowtype;
+  v_owner_email  citext;
+  v_client_email citext;
+  v_kind         text;
+  v_to           citext;
+  v_recipient    uuid;
+  v_context      jsonb;
+begin
+  select * into v_booking  from bookings  where id = new.booking_id;
+  select * into v_provider from providers where id = v_booking.provider_id;
+  select email into v_owner_email from profiles where id = v_provider.owner_id;
+  if v_booking.client_id is not null then
+    select email into v_client_email from profiles where id = v_booking.client_id;
+  end if;
+
+  v_context := jsonb_build_object(
+    'booking_id',    v_booking.id,
+    'provider_id',   v_provider.id,
+    'provider_name', v_provider.name,
+    'provider_slug', v_provider.slug,
+    'starts_at',     v_booking.starts_at,
+    'ends_at',       v_booking.ends_at,
+    'from_status',   new.from_status
+  );
+
+  if new.to_status = 'confirmed' then
+    if v_client_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed', v_client_email, v_booking.client_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    if v_owner_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed_provider', v_owner_email, v_provider.owner_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    return null;
+  end if;
+
+  -- A date the supplier had already accepted was released because the
+  -- client did not proceed: the supplier needs to know it is free again.
+  if new.to_status = 'expired' and new.from_status in ('accepted', 'awaiting_payment')
+     and v_owner_email is not null then
+    insert into notification_outbox
+      (kind, to_email, recipient_id, context, source_table, source_id)
+    values
+      ('booking_released_provider', v_owner_email, v_provider.owner_id, v_context,
+       'booking_events', new.id)
+    on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  end if;
+
+  case new.to_status
+    when 'requested'           then v_kind := 'booking_requested';          v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'accepted'             then v_kind := 'booking_accepted';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'awaiting_payment'     then v_kind := 'booking_awaiting_payment';   v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'rejected'             then v_kind := 'booking_rejected';          v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'expired'              then v_kind := 'booking_expired';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'cancelled_client'     then v_kind := 'booking_cancelled_client';  v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'cancelled_provider'   then v_kind := 'booking_cancelled_provider';v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'completed'            then v_kind := 'booking_completed';         v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'no_show'              then v_kind := 'booking_no_show';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    else return null; -- 'blocked': the supplier's own action, nobody to tell
+  end case;
+
+  if v_to is null then
+    return null; -- e.g. a manually-blocked booking has no client to notify
+  end if;
+
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  values (v_kind, v_to, v_recipient, v_context, 'booking_events', new.id)
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+
+  return null;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- B43 — provider_health measures what its columns say
+-- ---------------------------------------------------------------------
+create or replace view provider_health as
+with responses as (
+  -- The supplier's first answer to each request, accept or reject.
+  select be.booking_id, min(be.created_at) as answered_at
+    from booking_events be
+   where be.from_status = 'requested' and be.to_status in ('accepted', 'rejected')
+   group by be.booking_id
+)
+select
+  p.id as provider_id,
+  p.name,
+  p.verification_status,
+  p.is_published,
+
+  count(r.booking_id)::int as answered_count,
+  count(*) filter (where b.status = 'expired')::int as expired_count,
+  count(*) filter (where b.status = 'completed')::int as completed_count,
+
+  -- Requests the SUPPLIER let lapse, over requests received.
+  round(
+    100.0 * count(*) filter (
+      where b.status = 'expired'
+        and exists (select 1 from booking_events x
+                     where x.booking_id = b.id and x.from_status = 'requested' and x.to_status = 'expired')
+    )
+    / nullif(count(*) filter (where b.status <> 'blocked'), 0)
+  , 1) as expiry_rate_pct,
+
+  (percentile_cont(0.5) within group (
+     order by extract(epoch from (r.answered_at - b.created_at)) / 3600.0
+   ) filter (where r.answered_at is not null))::numeric as median_response_hours,
+
+  max(b.updated_at)  as last_booking_activity,
+  greatest(p.updated_at, max(b.updated_at)) as last_activity_at,
+
+  (greatest(p.updated_at, coalesce(max(b.updated_at), p.updated_at))
+     < now() - interval '30 days') as is_stale
+
+from providers p
+left join bookings b  on b.provider_id = p.id
+left join responses r on r.booking_id = b.id
+group by p.id;
+
+revoke select on provider_health from anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- B30 — phone numbers stored as E.164
+--
+-- lib/safe.ts normalizePhone() now does this on every save. This applies
+-- the same rule to rows already written, so the WhatsApp button stops
+-- opening chats in Pakistan for "923 456 789". A value the rule cannot
+-- read is left exactly as it was, for the supplier to correct.
+-- ---------------------------------------------------------------------
+create or replace function normalize_phone_e164(p_raw text)
+returns text language plpgsql immutable as $$
+declare
+  v_digits text := regexp_replace(coalesce(p_raw, ''), '\D', '', 'g');
+  v_plus   boolean := coalesce(p_raw, '') ~ '^\s*\+';
+begin
+  if v_digits = '' then
+    return p_raw;
+  end if;
+  if not v_plus and v_digits like '00%' then
+    v_digits := substr(v_digits, 3);
+  elsif not v_plus and length(v_digits) = 9 then
+    v_digits := '244' || v_digits;
+  elsif not v_plus and not (length(v_digits) = 12 and v_digits like '244%') then
+    return p_raw;
+  end if;
+  if v_digits like '244%' and length(v_digits) <> 12 then
+    return p_raw;
+  end if;
+  if length(v_digits) < 8 or length(v_digits) > 15 then
+    return p_raw;
+  end if;
+  return '+' || v_digits;
+end $$;
+
+update providers
+   set phone = normalize_phone_e164(phone),
+       whatsapp = normalize_phone_e164(whatsapp)
+ where (phone is not null and phone is distinct from normalize_phone_e164(phone))
+    or (whatsapp is not null and whatsapp is distinct from normalize_phone_e164(whatsapp));
+
+-- ─────────────── 0032_media_manager.sql ───────────────
+-- =====================================================================
+-- 0032 — the supplier photo manager (slice 27)
+--
+-- The media table has existed since 0004, but nothing let a supplier put
+-- a row in it: every listing showed a grey placeholder. Slice 27 adds the
+-- upload screen. This migration makes the table safe to hand to end users:
+--
+-- 1. An object key belongs to the provider it is filed under. The upload
+--    route issues keys as "<provider_id>/<uuid>"; the database now refuses
+--    a row that points at another provider's object, so a tampered client
+--    cannot claim somebody else's photograph.
+-- 2. At most 30 photographs per provider, counted under a per-provider
+--    lock so two simultaneous uploads cannot both squeeze past the cap.
+-- 3. A listing with photographs always has exactly one cover: the first
+--    upload becomes the cover, and removing the cover promotes the next.
+-- 4. New uploads go to the end of the order, not to sort_order 0.
+-- 5. Which object a row points at, and whose it is, never change.
+-- 6. The public sees photographs only of a listing the public may see —
+--    the same provider_is_public() test bookings use since 0031, so a
+--    suspended owner's photographs disappear with the listing.
+-- =====================================================================
+
+-- ---- 1. the object key is the provider's own --------------------------
+-- NOT VALID: enforced for every new row, without failing the migration on
+-- a row an administrator inserted by hand before this rule existed.
+alter table media add constraint media_external_id_in_provider_prefix
+  check (starts_with(external_id, provider_id::text || '/')) not valid;
+
+alter table media add constraint media_alt_text_length
+  check (alt_text is null or char_length(alt_text) <= 200) not valid;
+
+-- A video is never the listing's cover; the cards and hero render images.
+alter table media add constraint media_cover_is_image
+  check (not (is_cover and kind <> 'image')) not valid;
+
+-- ---- 2, 3, 4. on insert ------------------------------------------------
+create or replace function media_before_insert()
+returns trigger language plpgsql as $$
+begin
+  -- Serialise inserts for one provider: the count below, the cover choice
+  -- and the next sort_order all read the provider's other rows.
+  perform pg_advisory_xact_lock(hashtextextended('media:' || new.provider_id::text, 0));
+
+  if new.kind = 'image' and (
+    select count(*) from media where provider_id = new.provider_id and kind = 'image'
+  ) >= 30 then
+    raise exception 'photo limit reached for provider %', new.provider_id
+      using errcode = 'check_violation', constraint = 'media_photo_limit';
+  end if;
+
+  if new.kind = 'image' and not exists (
+    select 1 from media where provider_id = new.provider_id and is_cover
+  ) then
+    new.is_cover := true;
+  end if;
+
+  if new.sort_order = 0 then
+    new.sort_order := coalesce(
+      (select max(sort_order) from media where provider_id = new.provider_id), 0
+    ) + 1;
+  end if;
+
+  return new;
+end $$;
+
+create trigger media_00_before_insert
+  before insert on media
+  for each row execute function media_before_insert();
+
+-- ---- 3. removing the cover promotes the next photograph ----------------
+create or replace function media_promote_cover()
+returns trigger language plpgsql as $$
+begin
+  if old.is_cover then
+    update media set is_cover = true
+     where id = (
+       select id from media
+        where provider_id = old.provider_id and kind = 'image'
+        order by sort_order, created_at, id
+        limit 1
+     );
+  end if;
+  return null;
+end $$;
+
+create trigger media_promote_cover
+  after delete on media
+  for each row execute function media_promote_cover();
+
+-- ---- 5. identity columns are fixed --------------------------------------
+create or replace function media_guard_identity()
+returns trigger language plpgsql as $$
+begin
+  if new.provider_id is distinct from old.provider_id
+     or new.external_id is distinct from old.external_id
+     or new.kind        is distinct from old.kind
+     or new.created_at  is distinct from old.created_at then
+    raise exception 'a photograph''s object, owner and kind may not be changed'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end $$;
+
+create trigger media_guard_identity
+  before update on media
+  for each row execute function media_guard_identity();
+
+-- ---- 6. public read follows the listing ---------------------------------
+drop policy media_public_read on media;
+create policy media_public_read on media
+  for select using (
+    provider_is_public(provider_id) or owns_provider(provider_id) or is_admin()
+  );
+
+-- ─────────────── 0033_release_competing_requests.sql ───────────────
+-- =====================================================================
+-- 0033 — release competing requests honestly (slice 28, review C009)
+--
+-- A pending request does not hold a date (spec/states.md). So a supplier
+-- could accept two clients for the same salão and the same day, and both
+-- saw "Aceite — aguarda pagamento" until one of them paid. The other then
+-- sat on a dead booking until it expired 48 hours later, told only that
+-- "nobody acted in time" — which was false; somebody else got the date.
+--
+-- 1. A new terminal state, 'unavailable' ("Data indisponível"): the date
+--    was taken by another booking. Not 'expired' (nobody failed to act),
+--    not 'rejected' or 'cancelled_provider' (the supplier did nothing to
+--    this client, and those count against them in provider_health).
+-- 2. The moment a booking starts holding a venue's space (awaiting_payment,
+--    confirmed or blocked), every overlapping requested/accepted booking
+--    on that space moves to 'unavailable', in the same transaction.
+-- 3. 'unavailable' is set by the database only: no person, admin
+--    included, can set it directly — the same rule as 'expired'. Judged
+--    by an invoker-rights trigger, because bookings_guard_actor is
+--    SECURITY DEFINER and cannot see who is really acting.
+-- 4. Accepting a request for a date that is already held fails with the
+--    same 23P01 as the exclusion constraint, instead of creating a second
+--    "aceite" that can never be confirmed.
+-- 5. The client is told, with a link to the same search on the same date.
+--
+-- Venues only. A service supplier's capacity is a count of overlapping
+-- holds (bookings_enforce_concurrency), so one more hold does not make a
+-- given competing request impossible; the supplier still gets 23P01 if
+-- they try to exceed it.
+-- =====================================================================
+
+-- ---- 1. the state ------------------------------------------------------
+alter table bookings drop constraint bookings_status_check;
+alter table bookings add constraint bookings_status_check check (status in (
+  'requested', 'accepted', 'awaiting_payment', 'confirmed',
+  'completed', 'expired', 'rejected',
+  'cancelled_client', 'cancelled_provider', 'no_show',
+  'blocked', 'unavailable'
+));
+
+create or replace function booking_can_transition(from_status text, to_status text)
+returns boolean language sql immutable as $$
+  select (from_status, to_status) in (
+    ('requested',        'accepted'),
+    ('requested',        'rejected'),
+    ('requested',        'expired'),
+    ('requested',        'cancelled_client'),
+    ('requested',        'unavailable'),
+    ('accepted',         'awaiting_payment'),
+    ('accepted',         'confirmed'),           -- flows with no payment step
+    ('accepted',         'expired'),
+    ('accepted',         'cancelled_client'),
+    ('accepted',         'cancelled_provider'),
+    ('accepted',         'unavailable'),
+    ('awaiting_payment', 'confirmed'),
+    ('awaiting_payment', 'expired'),
+    ('awaiting_payment', 'cancelled_client'),
+    ('awaiting_payment', 'cancelled_provider'),
+    ('confirmed',        'completed'),
+    ('confirmed',        'cancelled_client'),
+    ('confirmed',        'cancelled_provider'),
+    ('confirmed',        'no_show'),
+    ('blocked',          'cancelled_provider')
+  );
+$$;
+
+-- ---- 3. only the database sets it --------------------------------------
+create or replace function bookings_guard_actor()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.status is not distinct from old.status then
+    return new;
+  end if;
+
+  -- 'unavailable' is judged by bookings_guard_unavailable below, not
+  -- here: this function is SECURITY DEFINER, so current_user inside it is
+  -- always its owner and it cannot tell a person from the database.
+  if new.status = 'unavailable' then
+    return new;
+  end if;
+
+  if auth.uid() is null then
+    return new;                              -- service_role: the expiry job
+  end if;
+
+  if new.status = 'expired' then
+    raise exception 'expired is set only by the scheduled job, never a person'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  if is_admin() then
+    return new;
+  end if;
+
+  if new.status in ('accepted', 'rejected', 'awaiting_payment', 'confirmed',
+                     'completed', 'no_show', 'cancelled_provider')
+     and owns_provider(old.provider_id) then
+    return new;
+  end if;
+
+  if new.status = 'cancelled_client' and old.client_id = auth.uid() then
+    return new;
+  end if;
+
+  raise exception 'booking transition to % is not this actor''s to make', new.status
+    using errcode = 'insufficient_privilege';
+end $$;
+
+-- 'unavailable' is derived, never decided: only bookings_release_competitors
+-- writes it. SECURITY INVOKER on purpose — a trigger fires as the
+-- current_user of the statement that caused it, so inside the release
+-- function's UPDATE that is the function's owner (acting_as_end_user() is
+-- false), and for anything a person sends it is authenticated/anon. A
+-- person — admin included — who wants a request gone rejects or cancels
+-- it, attributably.
+create or replace function bookings_guard_unavailable()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'unavailable' and old.status is distinct from 'unavailable'
+     and acting_as_end_user() then
+    raise exception 'unavailable is set only by the database, never a person'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_guard_unavailable
+  before update of status on bookings
+  for each row execute function bookings_guard_unavailable();
+
+-- ---- 2. release the competitors ---------------------------------------
+create or replace function bookings_release_competitors()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.resource_id is null
+     or not new.blocks_calendar
+     or new.status not in ('awaiting_payment', 'confirmed', 'blocked') then
+    return null;
+  end if;
+  -- Only on the transition INTO a hold; confirmed after awaiting_payment
+  -- already released everything when the hold began.
+  if tg_op = 'UPDATE' and old.status in ('awaiting_payment', 'confirmed', 'blocked') then
+    return null;
+  end if;
+
+  -- SKIP LOCKED: a competing row locked right now is being changed by
+  -- another transaction — most likely its own confirmation racing this
+  -- one. Waiting for it would deadlock (each side waits on the other's
+  -- row); skipping it leaves the exclusion constraint to decide that
+  -- race, exactly as before 0033, and the loser is released or expires.
+  update bookings
+     set status = 'unavailable'
+   where id in (
+     select id from bookings
+      where resource_id = new.resource_id
+        and id <> new.id
+        and status in ('requested', 'accepted')
+        and tstzrange(starts_at, ends_at) && tstzrange(new.starts_at, new.ends_at)
+      for update skip locked
+   );
+
+  return null;
+end $$;
+
+create trigger bookings_release_competitors
+  after insert or update of status on bookings
+  for each row execute function bookings_release_competitors();
+
+-- ---- 4. no new "aceite" for a held date --------------------------------
+create or replace function bookings_guard_held_date()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'accepted' and old.status = 'requested'
+     and new.resource_id is not null
+     and not resource_is_free(new.resource_id, new.starts_at, new.ends_at) then
+    raise exception 'that date is already held for this space'
+      using errcode = 'exclusion_violation';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_guard_held_date
+  before update of status on bookings
+  for each row execute function bookings_guard_held_date();
+
+-- ---- 5. tell the client -------------------------------------------------
+alter table notification_outbox drop constraint notification_outbox_kind_check;
+alter table notification_outbox add constraint notification_outbox_kind_check
+  check (kind in (
+    'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
+    'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
+    'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
+    'booking_completed', 'booking_no_show',
+    'provider_verified', 'provider_rejected', 'provider_suspended', 'provider_reinstated',
+    'quote_request_new', 'quote_offer_received',
+    'quote_offer_accepted', 'booking_payment_submitted', 'booking_released_provider',
+    -- new in 0033
+    'booking_unavailable'
+  ));
+
+-- Redefined from 0031 with two changes: the 'unavailable' case, and the
+-- provider's category and location in the context for the search link.
+create or replace function enqueue_booking_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_booking      bookings%rowtype;
+  v_provider     providers%rowtype;
+  v_owner_email  citext;
+  v_client_email citext;
+  v_kind         text;
+  v_to           citext;
+  v_recipient    uuid;
+  v_context      jsonb;
+begin
+  select * into v_booking  from bookings  where id = new.booking_id;
+  select * into v_provider from providers where id = v_booking.provider_id;
+  select email into v_owner_email from profiles where id = v_provider.owner_id;
+  if v_booking.client_id is not null then
+    select email into v_client_email from profiles where id = v_booking.client_id;
+  end if;
+
+  v_context := jsonb_build_object(
+    'booking_id',    v_booking.id,
+    'provider_id',   v_provider.id,
+    'provider_name', v_provider.name,
+    'provider_slug', v_provider.slug,
+    'starts_at',     v_booking.starts_at,
+    'ends_at',       v_booking.ends_at,
+    'from_status',   new.from_status,
+    -- So a client told their date is gone can be sent straight to the
+    -- same search with that date (0033).
+    'category_id',   v_provider.category_id,
+    'location_id',   v_provider.location_id
+  );
+
+  if new.to_status = 'confirmed' then
+    if v_client_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed', v_client_email, v_booking.client_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    if v_owner_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed_provider', v_owner_email, v_provider.owner_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    return null;
+  end if;
+
+  -- A date the supplier had already accepted was released because the
+  -- client did not proceed: the supplier needs to know it is free again.
+  if new.to_status = 'expired' and new.from_status in ('accepted', 'awaiting_payment')
+     and v_owner_email is not null then
+    insert into notification_outbox
+      (kind, to_email, recipient_id, context, source_table, source_id)
+    values
+      ('booking_released_provider', v_owner_email, v_provider.owner_id, v_context,
+       'booking_events', new.id)
+    on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  end if;
+
+  case new.to_status
+    when 'requested'           then v_kind := 'booking_requested';          v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'accepted'             then v_kind := 'booking_accepted';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'awaiting_payment'     then v_kind := 'booking_awaiting_payment';   v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'rejected'             then v_kind := 'booking_rejected';          v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'expired'              then v_kind := 'booking_expired';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'cancelled_client'     then v_kind := 'booking_cancelled_client';  v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'cancelled_provider'   then v_kind := 'booking_cancelled_provider';v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'completed'            then v_kind := 'booking_completed';         v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'no_show'              then v_kind := 'booking_no_show';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'unavailable'          then v_kind := 'booking_unavailable';       v_to := v_client_email; v_recipient := v_booking.client_id;
+    else return null; -- 'blocked': the supplier's own action, nobody to tell
+  end case;
+
+  if v_to is null then
+    return null; -- e.g. a manually-blocked booking has no client to notify
+  end if;
+
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  values (v_kind, v_to, v_recipient, v_context, 'booking_events', new.id)
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+
+  return null;
+end $$;
+
+-- ─────────────── 0034_booking_contacts.sql ───────────────
+-- =====================================================================
+-- 0034 — the two sides of a booking can reach each other (slice 30)
+--
+-- profiles_self_read lets a person read only their own profile. That is
+-- right for a stranger, and it also meant a supplier's booking screen
+-- showed "Cliente" and nothing else — no name, no email, no phone — even
+-- for a confirmed booking. The supplier had no way to call the person who
+-- was about to hold a wedding in their salão.
+--
+-- The policy stays as it is. The supplier learns only what this function
+-- returns, about only their own bookings (CLAUDE.md: "expose the derived
+-- fact through a SECURITY DEFINER function that returns only what [they]
+-- may know"):
+--
+--   - the client's name, always — enough to recognise a request;
+--   - email and phone once the supplier has accepted, at any point, this
+--     booking. Before that, a stream of requests is not a contact list to
+--     harvest; after it, the two of them have business to arrange.
+--
+-- The client's phone is what the booking form now collects (slice 30).
+-- =====================================================================
+
+create or replace function booking_client_contact(p_booking_id uuid)
+returns table (full_name text, email citext, phone text, contact_shared boolean)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select pr.full_name,
+         case when shared then pr.email end,
+         case when shared then pr.phone end,
+         shared
+    from bookings b
+    join profiles pr on pr.id = b.client_id
+    cross join lateral (
+      select exists (
+        select 1 from booking_events be
+         where be.booking_id = b.id
+           and be.to_status in ('accepted', 'awaiting_payment', 'confirmed')
+      ) as shared
+    ) s
+   where b.id = p_booking_id
+     and (owns_provider(b.provider_id) or is_admin());
+$$;
+
+comment on function booking_client_contact is
+  'The client of one booking, as its supplier may see them: the name always, '
+  'email and phone once the supplier has accepted. Nothing for anyone else.';
+
+-- Supabase's default privileges grant EXECUTE on new public functions to
+-- anon as well as public; revoking from public alone leaves anon able to
+-- call it. It would return nothing (owns_provider is false), but a visitor
+-- has no business calling it at all.
+revoke all on function booking_client_contact(uuid) from public;
+revoke all on function booking_client_contact(uuid) from anon;
+grant execute on function booking_client_contact(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Job-only functions were callable by anyone.
+--
+-- 0030 and 0031 wrote "revoke all ... from public; grant ... to
+-- service_role" for the two sweeps the cron job runs. Supabase's default
+-- privileges grant EXECUTE on new functions in public to anon and
+-- authenticated explicitly, so revoking from PUBLIC removed nothing: any
+-- visitor could call them through the API. They only do what the job
+-- does, early — no escalation — but a job's lever is not a public one.
+-- tests/sql/06_function_grants.sql now fails the build if a SECURITY
+-- DEFINER function is callable by anon without being on its allowlist.
+-- ---------------------------------------------------------------------
+revoke execute on function complete_past_bookings()      from anon, authenticated;
+revoke execute on function expire_stale_quote_requests() from anon, authenticated;
+
+-- ─────────────── 0035_payment_terms.sql ───────────────
+-- =====================================================================
+-- 0035 — payment terms on the booking (slice 31, review R019 + R020)
+--
+-- A booking moved to awaiting_payment with no amount, no deposit and no
+-- way to pay: the client's email said "contacte o fornecedor", the
+-- supplier's screen showed no payments at all, and the supplier pressed
+-- "Confirmar pagamento recebido" without seeing the proof the client had
+-- uploaded. total_minor existed (0006) but nothing ever set it.
+--
+-- 1. deposit_minor (the sinal) and payment_instructions join total_minor.
+--    Money is bigint cêntimos, never a float.
+-- 2. The SUPPLIER writes all three exactly once: on the transition that
+--    asks for payment (accepted -> awaiting_payment), or accepted ->
+--    confirmed for a booking with no payment step. Before that there are
+--    no terms; after it they are frozen like every other term (0031). The
+--    client never writes them.
+-- 3. Asking for payment requires a total — "aguarda pagamento" of what?
+-- 4. The awaiting-payment email carries the amounts and instructions.
+--
+-- NGUEZA still never receives, holds or moves money (slice 16). These
+-- columns record what two parties agreed; nothing here pays anyone.
+-- =====================================================================
+
+-- ---- 1. columns ---------------------------------------------------------
+alter table bookings add column deposit_minor bigint check (deposit_minor >= 0);
+alter table bookings add column payment_instructions text
+  check (payment_instructions is null or char_length(payment_instructions) <= 500);
+alter table bookings add constraint bookings_deposit_within_total
+  check (deposit_minor is null or (total_minor is not null and deposit_minor <= total_minor));
+
+-- ---- 2. who may write them, and when ----------------------------------
+create or replace function bookings_guard_columns()
+returns trigger language plpgsql as $$
+declare
+  v_setting_terms boolean;
+begin
+  if not acting_as_end_user() or is_admin() then
+    return new;
+  end if;
+
+  -- The one moment terms may be written: the supplier asking for payment
+  -- (or confirming a booking that has no payment step).
+  v_setting_terms := old.status = 'accepted'
+    and new.status in ('awaiting_payment', 'confirmed')
+    and owns_provider(old.provider_id);
+
+  if new.provider_id     is distinct from old.provider_id
+     or new.client_id    is distinct from old.client_id
+     or new.resource_id  is distinct from old.resource_id
+     or new.service_id   is distinct from old.service_id
+     or new.starts_at    is distinct from old.starts_at
+     or new.ends_at      is distinct from old.ends_at
+     or new.party_size   is distinct from old.party_size
+     or new.currency     is distinct from old.currency
+     or new.policy_snapshot is distinct from old.policy_snapshot
+     or new.created_at   is distinct from old.created_at
+     or (new.expires_at is distinct from old.expires_at and new.status is not distinct from old.status)
+     or (not v_setting_terms and (
+           new.total_minor          is distinct from old.total_minor
+        or new.deposit_minor        is distinct from old.deposit_minor
+        or new.payment_instructions is distinct from old.payment_instructions))
+  then
+    raise exception 'a booking''s terms may not be edited, only moved through its states'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end $$;
+
+-- ---- 3. no "aguarda pagamento" without an amount ------------------------
+create or replace function bookings_require_total()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'awaiting_payment' and old.status is distinct from 'awaiting_payment'
+     and new.total_minor is null then
+    raise exception 'asking for payment needs the agreed total'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_require_total
+  before update of status on bookings
+  for each row execute function bookings_require_total();
+
+-- 0031's insert-time rule still holds: a client's request carries no
+-- total, deposit or instructions of its own.
+create or replace function bookings_set_terms()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if not acting_as_end_user() or is_admin() then
+    return new;
+  end if;
+  new.total_minor := null;
+  new.deposit_minor := null;
+  new.payment_instructions := null;
+  new.currency := 'AOA';
+  if new.status = 'requested' then
+    new.policy_snapshot := (
+      select to_jsonb(cp) from cancellation_policies cp
+       where cp.is_active
+         and (cp.provider_id = new.provider_id or cp.provider_id is null)
+       order by cp.provider_id nulls last
+       limit 1
+    );
+  else
+    new.policy_snapshot := null;               -- a manual block has no client terms
+  end if;
+  return new;
+end $$;
+
+-- ---- 4. the email says how much and how --------------------------------
+-- Redefined from 0033 with the three terms added to the context.
+create or replace function enqueue_booking_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_booking      bookings%rowtype;
+  v_provider     providers%rowtype;
+  v_owner_email  citext;
+  v_client_email citext;
+  v_kind         text;
+  v_to           citext;
+  v_recipient    uuid;
+  v_context      jsonb;
+begin
+  select * into v_booking  from bookings  where id = new.booking_id;
+  select * into v_provider from providers where id = v_booking.provider_id;
+  select email into v_owner_email from profiles where id = v_provider.owner_id;
+  if v_booking.client_id is not null then
+    select email into v_client_email from profiles where id = v_booking.client_id;
+  end if;
+
+  v_context := jsonb_build_object(
+    'booking_id',    v_booking.id,
+    'provider_id',   v_provider.id,
+    'provider_name', v_provider.name,
+    'provider_slug', v_provider.slug,
+    'starts_at',     v_booking.starts_at,
+    'ends_at',       v_booking.ends_at,
+    'from_status',   new.from_status,
+    -- So a client told their date is gone can be sent straight to the
+    -- same search with that date (0033).
+    'category_id',   v_provider.category_id,
+    'location_id',   v_provider.location_id,
+    -- The terms the supplier set when asking for payment (0035), so the
+    -- "aguarda o seu pagamento" email says how much and how.
+    'total_minor',   v_booking.total_minor,
+    'deposit_minor', v_booking.deposit_minor,
+    'payment_instructions', v_booking.payment_instructions
+  );
+
+  if new.to_status = 'confirmed' then
+    if v_client_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed', v_client_email, v_booking.client_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    if v_owner_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed_provider', v_owner_email, v_provider.owner_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    return null;
+  end if;
+
+  -- A date the supplier had already accepted was released because the
+  -- client did not proceed: the supplier needs to know it is free again.
+  if new.to_status = 'expired' and new.from_status in ('accepted', 'awaiting_payment')
+     and v_owner_email is not null then
+    insert into notification_outbox
+      (kind, to_email, recipient_id, context, source_table, source_id)
+    values
+      ('booking_released_provider', v_owner_email, v_provider.owner_id, v_context,
+       'booking_events', new.id)
+    on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  end if;
+
+  case new.to_status
+    when 'requested'           then v_kind := 'booking_requested';          v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'accepted'             then v_kind := 'booking_accepted';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'awaiting_payment'     then v_kind := 'booking_awaiting_payment';   v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'rejected'             then v_kind := 'booking_rejected';          v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'expired'              then v_kind := 'booking_expired';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'cancelled_client'     then v_kind := 'booking_cancelled_client';  v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'cancelled_provider'   then v_kind := 'booking_cancelled_provider';v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'completed'            then v_kind := 'booking_completed';         v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'no_show'              then v_kind := 'booking_no_show';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'unavailable'          then v_kind := 'booking_unavailable';       v_to := v_client_email; v_recipient := v_booking.client_id;
+    else return null; -- 'blocked': the supplier's own action, nobody to tell
+  end case;
+
+  if v_to is null then
+    return null; -- e.g. a manually-blocked booking has no client to notify
+  end if;
+
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  values (v_kind, v_to, v_recipient, v_context, 'booking_events', new.id)
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+
+  return null;
+end $$;
+
+-- ─────────────── 0036_rate_limits.sql ───────────────
+-- =====================================================================
+-- 0036 — rate limits for the forms anyone can submit (slice 33, C001)
+--
+-- Sign-in, sign-up, password reset and the waitlist had no limit of
+-- their own. Supabase Auth's per-IP limit does not help: every request
+-- reaches it from the app server's IP, so one person hammering sign-in
+-- locked out everyone — seen live as "Demasiadas tentativas" after two
+-- real sign-ups (README, Blocked).
+--
+-- A fixed-window counter, keyed by bucket ("signin:ip") and a key the
+-- application has already hashed (never a raw IP or email). Only the
+-- server calls it, as service_role; nobody else can read or write it.
+-- Windows older than a day are pruned by the cron sweep.
+-- =====================================================================
+
+create table rate_limit_hits (
+  bucket        text not null check (char_length(bucket) <= 40),
+  key           text not null check (char_length(key) <= 128),
+  window_start  timestamptz not null,
+  hits          integer not null default 0,
+  primary key (bucket, key, window_start)
+);
+
+-- RLS on, and deliberately no policy: anon and authenticated may do
+-- nothing at all here. The server's service_role bypasses RLS.
+alter table rate_limit_hits enable row level security;
+revoke all on rate_limit_hits from anon, authenticated;
+
+/** Counts one hit and says whether it is still within the limit. */
+create or replace function rate_limit_hit(
+  p_bucket text, p_key text, p_limit integer, p_window_seconds integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_window timestamptz := to_timestamp(
+    floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds);
+  v_hits integer;
+begin
+  insert into rate_limit_hits (bucket, key, window_start, hits)
+  values (p_bucket, p_key, v_window, 1)
+  on conflict (bucket, key, window_start) do update set hits = rate_limit_hits.hits + 1
+  returning hits into v_hits;
+  return v_hits <= p_limit;
+end $$;
+
+create or replace function prune_rate_limits()
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_count integer;
+begin
+  delete from rate_limit_hits where window_start < now() - interval '1 day';
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+
+-- Supabase grants new functions to anon and authenticated explicitly, so
+-- revoking from public alone is not enough (see 0034).
+revoke all on function rate_limit_hit(text, text, integer, integer) from public, anon, authenticated;
+revoke all on function prune_rate_limits() from public, anon, authenticated;
+grant execute on function rate_limit_hit(text, text, integer, integer) to service_role;
+grant execute on function prune_rate_limits() to service_role;
+
+-- ─────────────── 0037_job_runs.sql ───────────────
+-- =====================================================================
+-- 0037 — heartbeats for the scheduled jobs (slice 34, review R070)
+--
+-- Two jobs keep the marketplace honest, driven by a cron container on the
+-- Portainer host (deploy/cron): /api/cron/expire every 5 minutes releases
+-- dates nobody paid for, completes past bookings and expires quotes;
+-- /api/cron/notify every 2 minutes sends every email the system queues.
+-- If that container stopped, dates stayed held and no email went out —
+-- and nothing anywhere would have said so.
+--
+-- Every run is now recorded here. job_health() turns the log into a
+-- verdict that /api/saude serves to an external uptime monitor, and the
+-- admin dashboard shows to a person.
+-- =====================================================================
+
+create table job_runs (
+  id           bigint generated always as identity primary key,
+  job          text not null check (job in ('expire', 'notify')),
+  started_at   timestamptz not null default now(),
+  finished_at  timestamptz,
+  ok           boolean,
+  summary      jsonb not null default '{}',
+  error        text check (error is null or char_length(error) <= 2000)
+);
+
+create index job_runs_job_idx on job_runs (job, started_at desc);
+
+alter table job_runs enable row level security;
+-- Administrators read it; only the service role (the cron routes) writes.
+create policy job_runs_admin_read on job_runs for select using (is_admin());
+revoke insert, update, delete on job_runs from anon, authenticated;
+
+/**
+ * One row per check, healthy or not. Thresholds are three missed ticks:
+ * expire runs every 5 minutes (stale after 15), notify every 2 (after 10).
+ * The outbox check catches the case where the job runs but cannot send —
+ * SMTP down, say — which the heartbeat alone would call healthy.
+ */
+create or replace function job_health()
+returns table (check_name text, healthy boolean, detail text, last_ok_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  with last_ok as (
+    select job, max(finished_at) as at from job_runs where ok group by job
+  ), expected(job, stale_after) as (
+    values ('expire', interval '15 minutes'), ('notify', interval '10 minutes')
+  )
+  select e.job,
+         coalesce(l.at > now() - e.stale_after, false),
+         case when l.at is null then 'nunca correu com sucesso'
+              else 'último sucesso há ' || floor(extract(epoch from (now() - l.at)) / 60)::text || ' min' end,
+         l.at
+    from expected e left join last_ok l on l.job = e.job
+  union all
+  select 'outbox',
+         not exists (select 1 from notification_outbox
+                      where status in ('pending', 'sending') and created_at < now() - interval '15 minutes')
+         and (select count(*) from notification_outbox
+               where status = 'failed' and created_at > now() - interval '1 hour') < 5,
+         (select count(*) from notification_outbox where status in ('pending', 'sending'))::text
+           || ' por enviar, '
+           || (select count(*) from notification_outbox
+                where status = 'failed' and created_at > now() - interval '1 hour')::text
+           || ' falhados na última hora',
+         null
+  order by 1;
+$$;
+
+-- The health endpoint calls it as the service role; admins read it on
+-- their dashboard through the same server code. Nobody calls it directly.
+revoke all on function job_health() from public, anon, authenticated;
+grant execute on function job_health() to service_role;
+
+create or replace function prune_job_runs()
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_count integer;
+begin
+  delete from job_runs where started_at < now() - interval '30 days';
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+revoke all on function prune_job_runs() from public, anon, authenticated;
+grant execute on function prune_job_runs() to service_role;
+
+-- ─────────────── 0038_support_requests.sql ───────────────
+-- =====================================================================
+-- 0038 — a way to ask for help (slice 35, review C006)
+--
+-- There was nowhere to ask NGUEZA for anything: a client whose supplier
+-- went silent, a supplier who could not upload paperwork, someone who
+-- had been asked to pay into a stranger's account. Email addresses were
+-- buried in copy. support_requests is the inbox; every administrator is
+-- emailed when one arrives.
+-- =====================================================================
+
+create table support_requests (
+  id            uuid primary key default gen_random_uuid(),
+  profile_id    uuid references profiles(id) on delete set null,
+  email         citext not null check (char_length(email) <= 254),
+  topic         text not null check (topic in
+                  ('reserva', 'pagamento', 'conta', 'fornecedor', 'fraude', 'outro')),
+  booking_ref   text check (booking_ref is null or booking_ref ~ '^[0-9A-Fa-f]{8}$'),
+  message       text not null check (char_length(message) between 10 and 4000),
+  status        text not null default 'open' check (status in ('open', 'resolved')),
+  created_at    timestamptz not null default now(),
+  resolved_at   timestamptz,
+  resolved_by   uuid references profiles(id)
+);
+
+create index support_requests_open_idx on support_requests (created_at) where status = 'open';
+
+alter table support_requests enable row level security;
+
+-- Anyone may write one — a person locked out of their account most of
+-- all — but only as themselves (or as nobody, signed out), and only open.
+-- No RETURNING from the app: anon has no SELECT here (CLAUDE.md).
+create policy support_requests_insert on support_requests
+  for insert to anon, authenticated with check (
+    status = 'open' and resolved_at is null and resolved_by is null
+    and (profile_id is null or profile_id = auth.uid())
+  );
+create policy support_requests_own_read on support_requests
+  for select using (profile_id = auth.uid() or is_admin());
+create policy support_requests_admin_update on support_requests
+  for update using (is_admin()) with check (is_admin());
+
+-- ---- tell the team ---------------------------------------------------
+alter table notification_outbox drop constraint notification_outbox_kind_check;
+alter table notification_outbox add constraint notification_outbox_kind_check
+  check (kind in (
+    'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
+    'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
+    'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
+    'booking_completed', 'booking_no_show',
+    'provider_verified', 'provider_rejected', 'provider_suspended', 'provider_reinstated',
+    'quote_request_new', 'quote_offer_received',
+    'quote_offer_accepted', 'booking_payment_submitted', 'booking_released_provider',
+    'booking_unavailable',
+    -- new in 0038
+    'support_request_new'
+  ));
+
+create or replace function enqueue_support_request_notification()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  select 'support_request_new', p.email, p.id,
+         jsonb_build_object(
+           'support_request_id', new.id, 'topic', new.topic, 'email', new.email,
+           'booking_ref', new.booking_ref, 'message', left(new.message, 600)),
+         'support_requests', ('x' || substr(md5(new.id::text), 1, 15))::bit(60)::bigint
+    from profiles p
+   where p.role = 'admin' and p.status = 'active'
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  return null;
+end $$;
+
+create trigger support_requests_notify
+  after insert on support_requests
+  for each row execute function enqueue_support_request_notification();
+
+-- ─────────────── 0039_platform_switches.sql ───────────────
+-- =====================================================================
+-- 0039 — kill switches (slice 37, review C004)
+--
+-- In an incident — a scam wave, a payment dispute spreading, a bug that
+-- double-books — the team needs to stop the bleeding in seconds, not in
+-- a deploy. Two switches, flipped from /admin:
+--
+--   bookings_paused  no new booking requests. Enforced HERE, on insert,
+--                    so a form left open in a tab cannot slip one in.
+--                    Existing bookings keep moving through their states.
+--   signups_paused   no new accounts (the sign-up action checks it).
+--
+-- Both carry a message shown to the public while on. Every flip is in
+-- the audit trail, attributed to the administrator who made it.
+-- =====================================================================
+
+create table platform_switches (
+  id          uuid primary key default gen_random_uuid(),
+  key         text not null unique check (key in ('bookings_paused', 'signups_paused')),
+  is_on       boolean not null default false,
+  message     text check (message is null or char_length(message) <= 300),
+  updated_at  timestamptz not null default now()
+);
+
+insert into platform_switches (key) values ('bookings_paused'), ('signups_paused');
+
+alter table platform_switches enable row level security;
+-- The public reads them: the site shows the notice to everyone.
+create policy platform_switches_public_read on platform_switches for select using (true);
+create policy platform_switches_admin_update on platform_switches
+  for update using (is_admin()) with check (is_admin());
+grant select on platform_switches to anon, authenticated;
+revoke insert, delete on platform_switches from anon, authenticated;
+
+create trigger platform_switches_updated_at
+  before update on platform_switches
+  for each row execute function set_updated_at();
+
+alter table audit_log drop constraint audit_log_target_type_check;
+alter table audit_log add constraint audit_log_target_type_check
+  check (target_type in ('provider', 'document', 'profile', 'service', 'report', 'payment', 'switch'));
+
+create trigger platform_switches_audit
+  after update on platform_switches
+  for each row execute function audit_changes('switch', 'is_on', 'message');
+
+-- ---- enforcement: no new requests while paused ------------------------
+create or replace function bookings_guard_paused()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'requested'
+     and exists (select 1 from platform_switches where key = 'bookings_paused' and is_on) then
+    raise exception 'new bookings are paused'
+      using errcode = 'object_not_in_prerequisite_state';   -- 55000
+  end if;
+  return new;
+end $$;
+
+-- A supplier's manual block ('blocked') is not a request and still works:
+-- it is how they keep their calendar true during the pause.
+create trigger bookings_guard_paused
+  before insert on bookings
+  for each row execute function bookings_guard_paused();
+
+-- ─────────────── 0040_admin_notes.sql ───────────────
+-- =====================================================================
+-- 0040 — internal notes for the support console (slice 38, review R040)
+--
+-- Support across a team needs memory: "called the client on Tuesday,
+-- supplier says the transfer never arrived". Notes hang on a booking, a
+-- supplier or a person, are written and read by administrators only, and
+-- are append-only — a note is a record of what someone knew at the time.
+-- =====================================================================
+
+create table admin_notes (
+  id           uuid primary key default gen_random_uuid(),
+  target_type  text not null check (target_type in ('booking', 'provider', 'profile')),
+  target_id    uuid not null,
+  author_id    uuid references profiles(id) on delete set null,
+  body         text not null check (char_length(body) between 1 and 4000),
+  created_at   timestamptz not null default now()
+);
+
+create index admin_notes_target_idx on admin_notes (target_type, target_id, created_at desc);
+
+alter table admin_notes enable row level security;
+create policy admin_notes_admin_read on admin_notes for select using (is_admin());
+create policy admin_notes_admin_insert on admin_notes
+  for insert with check (is_admin() and author_id = auth.uid());
+-- No update or delete policy, for anyone: notes are append-only.
+revoke update, delete on admin_notes from anon, authenticated;
+
+-- ─────────────── 0041_example_profiles.sql ───────────────
+-- =====================================================================
+-- 0041 — example profiles (slice 39)
+--
+-- NGUEZA asked for dummy suppliers so the marketplace does not look empty
+-- while recruitment fills it. Unlabelled, they would mislead: a client
+-- could request a salão that does not exist and wait for an answer that
+-- never comes. So an example profile is:
+--
+--   - flagged (providers.is_demo) and shown as "Perfil de exemplo";
+--   - never bookable — the database refuses the request;
+--   - never matched to a quote request;
+--   - removable in one go (scripts/remove-example-catalogue.sql).
+--
+-- The catalogue itself is seed/demo/10_example_catalogue.sql.
+-- =====================================================================
+
+alter table providers add column is_demo boolean not null default false;
+
+-- The public reads it: cards and pages label example profiles.
+grant select (is_demo) on providers to anon;
+
+create or replace function bookings_guard_demo()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'requested'
+     and exists (select 1 from providers where id = new.provider_id and is_demo) then
+    raise exception 'example profiles cannot be booked'
+      using errcode = 'insufficient_privilege';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_guard_demo
+  before insert on bookings
+  for each row execute function bookings_guard_demo();
+
+-- Redefined from 0030 with one line: examples never match a request.
+create or replace function quote_request_open_and_matches(p_quote_request_id uuid, p_provider_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from quote_requests qr, providers p
+     where qr.id = p_quote_request_id
+       and p.id = p_provider_id
+       and qr.status = 'open'
+       and qr.expires_at > now()
+       and (qr.event_date is null or qr.event_date >= (now() at time zone 'Africa/Luanda')::date)
+       and p.is_published and p.verification_status = 'verified'
+       and not p.is_demo                         -- 0041: an example cannot quote
+       and p.location_id in (select id from location_descendants(qr.location_id))
+       and (
+         p.category_id in (select id from category_descendants(qr.category_id))
+         or exists (
+           select 1 from services sv
+            where sv.provider_id = p.id and sv.is_active
+              and sv.category_id in (select id from category_descendants(qr.category_id))
+         )
+       )
+  );
+$$;
+
+-- ─────────────── 0042_legal_acceptance.sql ───────────────
+-- =====================================================================
+-- 0042 — legal hooks: versioned documents, recorded acceptance, and an
+-- acknowledgement of every booking request (slice 41, review R066/C007)
+--
+-- The legal TEXT is NGUEZA's, with counsel (CLAUDE.md: never automate legal
+-- text). This is the machinery any version of it needs: which version of
+-- which document was in force, and who accepted which version, when, in
+-- what context. A new version is a new row; nothing is ever edited, so the
+-- record of what someone agreed to cannot drift.
+-- =====================================================================
+
+create table legal_documents (
+  id            uuid primary key default gen_random_uuid(),
+  kind          text not null check (kind in ('terms', 'privacy', 'cancellation')),
+  version       text not null check (char_length(version) between 1 and 40),
+  published_at  timestamptz not null default now(),
+  url           text not null check (url like '/%'),
+  unique (kind, version)
+);
+
+-- The documents in force today are the placeholders slice 15 published.
+insert into legal_documents (kind, version, url) values
+  ('terms',        'provisorio-2026-11', '/termos'),
+  ('privacy',      'provisorio-2026-11', '/privacidade'),
+  ('cancellation', 'provisorio-2026-11', '/cancelamento');
+
+alter table legal_documents enable row level security;
+create policy legal_documents_public_read on legal_documents for select using (true);
+create policy legal_documents_admin_insert on legal_documents for insert with check (is_admin());
+grant select on legal_documents to anon, authenticated;
+revoke update, delete on legal_documents from anon, authenticated;
+
+/** The version of each kind in force now: the latest published. */
+create view legal_current as
+  select distinct on (kind) id, kind, version, published_at, url
+    from legal_documents
+   where published_at <= now()
+   order by kind, published_at desc;
+grant select on legal_current to anon, authenticated;
+
+create table legal_acceptances (
+  id           uuid primary key default gen_random_uuid(),
+  profile_id   uuid not null references profiles(id) on delete cascade,
+  document_id  uuid not null references legal_documents(id),
+  context      text not null check (context in ('signup', 'booking')),
+  booking_id   uuid references bookings(id) on delete set null,
+  accepted_at  timestamptz not null default now()
+);
+
+create index legal_acceptances_profile_idx on legal_acceptances (profile_id, accepted_at desc);
+
+alter table legal_acceptances enable row level security;
+create policy legal_acceptances_own_read on legal_acceptances
+  for select using (profile_id = auth.uid() or is_admin());
+-- A person records only their own acceptance, and only of a version that
+-- is in force — not a future draft, not one already replaced.
+create policy legal_acceptances_own_insert on legal_acceptances
+  for insert with check (
+    profile_id = auth.uid()
+    and document_id in (select id from legal_current)
+  );
+revoke update, delete on legal_acceptances from anon, authenticated;
+
+-- ---- the client's acknowledgement of a request -----------------------
+alter table notification_outbox drop constraint notification_outbox_kind_check;
+alter table notification_outbox add constraint notification_outbox_kind_check
+  check (kind in (
+    'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
+    'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
+    'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
+    'booking_completed', 'booking_no_show',
+    'provider_verified', 'provider_rejected', 'provider_suspended', 'provider_reinstated',
+    'quote_request_new', 'quote_offer_received',
+    'quote_offer_accepted', 'booking_payment_submitted', 'booking_released_provider',
+    'booking_unavailable',
+    'support_request_new',
+    -- new in 0042
+    'booking_requested_client'
+  ));
+
+-- Redefined from 0035 with one addition: 'booking_requested_client'.
+create or replace function enqueue_booking_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_booking      bookings%rowtype;
+  v_provider     providers%rowtype;
+  v_owner_email  citext;
+  v_client_email citext;
+  v_kind         text;
+  v_to           citext;
+  v_recipient    uuid;
+  v_context      jsonb;
+begin
+  select * into v_booking  from bookings  where id = new.booking_id;
+  select * into v_provider from providers where id = v_booking.provider_id;
+  select email into v_owner_email from profiles where id = v_provider.owner_id;
+  if v_booking.client_id is not null then
+    select email into v_client_email from profiles where id = v_booking.client_id;
+  end if;
+
+  v_context := jsonb_build_object(
+    'booking_id',    v_booking.id,
+    'provider_id',   v_provider.id,
+    'provider_name', v_provider.name,
+    'provider_slug', v_provider.slug,
+    'starts_at',     v_booking.starts_at,
+    'ends_at',       v_booking.ends_at,
+    'from_status',   new.from_status,
+    -- So a client told their date is gone can be sent straight to the
+    -- same search with that date (0033).
+    'category_id',   v_provider.category_id,
+    'location_id',   v_provider.location_id,
+    -- The terms the supplier set when asking for payment (0035), so the
+    -- "aguarda o seu pagamento" email says how much and how.
+    'total_minor',   v_booking.total_minor,
+    'deposit_minor', v_booking.deposit_minor,
+    'payment_instructions', v_booking.payment_instructions
+  );
+
+  if new.to_status = 'confirmed' then
+    if v_client_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed', v_client_email, v_booking.client_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    if v_owner_email is not null then
+      insert into notification_outbox
+        (kind, to_email, recipient_id, context, source_table, source_id)
+      values
+        ('booking_confirmed_provider', v_owner_email, v_provider.owner_id, v_context,
+         'booking_events', new.id)
+      on conflict (source_table, source_id, kind, recipient_id) do nothing;
+    end if;
+    return null;
+  end if;
+
+  -- The client's own acknowledgement that the request went through (0042):
+  -- before this, only the supplier heard about a new request.
+  if new.to_status = 'requested' and v_client_email is not null then
+    insert into notification_outbox
+      (kind, to_email, recipient_id, context, source_table, source_id)
+    values
+      ('booking_requested_client', v_client_email, v_booking.client_id, v_context,
+       'booking_events', new.id)
+    on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  end if;
+
+  -- A date the supplier had already accepted was released because the
+  -- client did not proceed: the supplier needs to know it is free again.
+  if new.to_status = 'expired' and new.from_status in ('accepted', 'awaiting_payment')
+     and v_owner_email is not null then
+    insert into notification_outbox
+      (kind, to_email, recipient_id, context, source_table, source_id)
+    values
+      ('booking_released_provider', v_owner_email, v_provider.owner_id, v_context,
+       'booking_events', new.id)
+    on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  end if;
+
+  case new.to_status
+    when 'requested'           then v_kind := 'booking_requested';          v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'accepted'             then v_kind := 'booking_accepted';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'awaiting_payment'     then v_kind := 'booking_awaiting_payment';   v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'rejected'             then v_kind := 'booking_rejected';          v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'expired'              then v_kind := 'booking_expired';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'cancelled_client'     then v_kind := 'booking_cancelled_client';  v_to := v_owner_email;  v_recipient := v_provider.owner_id;
+    when 'cancelled_provider'   then v_kind := 'booking_cancelled_provider';v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'completed'            then v_kind := 'booking_completed';         v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'no_show'              then v_kind := 'booking_no_show';           v_to := v_client_email; v_recipient := v_booking.client_id;
+    when 'unavailable'          then v_kind := 'booking_unavailable';       v_to := v_client_email; v_recipient := v_booking.client_id;
+    else return null; -- 'blocked': the supplier's own action, nobody to tell
+  end case;
+
+  if v_to is null then
+    return null; -- e.g. a manually-blocked booking has no client to notify
+  end if;
+
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  values (v_kind, v_to, v_recipient, v_context, 'booking_events', new.id)
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+
+  return null;
+end $$;
+

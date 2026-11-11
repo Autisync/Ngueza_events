@@ -14,6 +14,8 @@ const ERRORS: Record<string, string> = {
   categoryId: 'Escolha uma categoria.',
   locationId: 'Escolha o município.',
   website: 'O endereço do site não parece válido.',
+  phone: 'O telefone não parece válido. Use, por exemplo, 923 456 789.',
+  whatsapp: 'O número de WhatsApp não parece válido. Use, por exemplo, 923 456 789.',
   dados: 'Verifique os dados introduzidos.',
 }
 

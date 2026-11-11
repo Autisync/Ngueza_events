@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { doSignUp } from '../auth-actions'
-import { currentUser, googleAuthorizeUrl } from '@/lib/auth'
+import { currentProfile, currentUser, googleAuthorizeUrl } from '@/lib/auth'
+import { safeNext } from '@/lib/safe'
 import { siteUrl } from '@/lib/env'
 import { GoogleMark } from '../GoogleMark'
 import styles from '../auth.module.css'
+import { pausedNotice } from '@/lib/switches'
 
 export const metadata: Metadata = { title: 'Criar conta', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -15,15 +17,38 @@ const ERRORS: Record<string, string> = {
   email_taken: 'Já existe uma conta com este email. Tente entrar.',
   weak_password: 'Escolha uma palavra-passe mais forte.',
   rate_limited: 'Demasiadas tentativas. Aguarde alguns minutos.',
+  aceitar: 'Para criar conta, confirme que leu os Termos de Utilização e a Política de Privacidade.',
   unknown: 'Não foi possível criar a conta. Tente novamente.',
 }
 
 export default async function CriarConta({
   searchParams,
-}: { searchParams: Promise<{ erro?: string }> }) {
-  const { erro } = await searchParams
-  if (await currentUser()) redirect('/conta')
-  const googleUrl = googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent('/conta')}`)
+}: { searchParams: Promise<{ erro?: string; next?: string }> }) {
+  const { erro, next } = await searchParams
+  const target = safeNext(next)
+  // A valid session whose profile is not active (suspended, deleted, not
+  // yet provisioned): every signed-in page sends it here, so redirecting
+  // back would loop forever between /conta and /entrar.
+  const user = await currentUser()
+  if (user && !(await currentProfile())) {
+    return (
+      <main className={styles.page}>
+        <a className={styles.mark} href="/">NGUEZA</a>
+        <h1 className={styles.title}>Conta indisponível</h1>
+        <p className={styles.lede}>
+          Esta conta não está ativa neste momento. Se acha que é um engano, contacte a NGUEZA.
+        </p>
+        <form action="/sair" method="post">
+          <button className={styles.submit} type="submit">Sair e entrar com outra conta</button>
+        </form>
+      </main>
+    )
+  }
+  if (user) redirect(target)
+  // Kill switch (slice 37): while sign-ups are paused, say so and offer
+  // no way to create an account here — the action refuses it anyway.
+  const paused = await pausedNotice('signups_paused')
+  const googleUrl = paused ? null : googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent(target)}`)
 
   return (
     <main className={styles.page}>
@@ -31,9 +56,10 @@ export default async function CriarConta({
       <h1 className={styles.title}>Criar conta</h1>
       <p className={styles.lede}>Precisa de conta para reservar e para avaliar um serviço.</p>
 
-      {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
+      {erro && erro !== 'pausado' ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
+      {paused ? <p className={styles.alert} role="status">{paused}</p> : null}
 
-      {googleUrl ? (
+      {paused ? null : googleUrl ? (
         <>
           <a className={styles.google} href={googleUrl}>
             <GoogleMark /> Continuar com Google
@@ -42,7 +68,8 @@ export default async function CriarConta({
         </>
       ) : null}
 
-      <form action={doSignUp}>
+      {paused ? null : <form action={doSignUp}>
+        <input type="hidden" name="next" value={target} />
         <label className={styles.field}>
           <span className={styles.label}>Nome</span>
           <input className={styles.input} type="text" name="nome" autoComplete="name" maxLength={120} />
@@ -61,10 +88,18 @@ export default async function CriarConta({
             lembrar — do que uma palavra curta com símbolos.
           </span>
         </label>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 18px', fontSize: '0.9rem' }}>
+          <input type="checkbox" name="aceito" required style={{ marginTop: 3 }} />
+          <span>
+            Li e aceito os <a href="/termos" target="_blank">Termos de Utilização</a> e a{' '}
+            <a href="/privacidade" target="_blank">Política de Privacidade</a>.
+          </span>
+        </label>
         <button className={styles.submit} type="submit">Criar conta</button>
-      </form>
+      </form>}
 
-      <p className={styles.alt}>Já tem conta? <a href="/entrar">Entrar</a></p>
+      <p className={styles.alt}>Já tem conta?{' '}
+        <a href={target === '/conta' ? '/entrar' : `/entrar?next=${encodeURIComponent(target)}`}>Entrar</a></p>
     </main>
   )
 }

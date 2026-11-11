@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { ALLOWED_IMAGE_TYPES, coverImageUrl, imgproxyUrl, presignPut, signImgproxyPath } from '@/lib/media'
+import { ALLOWED_IMAGE_TYPES, coverImageUrl, imgproxyUrl, presignDelete, presignPut, signImgproxyPath } from '@/lib/media'
 
 const KEY = '943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881'
 const SALT = '520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5'
@@ -85,6 +85,31 @@ describe('S3 presigned upload', () => {
 
   it('carries the expiry it was asked for', () => {
     expect(presignPut({ ...base, expiresInSeconds: 60 })).toContain('X-Amz-Expires=60')
+  })
+
+  // Slice 27: the declared size is signed, so storage refuses a body of
+  // any other length and the route's size limit is the size that lands.
+  it('signs content-length when given, in canonical header order', () => {
+    const sized = presignPut({ ...base, contentLength: 1234 })
+    expect(sized).toContain('X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost')
+    expect(sized).not.toBe(presignPut({ ...base, contentLength: 1235 }))
+    expect(sized).not.toBe(presignPut(base))
+  })
+
+  it('leaves content-length unsigned when no size is given', () => {
+    expect(presignPut(base)).toContain('X-Amz-SignedHeaders=content-type%3Bhost')
+  })
+
+  it('refuses a nonsensical length rather than signing it', () => {
+    expect(() => presignPut({ ...base, contentLength: 0 })).toThrow()
+    expect(() => presignPut({ ...base, contentLength: 1.5 })).toThrow()
+  })
+
+  it('signs a DELETE with host only — there is no body to bind', () => {
+    const { contentType: _ignored, ...rest } = base
+    const del = presignDelete(rest)
+    expect(del).toContain('X-Amz-SignedHeaders=host')
+    expect(del).not.toBe(presignPut(base))
   })
 })
 

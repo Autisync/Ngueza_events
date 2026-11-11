@@ -3,8 +3,9 @@
 // and the offers on them.
 import 'server-only'
 
-import { asUser, isCheckViolation, isInsufficientPrivilege } from '@/lib/db'
+import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege } from '@/lib/db'
 import type { Minor } from '@/lib/money'
+import { isUuid } from '@/lib/safe'
 
 /**
  * Quote requests (slice 20) — a client describes what they need once;
@@ -41,7 +42,7 @@ export interface QuoteOffer {
   providerSlug: string
   priceMinor: Minor
   message: string | null
-  status: 'submitted' | 'withdrawn' | 'accepted'
+  status: 'submitted' | 'withdrawn' | 'accepted' | 'declined'
   createdAt: string
 }
 
@@ -185,7 +186,11 @@ export async function matchingOpenRequests(ownerId: string, providerId: string):
   return asUser(ownerId, async (c) => {
     const { rows } = await c.query<any>(
       `${REQUEST_SELECT}
-        where qr.status = 'open'
+        where qr.status = 'open' and qr.expires_at > now()
+          -- Scoped to THIS provider: the read policy only checks that the
+          -- viewer owns some matching provider, so an owner of two
+          -- businesses saw each one's requests in the other's inbox.
+          and quote_request_open_and_matches(qr.id, $1)
           and not exists (
             select 1 from quote_offers qo
              where qo.quote_request_id = qr.id and qo.provider_id = $1 and qo.status = 'submitted'
@@ -259,14 +264,17 @@ export async function withdrawOffer(ownerId: string, offerId: string): Promise<W
   }
 }
 
-export type AcceptOfferOutcome = { ok: true } | { ok: false; reason: 'forbidden' }
+export type AcceptOfferOutcome =
+  | { ok: true; providerSlug: string }
+  | { ok: false; reason: 'forbidden' }
 
 /**
  * The requester taking one live offer: it becomes 'accepted', every
- * other still-live offer on the same request becomes 'withdrawn', and
- * the request itself closes — one statement per table, inside one
- * transaction, so there's no window where a second offer could still
- * be accepted on a request that already has a winner.
+ * other still-live offer on the same request becomes 'declined' (0030 —
+ * it used to read 'withdrawn', which made a losing supplier look as if
+ * they had pulled out), and the request itself closes. The request row
+ * is locked first, so two concurrent accepts on one request cannot both
+ * win, and an expired or already-closed request accepts nothing.
  *
  * Deliberately does not create a booking. See 0029's own migration
  * comment: a quote request never captured which specific resource or
@@ -275,30 +283,74 @@ export type AcceptOfferOutcome = { ok: true } | { ok: false; reason: 'forbidden'
  * already made, rather than guessing.
  */
 export async function acceptOffer(clientId: string, offerId: string): Promise<AcceptOfferOutcome> {
+  if (!isUuid(offerId)) return { ok: false, reason: 'forbidden' }
   try {
-    const accepted = await asUser(clientId, async (c) => {
-      const { rows } = await c.query<{ quote_request_id: string }>(
-        `select quote_request_id from quote_offers where id = $1 and status = 'submitted'`,
+    const slug = await asUser(clientId, async (c) => {
+      const { rows } = await c.query<{ quote_request_id: string; slug: string }>(
+        `select qo.quote_request_id, p.slug
+           from quote_offers qo
+           join quote_requests qr on qr.id = qo.quote_request_id
+           join providers p on p.id = qo.provider_id
+          where qo.id = $1 and qo.status = 'submitted'
+            and qr.status = 'open' and qr.expires_at > now()
+            for update of qr`,
         [offerId],
       )
-      const quoteRequestId = rows[0]?.quote_request_id
-      if (!quoteRequestId) return false
+      const row = rows[0]
+      if (!row) return null
 
+      const won = await c.query(
+        `update quote_offers set status = 'accepted'
+          where id = $1 and status = 'submitted' returning id`,
+        [offerId],
+      )
+      if (won.rowCount !== 1) return null
       await c.query(
-        `update quote_offers
-            set status = case when id = $1 then 'accepted' else 'withdrawn' end
-          where quote_request_id = $2 and status = 'submitted'`,
-        [offerId, quoteRequestId],
+        `update quote_offers set status = 'declined'
+          where quote_request_id = $1 and status = 'submitted'`,
+        [row.quote_request_id],
       )
       await c.query(
         `update quote_requests set status = 'closed', closed_at = now() where id = $1`,
-        [quoteRequestId],
+        [row.quote_request_id],
       )
-      return true
+      return row.slug
     })
-    return accepted ? { ok: true } : { ok: false, reason: 'forbidden' }
+    return slug ? { ok: true, providerSlug: slug } : { ok: false, reason: 'forbidden' }
   } catch (error) {
     if (isInsufficientPrivilege(error)) return { ok: false, reason: 'forbidden' }
     throw error
   }
+}
+
+/**
+ * The price of an offer the viewer accepted from this supplier, for the
+ * "Proposta aceite" note on the supplier page. Read from the database,
+ * never from the URL: the page used to print whatever `?proposta=` said
+ * inside a green confirmation banner, which is a ready-made "pay this
+ * reference" scam on NGUEZA's own domain.
+ */
+export async function acceptedOfferPrice(
+  viewerId: string, offerId: string, providerId: string,
+): Promise<bigint | null> {
+  if (!isUuid(offerId) || !isUuid(providerId)) return null
+  return asUser(viewerId, async (c) => {
+    const { rows } = await c.query<{ price_minor: string }>(
+      `select qo.price_minor
+         from quote_offers qo join quote_requests qr on qr.id = qo.quote_request_id
+        where qo.id = $1 and qo.provider_id = $2 and qo.status = 'accepted'
+          and qr.client_id = $3`,
+      [offerId, providerId, viewerId],
+    )
+    return rows[0] ? BigInt(rows[0].price_minor) : null
+  })
+}
+
+/** Closes open requests past their own deadline or event date. Run by the
+ *  /api/cron/expire sweep; returns how many it closed. */
+export async function expireStaleQuoteRequests(): Promise<number> {
+  return asSystem(async (c) => {
+    const { rows } = await c.query<{ n: number }>(`select expire_stale_quote_requests() as n`)
+    return rows[0]!.n
+  })
 }

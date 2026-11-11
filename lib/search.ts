@@ -13,21 +13,32 @@ import type { Price } from '@/lib/money'
  * slot, so the list never promises something the calendar cannot keep.
  */
 
+/** relevancia: priced first, then by name. preco: cheapest first (price on
+ *  request last). avaliacao: best verified rating first. (slice 42) */
+export type SearchSort = 'relevancia' | 'preco' | 'avaliacao'
+
 export interface SearchQuery {
   categoryId?: string
   locationId?: string
   capacity?: number
   date?: string           // YYYY-MM-DD, Africa/Luanda
   maxPriceMinor?: bigint
+  sort?: SearchSort
   cursor?: Cursor
   limit?: number
 }
 
 /** Keyset, never OFFSET — this is built to hold 100k+ suppliers. */
 export interface Cursor {
+  /** Examples (0041) sort after every real supplier; the cursor carries it. */
+  isDemo?: boolean
   hasPrice: boolean
   name: string
   id: string
+  /** The sort this cursor was made for, and its numeric key (slice 42).
+   *  A cursor from another sort is ignored, never misapplied. */
+  sort?: SearchSort
+  sortNum?: string
 }
 
 export interface SearchHit {
@@ -48,6 +59,10 @@ export interface SearchHit {
   hasPrice: boolean
   ratingAverage: number | null
   reviewCount: number
+  /** An example profile (0041): labelled, never bookable. */
+  isDemo: boolean
+  /** What the price is per: event, day, hour, person (slice 42). */
+  priceUnit: string | null
 }
 
 export interface SearchResult {
@@ -66,6 +81,10 @@ interface Row {
   location_name: string
   capacity: number | null
   cover_image_id: string | null
+  is_demo: boolean
+  price_unit: string | null
+  grp: boolean
+  sort_num: string
   price_mode: Price['mode'] | null
   price_minor: string | null
   price_max_minor: string | null
@@ -98,12 +117,17 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
   const dayStart = query.date ? `${query.date}T00:00:00+01:00` : null
   const dayEnd = query.date ? `${query.date}T23:59:59+01:00` : null
 
+  const sort: SearchSort = query.sort ?? 'relevancia'
+  // A cursor made for a different sort would land mid-list in the wrong
+  // order; start from the top instead.
+  const cursor = query.cursor && (query.cursor.sort ?? 'relevancia') === sort ? query.cursor : undefined
+
   const rows = await asVisitor(async (c) => {
     const { rows } = await c.query<Row>(
       `
       with candidate as (
         select
-          p.id, p.slug, p.name, p.description, p.supplier_type,
+          p.id, p.slug, p.name, p.description, p.supplier_type, p.is_demo,
           cat.name  as category_name,
           loc.name  as location_name,
           r.id      as resource_id,
@@ -114,17 +138,17 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
              join categories cat2 on cat2.id = sv2.category_id
             where sv2.provider_id = p.id and sv2.is_active) as extra_category_names,
           (select round(avg(rv.rating_overall), 1) from reviews rv
-            where rv.provider_id = p.id and rv.status = 'published') as rating_average,
+            where rv.provider_id = p.id and rv.status = 'published' and rv.is_verified) as rating_average,
           (select count(*) from reviews rv
-            where rv.provider_id = p.id and rv.status = 'published')::int as review_count,
-          s.price_mode, s.price_minor, s.price_max_minor
+            where rv.provider_id = p.id and rv.status = 'published' and rv.is_verified)::int as review_count,
+          s.price_mode, s.price_minor, s.price_max_minor, s.price_unit
         from providers p
         join categories cat on cat.id = p.category_id
         join locations  loc on loc.id = p.location_id
         left join resources r
                on r.provider_id = p.id and r.is_active
         left join lateral (
-          select price_mode, price_minor, price_max_minor
+          select price_mode, price_minor, price_max_minor, price_unit
             from services
            where provider_id = p.id and is_active
            order by (price_mode <> 'on_request') desc, price_minor asc nulls last
@@ -147,7 +171,10 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
                     and sv.category_id in (select id from category_descendants($1))
                ))
           and ($2::uuid is null or p.location_id in (select id from location_descendants($2)))
-          and ($3::int  is null or r.capacity is null or r.capacity >= $3)
+          -- A venue space with no stated capacity no longer matches every
+          -- party size; it matches only when nobody asked for a number.
+          -- Service suppliers have no spaces (r.id is null) and still pass.
+          and ($3::int  is null or r.id is null or r.capacity >= $3)
           and ($4::bigint is null or s.price_minor is null or s.price_minor <= $4)
           -- Availability, via resource_is_free (0014).
           --
@@ -166,20 +193,31 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       ranked as (
         select distinct on (id)
           id, slug, name, description, supplier_type, category_name, extra_category_names,
-          location_name, capacity, cover_image_id, price_mode, price_minor, price_max_minor,
-          rating_average, review_count,
+          location_name, capacity, cover_image_id, is_demo, price_mode, price_minor, price_max_minor,
+          price_unit, rating_average, review_count,
           (price_mode is not null and price_mode <> 'on_request') as has_price
         from candidate
         order by id, capacity desc nulls last
+      ),
+      keyed as (
+        -- One key shape for every sort, all ascending (slice 42):
+        -- (is_demo, grp, sort_num, name, id). A tuple comparison against a
+        -- mixed ASC/DESC order silently repeats and skips rows, so "desc"
+        -- sorts are negated rather than reversed.
+        select *,
+          case when $12 = 'avaliacao' then false else not has_price end as grp,
+          case $12
+            when 'preco'     then coalesce(price_minor, 0)::numeric
+            when 'avaliacao' then -(coalesce(rating_average, 0) * 100000 + review_count)
+            else 0
+          end as sort_num
+        from ranked
       )
-      select * from ranked
-       -- Keyset, never OFFSET. The sort is has_price DESC, so the cursor
-       -- compares on (not has_price) to keep every column ascending —
-       -- a plain tuple comparison against a mixed ASC/DESC order silently
-       -- repeats and skips rows.
+      select * from keyed
+       -- Real suppliers always before examples (0041): is_demo leads.
        where ($7::boolean is null
-              or ((not has_price), name, id) > ((not $7::boolean), $8::text, $9::uuid))
-       order by (not has_price) asc, name asc, id asc
+              or (is_demo, grp, sort_num, name, id) > ($11::boolean, $7::boolean, $13::numeric, $8::text, $9::uuid))
+       order by is_demo asc, grp asc, sort_num asc, name asc, id asc
        limit $10
       `,
       [
@@ -189,10 +227,13 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
         query.maxPriceMinor?.toString() ?? null,
         dayStart,
         dayEnd,
-        query.cursor?.hasPrice ?? null,
-        query.cursor?.name ?? null,
-        query.cursor?.id ?? null,
+        cursor ? (sort === 'avaliacao' ? false : !cursor.hasPrice) : null,
+        cursor?.name ?? null,
+        cursor?.id ?? null,
         limit + 1,
+        cursor?.isDemo ?? false,
+        sort,
+        cursor?.sortNum ?? '0',
       ],
     )
     return rows
@@ -219,9 +260,12 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       hasPrice: row.has_price,
       ratingAverage: row.rating_average === null ? null : Number(row.rating_average),
       reviewCount: Number(row.review_count),
+      isDemo: Boolean(row.is_demo),
+      priceUnit: row.price_unit,
     })),
-    nextCursor:
-      hasMore && last ? { hasPrice: last.has_price, name: last.name, id: last.id } : null,
+    nextCursor: hasMore && last
+      ? { isDemo: last.is_demo, hasPrice: last.has_price, name: last.name, id: last.id, sort, sortNum: String(last.sort_num) }
+      : null,
   }
 }
 
@@ -243,6 +287,10 @@ export async function recordSearch(params: {
           location_id: params.query.locationId ?? null,
           capacity: params.query.capacity ?? null,
           date: params.query.date ?? null,
+          // What people are willing to spend is recruitment and pricing
+          // evidence (slice 42); text, because JSON has no bigint.
+          max_price_minor: params.query.maxPriceMinor?.toString() ?? null,
+          sort: params.query.sort ?? 'relevancia',
           result_count: params.resultCount,
         },
       ],

@@ -1,5 +1,6 @@
 import { siteUrl } from '@/lib/env'
 import { formatMinor } from '@/lib/money'
+import { todayInLuanda } from '@/lib/safe'
 
 /**
  * Rendering for the notification outbox (§17).
@@ -17,7 +18,11 @@ export type NotificationKind =
   | 'booking_expired' | 'booking_cancelled_client' | 'booking_cancelled_provider'
   | 'booking_completed' | 'booking_no_show'
   | 'provider_verified' | 'provider_rejected' | 'provider_suspended' | 'provider_reinstated'
-  | 'quote_request_new' | 'quote_offer_received'
+  | 'quote_request_new' | 'quote_offer_received' | 'quote_offer_accepted'
+  | 'booking_payment_submitted' | 'booking_released_provider'
+  | 'booking_unavailable'
+  | 'support_request_new'
+  | 'booking_requested_client'
 
 export interface RenderedMail {
   subject: string
@@ -25,12 +30,20 @@ export interface RenderedMail {
 }
 
 interface BookingContext {
+  booking_id?: string
   provider_id: string
   provider_name: string
   provider_slug: string
   starts_at: string
   ends_at: string
   from_status?: string | null
+  category_id?: string | null
+  location_id?: string | null
+  /** Set by the supplier when asking for payment (0035). jsonb carries
+   *  bigint as a number or string; both are read through BigInt(). */
+  total_minor?: number | string | null
+  deposit_minor?: number | string | null
+  payment_instructions?: string | null
 }
 
 interface ProviderContext {
@@ -47,6 +60,17 @@ interface QuoteRequestContext {
   event_date?: string | null
   capacity?: number | null
   description: string
+}
+
+interface QuoteAcceptedContext {
+  quote_request_id: string
+  offer_id: string
+  provider_id: string
+  provider_name: string
+  price_minor: number | string
+  event_date?: string | null
+  category_name?: string | null
+  location_name?: string | null
 }
 
 interface QuoteOfferContext {
@@ -69,6 +93,11 @@ function when(context: BookingContext): string {
 
 const dashboard = (providerId: string) => `${siteUrl()}/painel/${providerId}`
 const publicPage = (slug: string) => `${siteUrl()}/fornecedor/${slug}`
+/** The absolute link for an email: the same place the inbox opens. */
+const link = (kind: string, c: object) => {
+  const path = notificationPath(kind, c as Record<string, unknown>)
+  return path ? `${siteUrl()}${path}` : null
+}
 
 function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
   switch (kind) {
@@ -80,8 +109,8 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           `Data: ${when(c)}`,
           '',
-          'Aceite ou rejeite a partir do seu painel:',
-          dashboard(c.provider_id),
+          'Aceite ou rejeite aqui:',
+          link(kind, c) ?? dashboard(c.provider_id),
         ].join('\n'),
       }
     case 'booking_accepted':
@@ -92,22 +121,37 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           `Data: ${when(c)}`,
           '',
-          'Veja o perfil e os próximos passos:',
-          publicPage(c.provider_slug),
+          'Veja o próximo passo na página da reserva:',
+          link(kind, c) ?? publicPage(c.provider_slug),
         ].join('\n'),
       }
-    case 'booking_awaiting_payment':
+    case 'booking_awaiting_payment': {
+      // How much and how (slice 31). Older bookings asked for payment
+      // without terms; for those, fall back to "contact the supplier".
+      const total = c.total_minor == null ? null : BigInt(c.total_minor)
+      const deposit = c.deposit_minor == null ? null : BigInt(c.deposit_minor)
+      const booking = c.booking_id ? `${siteUrl()}/reservas/${c.booking_id}` : `${siteUrl()}/reservas`
       return {
         subject: `Aguarda o seu pagamento — ${c.provider_name}`,
         text: [
           `${c.provider_name} confirmou disponibilidade para a sua data e aguarda o pagamento.`,
           '',
           `Data: ${when(c)}`,
+          ...(total === null ? [] : [
+            `Total acordado: ${formatMinor(total)}`,
+            ...(deposit === null ? [] : [`Sinal a pagar agora: ${formatMinor(deposit)}`]),
+          ]),
+          ...(c.payment_instructions ? ['', 'Como pagar:', c.payment_instructions] : []),
           '',
-          'Contacte o fornecedor para combinar o pagamento:',
-          publicPage(c.provider_slug),
+          total === null
+            ? 'Contacte o fornecedor para combinar o pagamento e depois envie o comprovativo:'
+            : 'Paga directamente ao fornecedor. Depois envie o comprovativo na página da reserva:',
+          booking,
+          '',
+          'A NGUEZA nunca lhe pede para pagar para outra conta além da indicada pelo fornecedor.',
         ].join('\n'),
       }
+    }
     case 'booking_confirmed':
       return {
         subject: `Reserva confirmada — ${c.provider_name}`,
@@ -116,7 +160,8 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           '',
           `Data: ${when(c)}`,
           '',
-          publicPage(c.provider_slug),
+          'A página da reserva tem o local, os contactos e a referência:',
+          link(kind, c) ?? publicPage(c.provider_slug),
         ].join('\n'),
       }
     case 'booking_confirmed_provider':
@@ -140,16 +185,22 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           `${siteUrl()}/procurar`,
         ].join('\n'),
       }
-    case 'booking_expired':
+    case 'booking_expired': {
+      // from_status says whose deadline passed. Blaming the supplier for a
+      // client who never paid was wrong half the time.
+      const supplierSilent = !c.from_status || c.from_status === 'requested'
       return {
         subject: `O seu pedido expirou — ${c.provider_name}`,
         text: [
-          `O seu pedido para ${c.provider_name}, em ${when(c)}, expirou sem resposta a tempo.`,
+          supplierSilent
+            ? `O seu pedido para ${c.provider_name}, em ${when(c)}, expirou sem resposta do fornecedor a tempo.`
+            : `A sua reserva com ${c.provider_name}, em ${when(c)}, expirou porque o prazo para avançar com o pagamento terminou.`,
           '',
           'A data voltou a ficar disponível para outros clientes. Pode pedir novamente:',
           publicPage(c.provider_slug),
         ].join('\n'),
       }
+    }
     case 'booking_cancelled_client':
       return {
         subject: `Reserva cancelada pelo cliente — ${c.provider_name}`,
@@ -179,12 +230,74 @@ function bookingMail(kind: NotificationKind, c: BookingContext): RenderedMail {
           'Esperamos que tenha corrido tudo bem.',
         ].join('\n'),
       }
-    case 'booking_no_show':
+    case 'booking_requested_client':
+      // The client's acknowledgement (0042): what they asked for, that it
+      // is not yet a reservation, and where to follow it.
       return {
-        subject: `Cliente não compareceu — ${c.provider_name}`,
+        subject: `Pedido enviado — ${c.provider_name}`,
         text: [
-          `Uma reserva para ${c.provider_name}, em ${when(c)}, foi marcada como não comparecida.`,
-          dashboard(c.provider_id),
+          `Recebemos o seu pedido de reserva para ${c.provider_name}.`,
+          '',
+          `Data: ${when(c)}`,
+          '',
+          'Ainda não é uma reserva: o fornecedor tem até 48 horas para responder, e a data só fica',
+          'guardada para si depois de aceite e paga. Avisamos por email em cada passo.',
+          '',
+          'Acompanhe o pedido aqui:',
+          link(kind, c) ?? `${siteUrl()}/reservas`,
+        ].join('\n'),
+      }
+    case 'booking_unavailable': {
+      // Another booking took the date (0033). Say so plainly — not
+      // "expired", not "rejected" — and hand them the same search on the
+      // same day, which is what they actually need next.
+      const search = new URLSearchParams({ data: todayInLuanda(new Date(c.starts_at)) })
+      if (c.location_id) search.set('zona', c.location_id)
+      if (c.category_id) search.set('categoria', c.category_id)
+      return {
+        subject: `Data indisponível — ${c.provider_name}`,
+        text: [
+          `A data que pediu a ${c.provider_name}, em ${when(c)}, foi reservada por outro cliente.`,
+          '',
+          'O seu pedido foi encerrado e não tem nada a pagar. Estes espaços estão livres nesse dia:',
+          `${siteUrl()}/procurar?${search.toString()}`,
+          '',
+          'Se a data voltar a ficar livre, pode fazer um novo pedido:',
+          publicPage(c.provider_slug),
+        ].join('\n'),
+      }
+    }
+    case 'booking_no_show':
+      // Sent to the CLIENT (0031): the supplier set the status themselves
+      // and does not need telling; the client does, and needs a way to say
+      // it is wrong.
+      return {
+        subject: `Reserva marcada como não comparecida — ${c.provider_name}`,
+        text: [
+          `${c.provider_name} marcou a sua reserva de ${when(c)} como não comparecida.`,
+          '',
+          'Se esteve presente ou se isto não está certo, responda a este email ou contacte a NGUEZA.',
+        ].join('\n'),
+      }
+    case 'booking_payment_submitted':
+      return {
+        subject: `Comprovativo de pagamento recebido — ${c.provider_name}`,
+        text: [
+          `O cliente enviou o comprovativo de pagamento da reserva de ${when(c)}.`,
+          '',
+          'Confirme no seu painel depois de verificar que o valor entrou na sua conta.',
+          'Enquanto o comprovativo estiver em análise, a data continua reservada para este cliente.',
+          link(kind, c) ?? `${dashboard(c.provider_id)}/reservas`,
+        ].join('\n'),
+      }
+    case 'booking_released_provider':
+      return {
+        subject: `Data libertada — ${c.provider_name}`,
+        text: [
+          `A reserva de ${when(c)} expirou porque o cliente não avançou com o pagamento a tempo.`,
+          '',
+          'A data voltou a ficar disponível no seu calendário.',
+          link(kind, c) ?? `${dashboard(c.provider_id)}/reservas`,
         ].join('\n'),
       }
     default:
@@ -278,6 +391,24 @@ function quoteMail(kind: NotificationKind, context: unknown): RenderedMail {
         ].filter((line): line is string => line !== null).join('\n'),
       }
     }
+    case 'quote_offer_accepted': {
+      const c = context as QuoteAcceptedContext
+      const when = c.event_date
+        ? new Date(c.event_date).toLocaleDateString('pt-PT', { timeZone: 'Africa/Luanda', dateStyle: 'long' })
+        : null
+      return {
+        subject: `Proposta aceite — ${c.provider_name}`,
+        text: [
+          `Um cliente aceitou a sua proposta de ${formatMinor(BigInt(c.price_minor))}.`,
+          '',
+          c.category_name && c.location_name ? `Pedido: ${c.category_name} em ${c.location_name}` : null,
+          when ? `Data do evento: ${when}` : null,
+          '',
+          'O cliente vai agora pedir a reserva na sua página. Acompanhe os pedidos no seu painel:',
+          link(kind, c) ?? `${dashboard(c.provider_id)}/reservas`,
+        ].filter((line): line is string => line !== null).join('\n'),
+      }
+    }
     default:
       throw new Error(`quoteMail: unhandled kind ${String(kind)}`)
   }
@@ -287,14 +418,32 @@ const BOOKING_KINDS = new Set<NotificationKind>([
   'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
   'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
   'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
-  'booking_completed', 'booking_no_show',
+  'booking_completed', 'booking_no_show', 'booking_payment_submitted', 'booking_released_provider',
+  'booking_unavailable', 'booking_requested_client',
 ])
 
-const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received'])
+const QUOTE_KINDS = new Set<NotificationKind>(['quote_request_new', 'quote_offer_received', 'quote_offer_accepted'])
 
 /** Turns one outbox row's `kind` and `context` into a subject and body. */
 export function render(kind: string, context: Record<string, unknown>): RenderedMail {
   const k = kind as NotificationKind
+  if (k === 'support_request_new') {
+    // To every administrator (0038). The person's own words, quoted, so
+    // the team can triage from the email without opening the admin.
+    const c = context as { topic?: string; email?: string; booking_ref?: string | null; message?: string }
+    return {
+      subject: `Pedido de ajuda — ${c.topic ?? 'outro'}${c.booking_ref ? ` · ref. ${c.booking_ref}` : ''}`,
+      text: [
+        `De: ${c.email ?? '—'}`,
+        `Assunto: ${c.topic ?? '—'}${c.booking_ref ? ` · reserva ${c.booking_ref}` : ''}`,
+        '',
+        ...(c.message ?? '').split('\n').map((l) => `> ${l}`),
+        '',
+        'Responder e marcar como resolvido:',
+        `${siteUrl()}/admin/apoio`,
+      ].join('\n'),
+    }
+  }
   if (QUOTE_KINDS.has(k)) return quoteMail(k, context)
 
   // Every booking/provider template names the supplier, so this one
@@ -308,4 +457,43 @@ export function render(kind: string, context: Record<string, unknown>): Rendered
 
   if (BOOKING_KINDS.has(k)) return bookingMail(k, context as unknown as BookingContext)
   return providerMail(k, context as unknown as ProviderContext)
+}
+
+
+// ---------------------------------------------------------------------
+// Where each notification takes its reader (slice 36). One answer for the
+// email link and the in-app inbox, so they can never disagree: the screen
+// where the person acts on it, not a generic dashboard or a public page.
+// ---------------------------------------------------------------------
+const TO_SUPPLIER = new Set<string>([
+  'booking_requested', 'booking_confirmed_provider', 'booking_cancelled_client',
+  'booking_payment_submitted', 'booking_released_provider',
+])
+
+/** A site-relative path, or null when there is nothing to open. */
+export function notificationPath(kind: string, context: Record<string, unknown>): string | null {
+  const c = context as {
+    booking_id?: string; provider_id?: string; provider_slug?: string; support_request_id?: string
+  }
+  if (kind.startsWith('booking_') && c.booking_id) {
+    if (TO_SUPPLIER.has(kind)) {
+      return c.provider_id ? `/painel/${c.provider_id}/reservas/${c.booking_id}` : null
+    }
+    return `/reservas/${c.booking_id}`
+  }
+  switch (kind) {
+    case 'provider_verified': case 'provider_rejected':
+    case 'provider_suspended': case 'provider_reinstated':
+      return c.provider_id ? `/painel/${c.provider_id}` : null
+    case 'quote_request_new':
+      return c.provider_id ? `/painel/${c.provider_id}/pedidos` : '/painel'
+    case 'quote_offer_received':
+      return '/conta/pedidos'
+    case 'quote_offer_accepted':
+      return c.provider_id ? `/painel/${c.provider_id}/reservas` : '/painel'
+    case 'support_request_new':
+      return '/admin/apoio'
+    default:
+      return null
+  }
 }

@@ -45,6 +45,7 @@ async function options(): Promise<{ categories: Option[]; municipalities: Option
 const ERRORS: Record<string, string> = {
   email: 'Escreva um endereço de email válido.',
   consentimento: 'Precisamos da sua autorização para lhe enviar novidades.',
+  limite: 'Recebemos muitos pedidos deste endereço. Tente novamente daqui a uma hora.',
 }
 
 export default async function Waitlist({
@@ -201,7 +202,7 @@ export default async function Waitlist({
           <p>
             NGUEZA · Luanda, Angola ·{' '}
             <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a>
+            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
           </p>
         </footer>
       </div>

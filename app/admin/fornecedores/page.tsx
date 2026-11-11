@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, verificationQueue } from '@/lib/admin'
 import { Chrome } from '../Chrome'
 import styles from '../admin.module.css'
@@ -31,7 +31,7 @@ function daysWaiting(updatedAt: string): string {
 export default async function Fornecedores({
   searchParams,
 }: { searchParams: Promise<{ estado?: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { estado } = await searchParams
   const status = FILTERS.some((f) => f.key === estado) ? estado! : 'pending'
 

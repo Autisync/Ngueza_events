@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { render } from '@/lib/notify'
+import { notificationPath, render } from '@/lib/notify'
 
 /**
  * Pure rendering — no database, no mailer. What lib/notifications.ts
@@ -21,7 +21,50 @@ beforeEach(() => {
   delete process.env.VERCEL_PROJECT_PRODUCTION_URL
 })
 
+describe('help requests (slice 35)', () => {
+  it('quotes the person\'s own words to the team, with topic, reference and a link', () => {
+    const mail = render('support_request_new', {
+      topic: 'fraude', email: 'ana@exemplo.ao', booking_ref: '81A0F3C2',
+      message: 'Pediram-me outra conta.\nCom pressa.',
+    })
+    expect(mail.subject).toBe('Pedido de ajuda — fraude · ref. 81A0F3C2')
+    expect(mail.text).toContain('De: ana@exemplo.ao')
+    expect(mail.text).toContain('> Pediram-me outra conta.\n> Com pressa.')
+    expect(mail.text).toContain('/admin/apoio')
+  })
+})
+
 describe('booking notifications', () => {
+  it('tells the client how much to pay and how, when the supplier set terms (slice 31)', () => {
+    const mail = render('booking_awaiting_payment', {
+      ...BOOKING_CONTEXT, booking_id: 'b1',
+      total_minor: 180000000, deposit_minor: '54000000', payment_instructions: 'IBAN AO06 0000',
+    })
+    expect(mail.text).toMatch(/Total acordado: 1\s800\s000,00\sKz/)
+    expect(mail.text).toMatch(/Sinal a pagar agora: 540\s000,00\sKz/)
+    expect(mail.text).toContain('Como pagar:\nIBAN AO06 0000')
+    expect(mail.text).toContain('/reservas/b1')
+  })
+
+  it('falls back to "contact the supplier" for a booking with no terms', () => {
+    const mail = render('booking_awaiting_payment', { ...BOOKING_CONTEXT, booking_id: 'b1' })
+    expect(mail.text).toContain('Contacte o fornecedor')
+    expect(mail.text).not.toContain('Total acordado')
+  })
+
+  it('tells a displaced client the date went to someone else, with the same-day search (0033)', () => {
+    const mail = render('booking_unavailable', {
+      ...BOOKING_CONTEXT, category_id: 'cat-1', location_id: 'loc-1',
+      // 23:30 UTC is already the next day in Luanda (UTC+1).
+      starts_at: '2027-04-01T23:30:00Z',
+    })
+    expect(mail.subject).toContain('Data indisponível')
+    expect(mail.text).toContain('reservada por outro cliente')
+    expect(mail.text).toContain('não tem nada a pagar')
+    expect(mail.text).toContain('/procurar?data=2027-04-02&zona=loc-1&categoria=cat-1')
+    expect(mail.text).not.toMatch(/expirou|rejeit/i)
+  })
+
   it('tells the supplier a request arrived, with a link to their dashboard', () => {
     const mail = render('booking_requested', BOOKING_CONTEXT)
     expect(mail.subject).toContain('Salão Horizonte')
@@ -59,12 +102,20 @@ describe('booking notifications', () => {
     expect(mail.text).not.toContain('/procurar')
   })
 
+  it('says whose deadline passed when a booking expires', () => {
+    const unanswered = render('booking_expired', { ...BOOKING_CONTEXT, from_status: 'requested' })
+    expect(unanswered.text).toContain('sem resposta do fornecedor')
+    const unpaid = render('booking_expired', { ...BOOKING_CONTEXT, from_status: 'awaiting_payment' })
+    expect(unpaid.text).toContain('prazo para avançar com o pagamento')
+    expect(unpaid.text).not.toContain('sem resposta do fornecedor')
+  })
+
   it('renders every booking kind without throwing', () => {
     const kinds = [
       'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
       'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
       'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
-      'booking_completed', 'booking_no_show',
+      'booking_completed', 'booking_no_show', 'booking_payment_submitted', 'booking_released_provider',
     ]
     for (const kind of kinds) {
       const mail = render(kind, BOOKING_CONTEXT)
@@ -133,6 +184,15 @@ describe('quote request notifications (slice 20)', () => {
     expect(mail.text).not.toContain('Capacidade:')
   })
 
+  it('tells the winning supplier their offer was accepted', () => {
+    const mail = render('quote_offer_accepted', {
+      quote_request_id: 'q', offer_id: 'o', provider_id: 'p1', provider_name: 'Salão X',
+      price_minor: 18000000, event_date: '2026-12-15', category_name: 'Salões', location_name: 'Talatona',
+    })
+    expect(mail.subject).toContain('Proposta aceite')
+    expect(mail.text).toContain('/painel/p1/reservas')
+  })
+
   it('tells the requester about a new offer, with the price in Kz', () => {
     const mail = render('quote_offer_received', OFFER_CONTEXT)
     expect(mail.subject).toContain('Salão Horizonte')
@@ -152,5 +212,52 @@ describe('links use the configured site origin', () => {
     process.env.NEXT_PUBLIC_SITE_URL = 'https://ngueza.com'
     const mail = render('booking_requested', BOOKING_CONTEXT)
     expect(mail.text).toContain('https://ngueza.com/painel/p1')
+  })
+})
+
+describe('where a notification takes its reader (slice 36)', () => {
+  const ctx = { booking_id: 'b1', provider_id: 'p1', provider_slug: 's', provider_name: 'X',
+                starts_at: '2027-04-01T09:00:00Z', ends_at: '2027-04-01T20:00:00Z' }
+
+  it('sends the supplier to the booking that needs them, not the dashboard', () => {
+    for (const k of ['booking_requested', 'booking_payment_submitted', 'booking_cancelled_client',
+                     'booking_confirmed_provider', 'booking_released_provider']) {
+      expect(notificationPath(k, ctx)).toBe('/painel/p1/reservas/b1')
+    }
+  })
+
+  it('sends the client to their own booking page', () => {
+    for (const k of ['booking_accepted', 'booking_awaiting_payment', 'booking_confirmed',
+                     'booking_rejected', 'booking_expired', 'booking_unavailable', 'booking_no_show']) {
+      expect(notificationPath(k, ctx)).toBe('/reservas/b1')
+    }
+  })
+
+  it('knows the non-booking kinds, and says null rather than guessing', () => {
+    expect(notificationPath('provider_verified', ctx)).toBe('/painel/p1')
+    expect(notificationPath('quote_offer_received', {})).toBe('/conta/pedidos')
+    expect(notificationPath('quote_request_new', { provider_id: 'p1' })).toBe('/painel/p1/pedidos')
+    expect(notificationPath('support_request_new', {})).toBe('/admin/apoio')
+    expect(notificationPath('booking_requested', { provider_id: 'p1' })).toBeNull()
+    expect(notificationPath('qualquer', ctx)).toBeNull()
+  })
+
+  it('puts the same link in the email', () => {
+    expect(render('booking_requested', ctx).text).toContain('/painel/p1/reservas/b1')
+    expect(render('booking_accepted', ctx).text).toContain('/reservas/b1')
+    expect(render('booking_confirmed', ctx).text).toContain('/reservas/b1')
+    expect(render('booking_payment_submitted', ctx).text).toContain('/painel/p1/reservas/b1')
+  })
+})
+
+describe('the client\'s acknowledgement of a request (slice 41)', () => {
+  it('says it is not yet a reservation, and links to the booking', () => {
+    const mail = render('booking_requested_client', {
+      booking_id: 'b9', provider_id: 'p1', provider_slug: 's', provider_name: 'Salão X',
+      starts_at: '2027-04-01T09:00:00Z', ends_at: '2027-04-01T20:00:00Z',
+    })
+    expect(mail.subject).toBe('Pedido enviado — Salão X')
+    expect(mail.text).toContain('Ainda não é uma reserva')
+    expect(mail.text).toContain('/reservas/b9')
   })
 })

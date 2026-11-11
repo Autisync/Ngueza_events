@@ -2,7 +2,7 @@
 // ERROR, not a code-review question. Writes and reads reviews.
 import 'server-only'
 
-import { asUser, asVisitor, isAlreadyExists } from '@/lib/db'
+import { asUser, asVisitor, isAlreadyExists, isInsufficientPrivilege } from '@/lib/db'
 
 /**
  * Reviews (§14, §30).
@@ -37,7 +37,7 @@ export interface NewReview {
 
 export type CreateOutcome =
   | { ok: true; reviewId: string }
-  | { ok: false; reason: 'already_reviewed' }
+  | { ok: false; reason: 'already_reviewed' | 'not_allowed' }
 
 /** A client reviewing their own completed booking. `bookingId` is
  *  required here — see the module comment for why. */
@@ -63,6 +63,9 @@ export async function createReview(authorId: string, input: NewReview): Promise<
   } catch (error) {
     // reviews_one_per_booking_idx — one review per booking, ever.
     if (isAlreadyExists(error)) return { ok: false, reason: 'already_reviewed' }
+    // reviews_author_insert (0031): someone else's booking, or the
+    // business reviewing itself.
+    if (isInsufficientPrivilege(error)) return { ok: false, reason: 'not_allowed' }
     throw error
   }
 }

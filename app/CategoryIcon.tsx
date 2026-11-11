@@ -1,9 +1,9 @@
 import type { ReactElement } from 'react'
 import { coverImageUrl } from '@/lib/media'
 
-// Curated Pexels photos (public/categories/<slug>.jpg, Pexels License —
-// free for commercial use, no attribution required), cropped to 192x192
-// and compressed to a few KB each — this is what a category shows until
+// Curated Pexels photos (public/categories/<slug>.webp, Pexels License —
+// free for commercial use, no attribution required), 128x128 WebP at
+// q72, about 3KB each (they were 192px JPEGs, ~10KB each) — this is what a category shows until
 // real verified supply exists for it. Presentational lookup, same rule
 // as everything else here: a slug missing from this set is not an
 // error, it just means CategoryIcon's line-art mark instead.
@@ -38,7 +38,11 @@ const STATIC_PHOTO_SLUGS = new Set([
  *      whether it happens to have a photo (§6, §44).
  */
 export function CategoryThumb({ slug, coverImageId }: { slug: string; coverImageId: string | null }) {
-  const photoUrl = coverImageUrl(coverImageId, 'thumb') ?? (STATIC_PHOTO_SLUGS.has(slug) ? `/categories/${slug}.jpg` : null)
+  // 128px WebP, ~3KB each: shown at 64px, and the eight in the rail load
+  // before the homepage's first paint, so their bytes count against its
+  // LCP on a throttled phone (the 192px JPEGs cost ~80KB and pushed it
+  // over the 2.5s budget).
+  const photoUrl = coverImageUrl(coverImageId, 'thumb') ?? (STATIC_PHOTO_SLUGS.has(slug) ? `/categories/${slug}.webp` : null)
   if (!photoUrl) return <CategoryIcon slug={slug} />
   // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL or a static /public asset, neither of which next/image's optimizer adds anything for here
   return <img src={photoUrl} alt="" loading="lazy" decoding="async" />

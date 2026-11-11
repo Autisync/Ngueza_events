@@ -1,12 +1,17 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { coverImageUrl } from '@/lib/media'
-import { formatPrice } from '@/lib/money'
+import { formatMinor, formatPrice } from '@/lib/money'
 import { availability, getProvider, recordProviderView } from '@/lib/provider'
 import { providerReviews } from '@/lib/reviews'
+import { acceptedOfferPrice } from '@/lib/quotes'
 import { isCrawler, sessionId } from '@/lib/session'
 import { currentProfile } from '@/lib/auth'
 import { doRequestBooking } from '@/app/booking-actions'
+import { publicPolicy } from '@/lib/cancellation-policy'
+import { pausedNotice } from '@/lib/switches'
+import { jsonForScript, todayInLuanda } from '@/lib/safe'
+import { formatRating, relativeTierSteps, reviewCountLabel } from '@/lib/booking-labels'
 import { PhoneLink } from './PhoneLink'
 import styles from './provider.module.css'
 
@@ -37,6 +42,8 @@ export async function generateMetadata({
       provider.description ??
       `${provider.categoryName} em ${where}. Veja preços, capacidade e datas disponíveis.`,
     alternates: { canonical: `/fornecedor/${provider.slug}` },
+    // An example profile is not a business a search engine should list.
+    ...(provider.isDemo ? { robots: { index: false, follow: true } } : {}),
   }
 }
 
@@ -44,7 +51,7 @@ export default async function ProviderPage({
   params, searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ erro?: string; proposta?: string }>
+  searchParams: Promise<{ erro?: string; oferta?: string }>
 }) {
   const { slug } = await params
   const [provider, flags, profile] = await Promise.all([
@@ -53,6 +60,9 @@ export default async function ProviderPage({
   if (!provider) notFound()
 
   const reviews = await providerReviews(provider.id)
+  const acceptedPrice = profile && flags.oferta
+    ? await acceptedOfferPrice(profile.id, flags.oferta, provider.id)
+    : null
 
   // Crawlers must reach this page (§50) but must not inflate a supplier's
   // view count, which is a business signal rather than a traffic number.
@@ -60,12 +70,23 @@ export default async function ProviderPage({
     await recordProviderView(provider.id, await sessionId())
   }
 
-  const today = new Date()
-  const days = await availability(provider.id, today, 28)
-  const firstResource = provider.resources[0]
-  const calendar = firstResource ? days.filter((d) => d.resourceId === firstResource.id) : []
-  const heroPhoto = provider.photos[0]
-  const heroUrl = coverImageUrl(heroPhoto?.externalId ?? null, 'hero')
+  const [days, policy, bookingsPaused] = await Promise.all([
+    availability(provider.id, todayInLuanda(), 28),
+    publicPolicy(provider.id),
+    pausedNotice('bookings_paused'),
+  ])
+  // One calendar per space: a two-salão venue used to show only the first,
+  // so a free second room looked unavailable.
+  const calendars = provider.resources.map((r) => ({
+    resource: r,
+    days: days.filter((d) => d.resourceId === r.id),
+  }))
+  // Cover first (lib/provider.ts orders them). coverImageUrl() is null
+  // when media is not configured, and then the placeholder shows instead.
+  const gallery = provider.photos.flatMap((photo) => {
+    const url = coverImageUrl(photo.externalId, 'hero')
+    return url ? [{ ...photo, url }] : []
+  })
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -96,15 +117,38 @@ export default async function ProviderPage({
 
   return (
     <main>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      {provider.isDemo ? null : (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonForScript(jsonLd) }}
+        />
+      )}
 
       <div className={styles.hero}>
-        {heroUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
-          <img className={styles.heroImg} src={heroUrl} alt={heroPhoto?.altText ?? ''} />
+        {gallery.length > 0 ? (
+          // Swipe on a phone, scroll on a trackpad — CSS scroll-snap, no
+          // script. The first photo is the LCP element and loads at high
+          // priority; the rest are lazy, which keeps them off the first
+          // paint (browsers still prefetch near neighbours, so this is
+          // ordering, not a data saving).
+          <ul className={styles.gallery} aria-label={`Fotografias de ${provider.name}`}
+              // Keyboard users scroll it with the arrow keys once focused.
+              tabIndex={gallery.length > 1 ? 0 : undefined}>
+            {gallery.map((photo, i) => (
+              <li className={styles.slide} key={photo.externalId}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise */}
+                <img className={styles.heroImg} src={photo.url}
+                     alt={photo.altText ?? `${provider.name} — fotografia ${i + 1}`}
+                     loading={i === 0 ? 'eager' : 'lazy'}
+                     fetchPriority={i === 0 ? 'high' : undefined}
+                     decoding="async" />
+                {gallery.length > 1 ? (
+                  <span className={styles.slideCount}>{i + 1} / {gallery.length}</span>
+                ) : null}
+                {photo.altText ? <span className={styles.slideCaption}>{photo.altText}</span> : null}
+              </li>
+            ))}
+          </ul>
         ) : (
           <svg className={styles.heroIcon} width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
             <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -112,16 +156,6 @@ export default async function ProviderPage({
             <path d="M21 15l-5-5-9 9" />
           </svg>
         )}
-        {provider.photos.length > 1 ? (
-          <div className={styles.heroDots}>
-            {provider.photos.map((photo, i) => (
-              <span
-                className={i === 0 ? `${styles.heroDot} ${styles.heroDotActive}` : styles.heroDot}
-                key={photo.externalId}
-              />
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <section className={styles.top}>
@@ -150,13 +184,22 @@ export default async function ProviderPage({
           {/* Reviews are necessarily empty at launch, so credibility comes
               from what exists on day one: verification, declared history,
               and a complete profile. Each is labelled for what it is. */}
+          {provider.isDemo ? (
+            <p style={{ margin: '12px 0 0', padding: '8px 12px', borderRadius: 8, fontSize: '0.88rem',
+                        background: 'var(--aviso-fundo)', color: 'var(--aviso)', display: 'inline-block' }}>
+              Perfil de exemplo — mostra como a NGUEZA funciona. Não é um fornecedor real.
+            </p>
+          ) : null}
           <div className={styles.seals}>
             {provider.verifiedAt ? (
-              <span className={`${styles.seal} ${styles.sealStrong}`}>✓ Fornecedor verificado</span>
+              <a className={`${styles.seal} ${styles.sealStrong}`} href="/ajuda#verificado"
+                 title="O que quer dizer «verificado»" style={{ textDecoration: 'none' }}>
+                ✓ Fornecedor verificado <span aria-hidden="true" style={{ opacity: 0.6 }}>ⓘ</span>
+              </a>
             ) : null}
             {provider.reviewCount > 0 ? (
               <span className={styles.seal}>
-                ★ {provider.ratingAverage} · {provider.reviewCount} avaliações
+                ★ {formatRating(provider.ratingAverage ?? 0)} · {reviewCountLabel(provider.reviewCount)}
               </span>
             ) : (
               <span className={`${styles.seal} ${styles.sealQuiet}`}>Ainda sem avaliações</span>
@@ -196,6 +239,8 @@ export default async function ProviderPage({
                       {UNITS[s.priceUnit] ?? s.priceUnit}
                       {s.maxCapacity ? ` · até ${s.maxCapacity} pessoas` : ''}
                     </p>
+                    {/* What the price covers, in the supplier's words (slice 29). */}
+                    {s.description ? <p className={styles.svcDesc}>{s.description}</p> : null}
                   </div>
                   <span
                     className={
@@ -210,23 +255,29 @@ export default async function ProviderPage({
           )}
         </section>
 
-        {provider.supplierType === 'venue' && firstResource ? (
+        {provider.supplierType === 'venue' && calendars.length > 0 ? (
           <section className={styles.sec}>
-            <h2 className={styles.h}>
-              Disponibilidade — {firstResource.name}
-              {firstResource.capacity ? ` (até ${firstResource.capacity} pessoas)` : ''}
-            </h2>
-            <div className={styles.cal}>
-              {calendar.map((d) => (
-                <span
-                  key={d.date}
-                  className={`${styles.day} ${d.free ? styles.free : styles.busy}`}
-                  title={d.date}
-                >
-                  {d.date.slice(-2)}
-                </span>
-              ))}
-            </div>
+            <h2 className={styles.h}>Disponibilidade nos próximos 28 dias</h2>
+            {calendars.map(({ resource, days: cal }) => (
+              <div key={resource.id} style={{ marginBottom: 18 }}>
+                {calendars.length > 1 || resource.capacity ? (
+                  <p className={styles.p} style={{ margin: '0 0 8px', fontWeight: 600 }}>
+                    {resource.name}{resource.capacity ? ` — até ${resource.capacity} pessoas` : ''}
+                  </p>
+                ) : null}
+                <div className={styles.cal}>
+                  {cal.map((d) => (
+                    <span
+                      key={d.date}
+                      className={`${styles.day} ${d.free ? styles.free : styles.busy}`}
+                      title={`${d.date.split('-').reverse().join('/')} — ${d.free ? 'livre' : 'ocupado'}`}
+                    >
+                      {d.date.slice(-2)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
             <p className={styles.legend}>
               <span>
                 <i className={styles.dot} style={{ background: 'var(--bom)' }} />
@@ -242,13 +293,13 @@ export default async function ProviderPage({
 
         <section className={styles.sec} id="reservar">
           <h2 className={styles.h}>Solicitar reserva</h2>
-          {flags.proposta ? (
+          {acceptedPrice !== null ? (
             <p className={styles.svcPriceQuiet} style={{
               color: 'var(--bom)', background: 'var(--bom-fundo)',
               padding: '10px 14px', borderRadius: 'var(--raio)', marginBottom: 14,
             }}>
-              Proposta aceite — {flags.proposta}. Agora é só escolher a data e
-              confirmar os detalhes da reserva abaixo, com o fornecedor já à sua espera.
+              Proposta aceite — {formatMinor(acceptedPrice)}. Agora é só escolher a data e
+              confirmar os detalhes da reserva abaixo.
             </p>
           ) : null}
           {flags.erro ? (
@@ -258,18 +309,65 @@ export default async function ProviderPage({
             }}>
               {flags.erro === 'data_indisponivel'
                 ? 'Essa data já não está disponível. Escolha outra.'
-                : flags.erro === 'horario'
-                  ? 'A hora de fim tem de ser depois da hora de início.'
-                  : 'Verifique os dados introduzidos.'}
+                : flags.erro === 'passado'
+                  ? 'Essa data já passou. Escolha uma data a partir de hoje.'
+                  : flags.erro === 'indisponivel'
+                    ? 'Não é possível pedir uma reserva a este fornecedor neste momento.'
+                    : flags.erro === 'aceitar'
+                      ? 'Para pedir a reserva, confirme que leu os Termos e a política de cancelamento.'
+                      : flags.erro === 'pausado'
+                      ? 'Os novos pedidos de reserva estão temporariamente suspensos.'
+                      : flags.erro === 'telefone'
+                      ? 'Indique um número de telemóvel válido, por exemplo 923 456 789.'
+                      : 'Verifique os dados introduzidos.'}
             </p>
           ) : null}
 
-          {!profile ? (
+          {policy && policy.tiers.length > 0 ? (
+            // Before anyone commits: what cancelling costs, relative to the
+            // event (slice 32). The dated version appears on the booking.
+            <details style={{ margin: '0 0 16px', padding: '12px 14px', borderRadius: 'var(--raio)',
+                              border: '1px solid var(--linha)', background: 'var(--azul-050)' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.92rem' }}>
+                Se tiver de cancelar — política «{policy.name}»
+              </summary>
+              <div style={{ marginTop: 10 }}>
+                {relativeTierSteps(policy.tiers).map((step) => (
+                  <div key={step.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12,
+                                                 fontSize: '0.9rem', padding: '6px 0',
+                                                 borderBottom: '1px solid var(--linha)' }}>
+                    <span>{step.label}</span><strong>{step.refundPct}% de volta</strong>
+                  </div>
+                ))}
+                <p style={{ margin: '8px 0 0', fontSize: '0.83rem', color: 'var(--tinta-3)' }}>
+                  Conta a partir da hora de início do evento. Depois de pedir, vê estas datas
+                  concretas na página da reserva.
+                </p>
+              </div>
+            </details>
+          ) : null}
+
+          {provider.isDemo ? (
+            // An example profile (0041): the database refuses a request for
+            // it anyway; this says why, and where to go instead.
+            <p className={styles.p} role="status" style={{
+              padding: '12px 14px', borderRadius: 'var(--raio)', background: 'var(--aviso-fundo)', color: 'var(--aviso)',
+            }}>
+              Este é um perfil de exemplo e não aceita reservas. <a href="/procurar">Veja os fornecedores</a>{' '}
+              ou <a href="/pedir-orcamento">peça um orçamento</a> a fornecedores reais.
+            </p>
+          ) : !profile ? (
             <p className={styles.p}>
               <a href={`/entrar?next=/fornecedor/${provider.slug}%23reservar`}>Entre na sua conta</a>{' '}
               para solicitar uma reserva. Ainda não tem conta?{' '}
-              <a href="/criar-conta">Criar conta</a>.
+              <a href={`/criar-conta?next=/fornecedor/${provider.slug}%23reservar`}>Criar conta</a>.
             </p>
+          ) : bookingsPaused ? (
+            // Kill switch (slice 37). The database refuses new requests
+            // while it is on; this just says so instead of a dead form.
+            <p className={styles.p} role="status" style={{
+              padding: '12px 14px', borderRadius: 'var(--raio)', background: 'var(--aviso-fundo)', color: 'var(--aviso)',
+            }}>{bookingsPaused}</p>
           ) : (
             <form action={doRequestBooking}>
               <input type="hidden" name="providerId" value={provider.id} />
@@ -301,7 +399,7 @@ export default async function ProviderPage({
                       Data
                     </span>
                     <input type="date" name="date" required
-                           min={new Date().toISOString().slice(0, 10)}
+                           min={todayInLuanda()}
                            style={{ width: '100%', padding: '11px 12px', font: 'inherit',
                                     border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
                   </label>
@@ -326,6 +424,19 @@ export default async function ProviderPage({
 
                 <label>
                   <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
+                    Telemóvel (WhatsApp)
+                  </span>
+                  <input type="tel" name="phone" required maxLength={40} autoComplete="tel"
+                         inputMode="tel" placeholder="923 456 789" defaultValue={profile.phone ?? ''}
+                         style={{ width: '100%', padding: '11px 12px', font: 'inherit',
+                                  border: '1px solid var(--linha)', borderRadius: 'var(--raio)' }} />
+                  <span style={{ display: 'block', marginTop: 5, fontSize: '0.83rem', color: 'var(--tinta-3)' }}>
+                    O fornecedor só vê o seu número depois de aceitar o pedido, para combinar os
+                    detalhes consigo. Nunca aparece publicamente.
+                  </span>
+                </label>
+                <label>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>
                     Número de pessoas <span style={{ color: 'var(--tinta-3)', fontWeight: 400 }}>(opcional)</span>
                   </span>
                   <input type="number" name="partySize" min={1}
@@ -342,13 +453,21 @@ export default async function ProviderPage({
                                      resize: 'vertical' }} />
                 </label>
               </div>
+              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 14px', fontSize: '0.9rem' }}>
+                <input type="checkbox" name="aceito" required style={{ marginTop: 3 }} />
+                <span>
+                  Li e aceito os <a href="/termos" target="_blank">Termos de Utilização</a> e a política de
+                  cancelamento acima{policy ? ` («${policy.name}»)` : ''}.
+                </span>
+              </label>
               <button className={`${styles.btn} ${styles.btnMain}`} type="submit"
                       style={{ border: 0, cursor: 'pointer' }}>
                 Solicitar reserva
               </button>
               <p style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--tinta-3)' }}>
                 O fornecedor tem até 48 horas para responder. A data só fica reservada depois de
-                aceite e confirmada.
+                aceite e confirmada. Pague sempre pelos dados da página da reserva —{' '}
+                <a href="/ajuda#pagar">como pagar com segurança</a>.
               </p>
             </form>
           )}
@@ -406,7 +525,7 @@ export default async function ProviderPage({
               // JavaScript disabled.
               <a
                 className={`${styles.btn} ${styles.btnAlt}`}
-                href={`/api/contacto/${provider.id}?canal=whatsapp&para=${encodeURIComponent(provider.whatsapp)}`}
+                href={`/api/contacto/${provider.id}?canal=whatsapp`}
                 rel="nofollow noopener"
               >
                 WhatsApp
@@ -423,7 +542,7 @@ export default async function ProviderPage({
           </p>
           <p>
             <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a>
+            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
           </p>
         </footer>
       </div>

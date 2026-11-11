@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isUuid } from '@/lib/safe'
 import { requireProfile } from '@/lib/auth'
 import { documentViewUrl } from '@/lib/admin'
 
@@ -22,7 +23,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const admin = await requireProfile('admin')
   const documentId = new URL(request.url).searchParams.get('id') ?? ''
-  if (!/^[0-9a-f-]{36}$/i.test(documentId)) {
+  if (!isUuid(documentId)) {
     return NextResponse.json({ error: 'bad id' }, { status: 400 })
   }
 

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, recentAudit } from '@/lib/admin'
 import { recentNotifications } from '@/lib/notifications'
 import { Chrome } from '../Chrome'
@@ -26,7 +26,7 @@ const NOTIFY_KIND_LABEL: Record<string, string> = {
 }
 
 export default async function Registo() {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, audit, notifications] = await Promise.all([
     queueCounts(profile.id),
     recentAudit(profile.id, 200),
@@ -38,7 +38,7 @@ export default async function Registo() {
       <Chrome title="Registo de alterações" active="registo" counts={counts} />
       <div className={styles.wrap}>
         <div className={styles.card}>
-          <h2>Notificações (§17)</h2>
+          <h2>Notificações</h2>
           <p className={styles.note}>
             O que foi enviado a clientes e fornecedores por cada reserva e decisão de verificação —
             útil para responder a «o fornecedor foi mesmo avisado?».
@@ -67,7 +67,7 @@ export default async function Registo() {
         </div>
 
         <div className={styles.card}>
-          <h2>Quem alterou o quê (§38)</h2>
+          <h2>Quem alterou o quê</h2>
           <p className={styles.note}>
             Verificações, suspensões, alterações de preço e decisões sobre documentos. Este registo
             é escrito pela base de dados e não pode ser editado nem apagado — nem por um

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, waitlistDemand, waitlistSubscribers } from '@/lib/admin'
 import { Chrome } from '../Chrome'
 import styles from '../admin.module.css'
@@ -28,7 +28,7 @@ const TABS: { key: string; label: string }[] = [
 export default async function ListaDeEspera({
   searchParams,
 }: { searchParams: Promise<{ estado?: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { estado } = await searchParams
   const [counts, demand, subscribers] = await Promise.all([
     queueCounts(profile.id),

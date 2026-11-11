@@ -12,6 +12,7 @@ const PILL_CLASS = { wait: 'pillWait', ok: 'pillOk', bad: 'pillBad', off: 'pillO
 import { ownedProvider, ownedResources } from '@/lib/painel'
 import { doBlockDate } from '@/app/booking-actions'
 import styles from '../../painel.module.css'
+import { todayInLuanda } from '@/lib/safe'
 
 export const metadata: Metadata = { title: 'Reservas', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -74,7 +75,7 @@ export default async function ReservasFornecedor({
           <div className={styles.card} id="bloquear">
             <h2>Bloquear uma data</h2>
             <p className={styles.note}>
-              Para quando aceitar uma reserva fora da NGUEZA em pessoa (§27) — impede que a mesma
+              Para quando aceitar uma reserva fora da NGUEZA em pessoa — impede que a mesma
               data seja pedida aqui.
             </p>
             <form action={doBlockDate}>
@@ -89,7 +90,7 @@ export default async function ReservasFornecedor({
                 <label className={styles.field}>
                   <span className={styles.label}>Data</span>
                   <input className={styles.input} type="date" name="date" required
-                         min={new Date().toISOString().slice(0, 10)} />
+                         min={todayInLuanda()} />
                 </label>
               </div>
               <div className={styles.two}>

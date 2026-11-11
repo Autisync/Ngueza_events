@@ -23,6 +23,7 @@ export default function Cancelamento() {
         <a href="/termos">Termos de Utilização</a>
         <a href="/privacidade">Política de Privacidade</a>
         <span>Política de Cancelamento</span>
+        <a href="/ajuda">Ajuda</a>
       </nav>
     </main>
   )

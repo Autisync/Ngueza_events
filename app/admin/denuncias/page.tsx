@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, reportQueue } from '@/lib/admin'
 import { doResolveReport } from '../actions'
 import { Chrome } from '../Chrome'
@@ -18,14 +18,18 @@ const REASONS: Record<string, string> = {
   other: 'Outro',
 }
 
-export default async function Denuncias() {
-  const profile = (await currentProfile())!
+export default async function Denuncias({
+  searchParams,
+}: { searchParams: Promise<{ erro?: string }> }) {
+  const { erro } = await searchParams
+  const profile = await adminProfile()
   const [counts, reports] = await Promise.all([queueCounts(profile.id), reportQueue(profile.id)])
 
   return (
     <main>
       <Chrome title="Denúncias" active="denuncias" counts={counts} />
       <div className={styles.wrap}>
+        {erro === 'ja_decidida' ? <p className={styles.alert} role="status">Esta denúncia já tinha sido decidida por outro administrador.</p> : null}
         {reports.length === 0 ? (
           <p className={styles.empty}>Nenhuma denúncia aberta.</p>
         ) : (

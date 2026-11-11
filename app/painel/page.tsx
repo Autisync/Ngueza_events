@@ -1,25 +1,23 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
+import { myUnreadNotificationCount } from '@/lib/notifications'
 import { ownedProviders } from '@/lib/painel'
+import { VERIFICATION_STATUS } from '@/lib/painel-labels'
 import styles from './painel.module.css'
 
 export const metadata: Metadata = { title: 'Painel do fornecedor', robots: { index: false } }
 export const dynamic = 'force-dynamic'
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  unverified: { label: 'Por submeter', cls: 'pillOff' },
-  pending: { label: 'Em análise', cls: 'pillWait' },
-  verified: { label: 'Verificado', cls: 'pillOk' },
-  rejected: { label: 'Rejeitado', cls: 'pillBad' },
-  suspended: { label: 'Suspenso', cls: 'pillBad' },
-}
+const STATUS = VERIFICATION_STATUS
 
 export default async function Painel() {
   const profile = await currentProfile()
   if (!profile) redirect('/entrar?next=/painel')
 
-  const providers = await ownedProviders(profile.id)
+  const [providers, unread] = await Promise.all([
+    ownedProviders(profile.id), myUnreadNotificationCount(profile.id),
+  ])
 
   return (
     <main>
@@ -31,6 +29,14 @@ export default async function Painel() {
             {providers.length === 0
               ? 'Ainda não registou nenhum negócio.'
               : `${providers.length} ${providers.length === 1 ? 'negócio' : 'negócios'}.`}
+            {unread > 0 ? (
+              <>
+                {' '}·{' '}
+                <a href="/conta/notificacoes" style={{ color: 'var(--branco)', fontWeight: 700 }}>
+                  {unread === 1 ? '1 notificação por ler' : `${unread} notificações por ler`}
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
       </section>

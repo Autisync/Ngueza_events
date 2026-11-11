@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 28 migrations from empty · 232 tests · 44 database assertions |
+| Verified | 42 migrations from empty · 411 tests · 59 database assertions |
 
 ### Done
 
@@ -51,6 +51,23 @@ make contact.
 | 23 | The marketplace redesign — image-forward cards, real photo rendering (wired up for the first time), rating badges — on `/procurar` and `/fornecedor/[slug]`; see `spec/slices/23-marketplace-ui.md` |
 | 24 | The real homepage at `/`, replacing the pre-launch waitlist once there was enough live, verified supply to show instead of promise |
 | 25 | Free-text "Outro" on the waitlist's category/zone fields, entrance and selection animation, and `/admin/lista-de-espera` — the read-only admin view of who asked for what, so recruitment and a future campaign know where to go; see `spec/slices/25-waitlist-admin-and-other.md` |
+| 26 | Competitive-review fixes — 53 verified defects: a stored XSS, open redirects and on-domain scam text, fakeable verified reviews, paid dates that could expire, rewritable booking terms, 500s on mistyped links; see `spec/slices/26-review-fixes.md` |
+| 27 | Supplier photo manager — upload (shrunk on the phone first), cover, order, captions, removal; a swipeable gallery on the supplier page; upload sizes now enforced by storage, not just the form; see `spec/slices/27-photo-manager.md` |
+| 28 | Competing requests released honestly — when one booking takes a date, the others on that space close as "Data indisponível" with a same-day search link, instead of sitting on "Aceite" until they expire; see `spec/slices/28-release-competing-requests.md` |
+| 29 | Services edited in place — every field prefilled, "O que inclui" descriptions shown on the supplier page, errors next to the service being edited; see `spec/slices/29-edit-services.md` |
+| 30 | The two sides of a booking can reach each other — the client's +244 number on the request, name always and phone/email once accepted for the supplier, WhatsApp with a prefilled reference both ways; job functions closed to visitors; see `spec/slices/30-booking-contacts.md` |
+| 31 | Payment terms on the booking — the supplier sets total, sinal and how to pay when asking for payment; both sides see what was declared and what is left; the supplier sees the proof before confirming; "Plausível" no longer reads as "Confirmado"; see `spec/slices/31-payment-terms.md` |
+| 32 | The booking page as one hub — "Próximo passo" with the real deadline and the one action to take, venue and reference; cancellation tiers as dated steps on the booking and relative ones on the supplier page before booking; see `spec/slices/32-booking-hub.md` |
+| 33 | Rate limits on sign-in, sign-up, password reset and the waitlist — per visitor and per address, in Postgres, hashed keys; the visitor's IP forwarded to Supabase Auth; see `spec/slices/33-rate-limits.md` |
+| 34 | Heartbeats for the scheduled jobs — every run logged, `/api/saude` answers 503 when the expiry sweep or the mailer stops or email backs up, the same status on the admin dashboard; see `spec/slices/34-job-heartbeats.md` |
+| 35 | Help centre and support inbox — `/ajuda` (how booking works, paying safely, what «Verificado» means, a form that works signed out), `/admin/apoio`, safety notes and help links in context; see `spec/slices/35-help-and-safety.md` |
+| 36 | Actionable notifications — `/conta/notificacoes` with unread counts, every email and inbox item opens the screen where the person acts (the specific booking, not a dashboard or public page); see `spec/slices/36-notification-inbox.md` |
+| 37 | Kill switches and runbooks — pause new bookings (enforced by the database) or sign-ups from the admin in seconds, with a public notice and an audit entry; `docs/runbooks.md` for each likely incident; see `spec/slices/37-kill-switches.md` |
+| 38 | The support console — `/admin/consola` searches by reference, email, phone or name; each booking's full timeline (states, payments, emails, help requests, notes); append-only internal notes; see `spec/slices/38-support-console.md` |
+| 39 | An example catalogue, honestly labelled — 24 fictional suppliers, flagged «Exemplo», never bookable or verified or indexed, sorted after real supply, removable in one script; see `spec/slices/39-example-catalogue.md` |
+| 40 | Two-factor sign-in for administrators — authenticator app via Supabase Auth, enforced on every admin page and action with `ADMIN_REQUIRE_MFA=1`; see `spec/slices/40-admin-mfa.md` |
+| 41 | Legal hooks — versioned Terms, Privacy and cancellation documents; who accepted which version, when and where, at sign-up and with each booking request; a "Pedido enviado" acknowledgement to the client; see `spec/slices/41-legal-acceptance.md` |
+| 42 | Search: budget, sort (price, rating) exact across pages, price units on cards, only categories with supply in the filter; see `spec/slices/42-search-filters.md` |
 
 ### Infrastructure
 
@@ -60,7 +77,7 @@ make contact.
 | Media | Self-hosted MinIO + imgproxy via Portainer. See [`deploy/media/`](deploy/media/README.md) |
 | Backup, restore | Schema from migrations (proven daily by CI), data from a `pg_dump`. Rehearsed end to end, including exactly how a full schema+data dump fights Supabase's own extension management — see [`docs/backup-restore.md`](docs/backup-restore.md) |
 | Error monitoring | Sentry, server and client. `NEXT_PUBLIC_SENTRY_DSN` unset means it's a no-op everywhere. The client SDK is lazy-loaded (`instrumentation-client.ts`) rather than imported at the top level — it alone gzips to ~140KB, nearly the whole route JS budget, so a static import would blow every route's 180KB limit. Deferred past hydration instead: fetched in parallel, not on the critical path, costs nothing against LCP or the budget. |
-| Security headers | `next.config.ts`: CSP, HSTS (2yr, no `preload` — that's a deliberate call for NGUEZA to make, not a default), plus the pre-existing `X-Content-Type-Options`/`Referrer-Policy`/`X-Frame-Options`. `script-src`/`style-src` carry `'unsafe-inline'` — verified live that a plain `'self'` breaks Next.js's own inline hydration scripts outright; the app has no `dangerouslySetInnerHTML` of user content (one use, JSON-LD, `JSON.stringify`'d) so the real exposure is small. `connect-src`/`img-src` build the media host into the policy dynamically from `MINIO_PUBLIC_URL`/`IMGPROXY_PUBLIC_URL`, so it doesn't need editing per environment. |
+| Security headers | `next.config.ts`: CSP, HSTS (2yr, no `preload` — that's a deliberate call for NGUEZA to make, not a default), plus the pre-existing `X-Content-Type-Options`/`Referrer-Policy`/`X-Frame-Options`. `script-src`/`style-src` carry `'unsafe-inline'` — verified live that a plain `'self'` breaks Next.js's own inline hydration scripts outright; which makes every inline script trusted, so the one inline script carrying user text (the supplier page's JSON-LD) is serialised with `jsonForScript()` from `lib/safe.ts`; per-request nonces would remove the need and are still the better end state. `connect-src`/`img-src` build the media host into the policy dynamically from `MEDIA_S3_PUBLIC_ENDPOINT`/`IMGPROXY_PUBLIC_URL`, so it doesn't need editing per environment. |
 
 Media runs on your own host instead of Cloudflare. The §40 contract is
 unchanged: the app server never handles image bytes, the browser uploads to

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../../guard'
 import { queueCounts } from '@/lib/admin'
 import { locationTree } from '@/lib/taxonomy'
 import { doToggleLocation, doUpdateLocation } from '../../taxonomy-actions'
@@ -27,7 +27,7 @@ export default async function EditarLocalizacao({
   params: Promise<{ id: string }>
   searchParams: Promise<{ erro?: string }>
 }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const { id } = await params
   const [counts, tree, flags] = await Promise.all([
     queueCounts(profile.id), locationTree(profile.id), searchParams,

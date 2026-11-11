@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts, paymentQueue } from '@/lib/admin'
 import { formatMinor } from '@/lib/money'
 import { doDecidePayment } from '../actions'
@@ -9,14 +9,18 @@ import styles from '../admin.module.css'
 export const metadata: Metadata = { title: 'Pagamentos', robots: { index: false } }
 export const dynamic = 'force-dynamic'
 
-export default async function Pagamentos() {
-  const profile = (await currentProfile())!
+export default async function Pagamentos({
+  searchParams,
+}: { searchParams: Promise<{ erro?: string }> }) {
+  const { erro } = await searchParams
+  const profile = await adminProfile()
   const [counts, payments] = await Promise.all([queueCounts(profile.id), paymentQueue(profile.id)])
 
   return (
     <main>
       <Chrome title="Pagamentos" active="pagamentos" counts={counts} />
       <div className={styles.wrap}>
+        {erro === 'ja_decidido' ? <p className={styles.alert} role="status">Este comprovativo já tinha sido decidido por outro administrador.</p> : null}
         <p className={styles.note} style={{ marginBottom: 16 }}>
           O pagamento acontece directamente entre cliente e fornecedor — a NGUEZA nunca recebe
           nem transfere dinheiro. Isto confirma apenas que o comprovativo é legível e plausível;

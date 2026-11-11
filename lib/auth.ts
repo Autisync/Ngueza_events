@@ -41,6 +41,10 @@ export interface AuthedUser {
   id: string
   email: string | null
   expiresAt: number
+  /** Authenticator assurance level: 'aal2' once this session has passed a
+   *  second factor (slice 40). Read from the verified token, never trusted
+   *  from anywhere else. */
+  aal: 'aal1' | 'aal2'
 }
 
 /** Verified locally. Returns null for absent, malformed or expired tokens. */
@@ -65,6 +69,7 @@ function payloadToUser(payload: JWTPayload): AuthedUser | null {
     id,
     email: typeof payload.email === 'string' ? payload.email : null,
     expiresAt: typeof payload.exp === 'number' ? payload.exp : 0,
+    aal: payload.aal === 'aal2' ? 'aal2' : 'aal1',
   }
 }
 
@@ -85,11 +90,22 @@ export type AuthError =
   | 'rate_limited'
   | 'unknown'
 
-async function gotrue(path: string, body: unknown): Promise<Response> {
+/**
+ * clientIp: the visitor's address, forwarded so Supabase Auth's per-IP
+ * limits apply to the visitor rather than to this server — every call
+ * reaches it from the app's own IP otherwise, so one person's failed
+ * attempts throttled everybody (slice 33). Whether hosted Supabase honours
+ * X-Forwarded-For from this caller is not verified here; if it does not,
+ * nothing changes, and lib/rate-limit.ts limits per visitor regardless.
+ */
+async function gotrue(path: string, body: unknown, clientIp?: string | null): Promise<Response> {
   const { url, anonKey } = publicConfig()
   return fetch(`${url}/auth/v1${path}`, {
     method: 'POST',
-    headers: { apikey: anonKey, 'content-type': 'application/json' },
+    headers: {
+      apikey: anonKey, 'content-type': 'application/json',
+      ...(clientIp ? { 'x-forwarded-for': clientIp } : {}),
+    },
     body: JSON.stringify(body),
     cache: 'no-store',
   })
@@ -116,21 +132,22 @@ function toSession(data: { access_token: string; refresh_token: string; expires_
 
 export type SignInResult = { ok: true; session: Session } | { ok: false; error: AuthError }
 
-export async function signIn(email: string, password: string): Promise<SignInResult> {
-  const response = await gotrue('/token?grant_type=password', { email, password })
+export async function signIn(email: string, password: string, clientIp?: string | null): Promise<SignInResult> {
+  const response = await gotrue('/token?grant_type=password', { email, password }, clientIp)
   const data = await response.json().catch(() => ({}))
   if (!response.ok) return { ok: false, error: classify(response.status, data) }
   return { ok: true, session: toSession(data) }
 }
 
 export type SignUpResult =
-  | { ok: true; needsEmailConfirmation: boolean; session: Session | null }
+  | { ok: true; needsEmailConfirmation: boolean; session: Session | null; userId: string | null }
   | { ok: false; error: AuthError }
 
 export async function signUp(
   email: string,
   password: string,
   fullName?: string,
+  clientIp?: string | null,
 ): Promise<SignUpResult> {
   // `data` lands in raw_user_meta_data, which the person controls. The
   // 0016 trigger reads the role from raw_APP_meta_data instead, so
@@ -139,14 +156,17 @@ export async function signUp(
     email,
     password,
     data: fullName ? { full_name: fullName } : {},
-  })
+  }, clientIp)
   const data = await response.json().catch(() => ({}))
   if (!response.ok) return { ok: false, error: classify(response.status, data) }
 
+  // The new account's id, so the action can record what it accepted (0042):
+  // the user object, or the session's user when no confirmation is needed.
+  const userId = (data.user?.id ?? data.id ?? null) as string | null
   if (data.access_token) {
-    return { ok: true, needsEmailConfirmation: false, session: toSession(data) }
+    return { ok: true, needsEmailConfirmation: false, session: toSession(data), userId }
   }
-  return { ok: true, needsEmailConfirmation: true, session: null }
+  return { ok: true, needsEmailConfirmation: true, session: null, userId }
 }
 
 export async function refreshSession(refreshToken: string): Promise<Session | null> {
@@ -156,10 +176,10 @@ export async function refreshSession(refreshToken: string): Promise<Session | nu
   return data?.access_token ? toSession(data) : null
 }
 
-export async function requestPasswordReset(email: string, redirectTo: string): Promise<void> {
+export async function requestPasswordReset(email: string, redirectTo: string, clientIp?: string | null): Promise<void> {
   // Always resolves. Telling a stranger whether an address has an account
   // is an enumeration oracle.
-  await gotrue(`/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { email }).catch(() => {})
+  await gotrue(`/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { email }, clientIp).catch(() => {})
 }
 
 export async function updatePassword(accessToken: string, password: string): Promise<boolean> {
@@ -261,6 +281,8 @@ export interface Profile {
   id: string
   email: string
   fullName: string | null
+  /** E.164, as the booking form saves it (slice 30). */
+  phone: string | null
   role: 'client' | 'provider' | 'admin'
   emailVerified: boolean
   phoneVerified: boolean
@@ -278,11 +300,11 @@ export async function currentProfile(): Promise<Profile | null> {
 
   return asSystem(async (c) => {
     const { rows } = await c.query<{
-      id: string; email: string; full_name: string | null
+      id: string; email: string; full_name: string | null; phone: string | null
       role: Profile['role']; email_verified: boolean
       phone_verified: boolean; status: Profile['status']
     }>(
-      `select id, email, full_name, role, email_verified, phone_verified, status
+      `select id, email, full_name, phone, role, email_verified, phone_verified, status
          from profiles where id = $1`,
       [user.id],
     )
@@ -292,6 +314,7 @@ export async function currentProfile(): Promise<Profile | null> {
       id: row.id,
       email: row.email,
       fullName: row.full_name,
+      phone: row.phone,
       role: row.role,
       emailVerified: row.email_verified,
       phoneVerified: row.phone_verified,
@@ -306,5 +329,19 @@ export async function requireProfile(role?: Profile['role']): Promise<Profile> {
   if (role && profile.role !== role && profile.role !== 'admin') {
     throw new Error('FORBIDDEN')
   }
+  // Every admin action calls requireProfile('admin'): the second factor is
+  // enforced here as well as in the admin layout, so a server action cannot
+  // be posted from a session that never passed it (slice 40).
+  if (role === 'admin' && !(await adminMfaSatisfied())) throw new Error('MFA_REQUIRED')
   return profile
+}
+
+/** Whether admin MFA is enforced in this environment. Off until an
+ *  administrator has enrolled, so turning it on cannot lock everyone out. */
+export const adminMfaRequired = () => process.env.ADMIN_REQUIRE_MFA?.trim() === '1'
+
+/** true when MFA is not required, or this session has passed it (aal2). */
+export async function adminMfaSatisfied(): Promise<boolean> {
+  if (!adminMfaRequired()) return true
+  return (await currentUser())?.aal === 'aal2'
 }

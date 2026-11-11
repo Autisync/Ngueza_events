@@ -102,8 +102,6 @@ export default async function MeusPedidos({
                         {o.status === 'submitted' && r.status === 'open' ? (
                           <form action={doAcceptOffer} style={{ padding: '0 16px 12px' }}>
                             <input type="hidden" name="offerId" value={o.id} />
-                            <input type="hidden" name="providerSlug" value={o.providerSlug} />
-                            <input type="hidden" name="priceMinor" value={o.priceMinor.toString()} />
                             <button className={styles.submit} type="submit">
                               Aceitar esta proposta
                             </button>

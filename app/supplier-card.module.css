@@ -40,3 +40,5 @@
 .cap { display: inline-block; font-size: 0.78rem; color: var(--tinta-2);
        background: var(--azul-050); border: 1px solid var(--linha);
        border-radius: 999px; padding: 2px 9px; }
+
+.unit { font-weight: 500; font-size: 0.85em; color: var(--tinta-3); }

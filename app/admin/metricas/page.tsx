@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { dashboardMetrics, providerHealthReport, type PeriodCounts } from '@/lib/analytics'
 import { Chrome } from '../Chrome'
@@ -43,7 +43,7 @@ function Period({ title, p }: { title: string; p: PeriodCounts }) {
 }
 
 export default async function Metricas() {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, metrics, health] = await Promise.all([
     queueCounts(profile.id),
     dashboardMetrics(profile.id),
@@ -62,11 +62,11 @@ export default async function Metricas() {
         <div className={styles.card}>
           <h2>Conversão</h2>
           <p className={styles.note}>
-            §32 — cada contacto revelado sem um pedido de reserva é uma reserva potencialmente
+            cada contacto revelado sem um pedido de reserva é uma reserva potencialmente
             combinada fora da plataforma.
           </p>
           <div className={styles.row}>
-            <span>Fuga (§32) — contactos revelados vs. pedidos, este mês</span>
+            <span>Fuga — contactos revelados vs. pedidos, este mês</span>
             <span>
               <strong>{metrics.leakageRatioPct === null ? '—' : `${metrics.leakageRatioPct}%`}</strong>
             </span>
@@ -91,7 +91,7 @@ export default async function Metricas() {
           <h2>Saúde dos fornecedores</h2>
           <p className={styles.note}>
             Um fornecedor sem pedidos deixa de manter o calendário; um calendário desactualizado
-            dá uma resposta de disponibilidade errada (§48).
+            dá uma resposta de disponibilidade errada.
           </p>
           {stale.length === 0 ? (
             <p className={styles.empty}>Nenhum fornecedor inactivo há mais de 30 dias.</p>

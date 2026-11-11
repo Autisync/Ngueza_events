@@ -89,3 +89,27 @@ CRON_SECRET=xxx SITE_URL=http://localhost:3210 ./tests/notify-concurrency.sh
 | `401` | `CRON_SECRET` does not match the app's |
 | `503` | The app has no `CRON_SECRET` set; the endpoint fails closed rather than open |
 | `request failed` | The app is unreachable — the loop keeps going and retries next cycle |
+
+
+## Knowing when it stops (slice 34)
+
+Every run of both jobs is logged (`job_runs`, migration 0037).
+`GET /api/saude` answers **200** while both have succeeded recently and email
+is going out, and **503** otherwise, naming the failing check:
+
+| Check | Unhealthy when |
+|---|---|
+| `expire` | No successful run in 15 minutes (three missed ticks) |
+| `notify` | No successful run in 10 minutes |
+| `outbox` | An email has waited more than 15 minutes, or 5+ failed in the last hour (SMTP down, say) |
+
+**Point an external uptime monitor at it**, for example a free UptimeRobot or
+Better Stack check every 5 minutes, alerting by SMS or email on any non-200:
+
+```
+https://ngueza.com/api/saude
+```
+
+The same status is on the admin dashboard ("Tarefas agendadas"). This
+container dying, the app being unable to reach the database, and SMTP
+rejecting mail all show up there and on the monitor.

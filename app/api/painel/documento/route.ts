@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
+import { isSameOriginRequest } from '@/lib/safe'
 import { asUser } from '@/lib/db'
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES, documentStore } from '@/lib/media'
 import { recordDocument } from '@/lib/onboarding'
@@ -22,13 +23,13 @@ export const dynamic = 'force-dynamic'
  */
 
 const presignBody = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.guid(),
   contentType: z.string().max(120),
   byteSize: z.number().int().positive().max(MAX_DOCUMENT_BYTES),
 })
 
 const recordBody = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.guid(),
   kind: z.enum(['identity', 'nif', 'commercial_registration', 'proof_of_address', 'other']),
   externalId: z.string().min(1).max(300),
   filename: z.string().max(200).optional(),
@@ -47,6 +48,7 @@ async function owns(userId: string, providerId: string): Promise<boolean> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   let profile
   try {
     profile = await requireProfile()
@@ -70,6 +72,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const upload = await documentStore().presignUpload({
       contentType: parsed.data.contentType,
       keyPrefix: parsed.data.providerId,
+      byteSize: parsed.data.byteSize,
     })
     return NextResponse.json(upload)
   }

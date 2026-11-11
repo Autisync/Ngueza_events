@@ -1,3 +1,4 @@
+import { Client } from 'pg'
 import { describe, expect, it } from 'vitest'
 import { asSystem, asVisitor } from '@/lib/db'
 import { search } from '@/lib/search'
@@ -133,21 +134,39 @@ describe('rating and categoryNames on a hit (modern marketplace UI)', () => {
     expect(before?.reviewCount).toBe(0)
     expect(before?.categoryNames).toEqual(['Salões de festas'])
 
-    const reviewId = await asSystem(async (c) => {
+    // An unverified review (no completed booking behind it) is listed on
+    // the profile but does not move the public score (0031 review).
+    const unverified = await asSystem(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         `insert into reviews (provider_id, author_id, rating_overall, status)
-         values ($1, $2, 5, 'published') returning id`,
+         values ($1, $2, 1, 'published') returning id`,
         [HORIZONTE, ANA],
       )
       return rows[0]!.id
     })
+    // A verified one, written as a superuser with triggers off so the
+    // fixture does not need a whole completed-booking history.
+    const raw = new Client({ connectionString: process.env.DATABASE_URL })
+    await raw.connect()
+    let verified: string
+    try {
+      await raw.query(`set session_replication_role = replica`)
+      const { rows } = await raw.query<{ id: string }>(
+        `insert into reviews (provider_id, author_id, rating_overall, status, is_verified)
+         values ($1, $2, 5, 'published', true) returning id`,
+        [HORIZONTE, ANA],
+      )
+      verified = rows[0]!.id
+    } finally {
+      await raw.end()
+    }
 
     try {
       const after = (await search({})).hits.find((h) => h.id === HORIZONTE)
       expect(after?.ratingAverage).toBe(5)
       expect(after?.reviewCount).toBe(1)
     } finally {
-      await asSystem((c) => c.query(`delete from reviews where id = $1`, [reviewId]))
+      await asSystem((c) => c.query(`delete from reviews where id = any($1)`, [[unverified, verified]]))
     }
   })
 })
@@ -179,5 +198,53 @@ describe('multi-category matching (slice 22 / migration 0028)', () => {
     } finally {
       await asSystem((c) => c.query(`delete from services where id = $1`, [serviceId]))
     }
+  })
+})
+
+describe('budget and sort (slice 42)', () => {
+  const all = async (q: Parameters<typeof search>[0]) => {
+    const out: Awaited<ReturnType<typeof search>>['hits'] = []
+    let cursor
+    do {
+      const page = await search({ ...q, limit: 2, cursor })
+      out.push(...page.hits)
+      cursor = page.nextCursor ?? undefined
+    } while (cursor)
+    return out
+  }
+
+  it('keeps suppliers within the budget, and those who price on request', async () => {
+    const hits = (await search({ maxPriceMinor: 100000000n, limit: 50 })).hits
+    const names = hits.map((h) => h.name)
+    expect(names).toContain('Espaço Mirante')      // a partir de 950 000
+    expect(names).toContain('Casa da Baía')        // sob consulta: not over budget, just unknown
+    expect(names).not.toContain('Salão Horizonte') // 1 800 000
+  })
+
+  it('sorts cheapest first, price on request last, and pages without repeats or gaps', async () => {
+    const hits = await all({ sort: 'preco' })
+    const priced = hits.filter((h) => h.hasPrice).map((h) => (h.price as { minor: bigint }).minor)
+    expect(priced).toEqual([...priced].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+    expect(hits.at(-1)?.hasPrice).toBe(false)
+    expect(new Set(hits.map((h) => h.id)).size).toBe(hits.length)
+    expect(hits.length).toBe((await search({ limit: 50 })).hits.length)
+  })
+
+  it('sorts best rated first when asked, and pages without repeats or gaps', async () => {
+    const hits = await all({ sort: 'avaliacao' })
+    const ratings = hits.map((h) => h.ratingAverage ?? 0)
+    expect(ratings).toEqual([...ratings].sort((a, b) => b - a))
+    expect(new Set(hits.map((h) => h.id)).size).toBe(hits.length)
+  })
+
+  it('ignores a cursor made for another sort instead of misapplying it', async () => {
+    const first = await search({ sort: 'preco', limit: 2 })
+    const wrong = await search({ sort: 'relevancia', limit: 50, cursor: first.nextCursor ?? undefined })
+    expect(wrong.hits.length).toBe((await search({ limit: 50 })).hits.length)
+  })
+
+  it('says what a price is per', async () => {
+    const hit = (await search({ limit: 50 })).hits.find((h) => h.name === 'Centro Kianda')
+    expect(hit?.priceUnit).toBe('day')
   })
 })

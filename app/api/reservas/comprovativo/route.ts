@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
+import { isSameOriginRequest, isUuid } from '@/lib/safe'
 import { asUser } from '@/lib/db'
 import { parseMajor } from '@/lib/money'
 import { ALLOWED_DOCUMENT_TYPES, MAX_DOCUMENT_BYTES, documentStore } from '@/lib/media'
-import { submitPaymentProof } from '@/lib/payments'
+import { proofDocumentUrl, submitPaymentProof } from '@/lib/payments'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,13 +23,13 @@ export const dynamic = 'force-dynamic'
  */
 
 const presignBody = z.object({
-  bookingId: z.string().uuid(),
+  bookingId: z.guid(),
   contentType: z.string().max(120),
   byteSize: z.number().int().positive().max(MAX_DOCUMENT_BYTES),
 })
 
 const recordBody = z.object({
-  bookingId: z.string().uuid(),
+  bookingId: z.guid(),
   amount: z.string().min(1).max(30),
   reference: z.string().max(200).optional(),
   externalId: z.string().min(1).max(300),
@@ -50,6 +51,7 @@ async function ownsAndAwaitingPayment(userId: string, bookingId: string): Promis
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   let profile
   try {
     profile = await requireProfile()
@@ -73,6 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const upload = await documentStore().presignUpload({
       contentType: parsed.data.contentType,
       keyPrefix: parsed.data.bookingId,
+      byteSize: parsed.data.byteSize,
     })
     return NextResponse.json(upload)
   }
@@ -112,4 +115,31 @@ export async function POST(request: Request): Promise<NextResponse> {
   })
   if (!result.ok) return NextResponse.json({ error: result.reason }, { status: 403 })
   return new NextResponse(null, { status: 204 })
+}
+
+/**
+ * Viewing a proof (slice 31): a short-lived signed link for whoever RLS
+ * lets read the document row — the client who sent it, the booking's
+ * supplier (who has to see it before confirming the money arrived), or an
+ * administrator. Everyone else gets 404, indistinguishable from "no such
+ * document". GET, so it works as a plain link with JavaScript disabled.
+ */
+export async function GET(request: Request): Promise<NextResponse> {
+  let profile
+  try {
+    profile = await requireProfile()
+  } catch {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  }
+  const documentId = new URL(request.url).searchParams.get('id') ?? ''
+  if (!isUuid(documentId)) return NextResponse.json({ error: 'bad id' }, { status: 400 })
+
+  let url: string | null
+  try {
+    url = await proofDocumentUrl(profile.id, documentId)
+  } catch {
+    return NextResponse.json({ error: 'unavailable' }, { status: 503 })   // storage not configured
+  }
+  if (!url) return NextResponse.json({ error: 'not found' }, { status: 404 })
+  return NextResponse.redirect(url, { status: 302, headers: { 'cache-control': 'no-store, private' } })
 }

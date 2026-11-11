@@ -3,7 +3,8 @@
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
-import { formatMinor, parseMajor } from '@/lib/money'
+import { parseMajor } from '@/lib/money'
+import { calendarDate, isUuid, todayInLuanda } from '@/lib/safe'
 import {
   acceptOffer, closeQuoteRequest, postQuoteRequest, submitOffer, withdrawOffer,
 } from '@/lib/quotes'
@@ -17,10 +18,14 @@ const str = (f: FormData, k: string) => {
 }
 
 const requestInput = z.object({
-  categoryId: z.string().uuid(),
-  locationId: z.string().uuid(),
+  categoryId: z.guid(),
+  locationId: z.guid(),
   description: z.string().trim().min(10).max(2000),
-  eventDate: z.string().trim().optional(),
+  // A real date, today or later — it used to be any string into a date column.
+  eventDate: z.string().trim().optional().refine(
+    (v) => v === undefined || (calendarDate(v) !== undefined && v >= todayInLuanda()),
+    'data inválida',
+  ),
   capacity: z.coerce.number().int().positive().max(100000).optional(),
 })
 
@@ -34,7 +39,7 @@ export async function doPostQuoteRequest(formData: FormData): Promise<void> {
     capacity: str(formData, 'capacity'),
   })
   if (!parsed.success) {
-    redirect(`/pedir-orcamento?erro=${parsed.error.issues[0]?.path[0] ?? 'dados'}`)
+    redirect(`/pedir-orcamento?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
 
   const result = await postQuoteRequest(profile.id, parsed.data)
@@ -44,7 +49,8 @@ export async function doPostQuoteRequest(formData: FormData): Promise<void> {
 
 export async function doCloseQuoteRequest(formData: FormData): Promise<void> {
   const profile = await requireProfile()
-  await closeQuoteRequest(profile.id, String(formData.get('quoteRequestId') ?? ''))
+  const quoteRequestId = String(formData.get('quoteRequestId') ?? '')
+  if (isUuid(quoteRequestId)) await closeQuoteRequest(profile.id, quoteRequestId)
   redirect('/conta/pedidos')
 }
 
@@ -52,6 +58,8 @@ export async function doSubmitOffer(formData: FormData): Promise<void> {
   const profile = await requireProfile('provider')
   const providerId = String(formData.get('providerId') ?? '')
   const quoteRequestId = String(formData.get('quoteRequestId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
+  if (!isUuid(quoteRequestId)) redirect(`/painel/${providerId}/pedidos?erro=invalid`)
   const priceRaw = str(formData, 'price')
   const message = str(formData, 'message')
 
@@ -74,22 +82,21 @@ export async function doSubmitOffer(formData: FormData): Promise<void> {
 export async function doWithdrawOffer(formData: FormData): Promise<void> {
   const profile = await requireProfile('provider')
   const providerId = String(formData.get('providerId') ?? '')
-  await withdrawOffer(profile.id, String(formData.get('offerId') ?? ''))
+  const offerId = String(formData.get('offerId') ?? '')
+  if (!isUuid(providerId)) redirect('/painel')
+  if (isUuid(offerId)) await withdrawOffer(profile.id, offerId)
   redirect(`/painel/${providerId}/pedidos`)
 }
 
 export async function doAcceptOffer(formData: FormData): Promise<void> {
   const profile = await requireProfile()
   const offerId = String(formData.get('offerId') ?? '')
-  const providerSlug = String(formData.get('providerSlug') ?? '')
-  const priceMinorRaw = str(formData, 'priceMinor')
 
   const result = await acceptOffer(profile.id, offerId)
   if (!result.ok) redirect('/conta/pedidos?erro=proposta')
 
-  // The price travels through the redirect already formatted — the
-  // destination page has no reason to re-read the offer or re-derive
-  // money formatting just to show the banner.
-  const priceLabel = priceMinorRaw ? formatMinor(BigInt(priceMinorRaw)) : ''
-  redirect(`/fornecedor/${providerSlug}?proposta=${encodeURIComponent(priceLabel)}`)
+  // Only the offer id travels; the supplier page reads the accepted price
+  // back from the database for this viewer. The slug comes from the
+  // offer's own row, not from the form.
+  redirect(`/fornecedor/${result.providerSlug}?oferta=${offerId}#reservar`)
 }

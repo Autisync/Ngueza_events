@@ -99,7 +99,7 @@ afterAll(async () => {
 })
 
 describe('booking transitions enqueue the right notification', () => {
-  it('tells the supplier when a request arrives', async () => {
+  it('tells the supplier when a request arrives, and acknowledges it to the client (0042)', async () => {
     const result = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
       startsAt: at(400), endsAt: at(400, 20),
@@ -108,9 +108,11 @@ describe('booking transitions enqueue the right notification', () => {
 
     const eventId = await lastBookingEventId(result.bookingId)
     const rows = await notificationsFor('booking_events', eventId)
-    expect(rows).toEqual([
+    expect(rows).toEqual(expect.arrayContaining([
       { kind: 'booking_requested', to_email: 'dono.horizonte@exemplo.ao', status: 'pending' },
-    ])
+      { kind: 'booking_requested_client', to_email: 'joao.cliente@exemplo.ao', status: 'pending' },
+    ]))
+    expect(rows).toHaveLength(2)
   })
 
   it('notifies both parties on confirmation, as two independent rows', async () => {
@@ -213,6 +215,17 @@ describe('provider decisions enqueue the right notification', () => {
 })
 
 describe('claiming and sending', () => {
+  // Other test files leave hundreds of pending rows behind (every seeded
+  // confirmation, every booking they walk through). claimAndSend takes
+  // the oldest first, so without this the row a test is watching can sit
+  // past any batch limit. These tests are about the claim mechanism, not
+  // about draining someone else's backlog.
+  beforeEach(async () => {
+    await asSystem((c) =>
+      c.query(`update notification_outbox set status = 'sent', sent_at = now() where status in ('pending', 'sending')`),
+    )
+  })
+
   it('sends a pending row and marks it sent', async () => {
     const result = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
@@ -333,7 +346,8 @@ describe('admin visibility', () => {
     })
     if (!result.ok) throw new Error('booking failed')
 
-    expect(await pendingNotificationCount(ADMIN)).toBe(before + 1)
+    // The supplier's alert and the client's acknowledgement (0042).
+    expect(await pendingNotificationCount(ADMIN)).toBe(before + 2)
     await claimAndSend(500)
     expect(await pendingNotificationCount(ADMIN)).toBe(before)
 
@@ -353,5 +367,28 @@ describe('admin visibility', () => {
     expect(joaoRows.rows.length).toBeGreaterThan(0)
     expect(joaoRows.rows.every((r) => r.recipient_id === JOAO)).toBe(true)
     expect(ownerRows.rows.every((r) => r.recipient_id === OWNER)).toBe(true)
+  })
+})
+
+describe('the in-app inbox (slice 36)', () => {
+  it('marks all of one person’s notifications read, and nobody else’s', async () => {
+    const { markAllNotificationsRead, myUnreadNotificationCount } = await import('@/lib/notifications')
+    const { asSystem: sys } = await import('@/lib/db')
+    const A = '40000000-0000-0000-0000-000000000090'
+    const B = '40000000-0000-0000-0000-000000000091'
+    await sys((c) => c.query(
+      `insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+       values ('booking_accepted', 'a@x.ao', $1, '{}', 'inbox-test', 1),
+              ('booking_accepted', 'a@x.ao', $1, '{}', 'inbox-test', 2),
+              ('booking_accepted', 'b@x.ao', $2, '{}', 'inbox-test', 3)`, [A, B]))
+    try {
+      const before = await myUnreadNotificationCount(B)
+      expect(await myUnreadNotificationCount(A)).toBeGreaterThanOrEqual(2)
+      await markAllNotificationsRead(A)
+      expect(await myUnreadNotificationCount(A)).toBe(0)
+      expect(await myUnreadNotificationCount(B)).toBe(before)
+    } finally {
+      await sys((c) => c.query(`delete from notification_outbox where source_table = 'inbox-test'`))
+    }
   })
 })

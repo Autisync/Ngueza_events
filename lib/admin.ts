@@ -1,6 +1,7 @@
 // Server-only. Importing this from a client component is a BUILD
 // ERROR, not a code-review question. Administrative decisions.
 import 'server-only'
+import { isUuid } from '@/lib/safe'
 
 import { asUser } from '@/lib/db'
 import { documentStore } from '@/lib/media'
@@ -21,18 +22,20 @@ export interface QueueCounts {
   submittedDocuments: number
   openReports: number
   submittedPayments: number
+  openSupport: number
 }
 
 export async function queueCounts(adminId: string): Promise<QueueCounts> {
   return asUser(adminId, async (c) => {
     const { rows } = await c.query<{
-      providers: string; documents: string; reports: string; payments: string
+      providers: string; documents: string; reports: string; payments: string; support: string
     }>(
       `select
          (select count(*) from providers where verification_status = 'pending')::text as providers,
          (select count(*) from provider_documents where status = 'submitted')::text  as documents,
          (select count(*) from reports where status in ('open','reviewing'))::text    as reports,
-         (select count(*) from payments where status = 'submitted')::text             as payments`,
+         (select count(*) from payments where status = 'submitted')::text             as payments,
+         (select count(*) from support_requests where status = 'open')::text          as support`,
     )
     const r = rows[0]!
     return {
@@ -40,6 +43,7 @@ export async function queueCounts(adminId: string): Promise<QueueCounts> {
       submittedDocuments: Number(r.documents),
       openReports: Number(r.reports),
       submittedPayments: Number(r.payments),
+      openSupport: Number(r.support),
     }
   })
 }
@@ -64,7 +68,7 @@ export async function verificationQueue(adminId: string, status = 'pending'): Pr
     const { rows } = await c.query<any>(
       `select p.id, p.name, p.slug, p.supplier_type, p.verification_status, p.is_published,
               cat.name as category_name, loc.name as location_name,
-              pr.email as owner_email, p.updated_at,
+              pr.email as owner_email, coalesce(p.submitted_at, p.updated_at) as submitted_at,
               (select count(*) from provider_documents d where d.provider_id = p.id)::int as document_count,
               (select count(*) from services s where s.provider_id = p.id and s.is_active)::int as service_count
          from providers p
@@ -72,7 +76,9 @@ export async function verificationQueue(adminId: string, status = 'pending'): Pr
          join locations  loc on loc.id = p.location_id
          join profiles   pr  on pr.id  = p.owner_id
         where ($1 = 'all' or p.verification_status = $1)
-        order by p.updated_at asc`,
+        -- When it was submitted, not when it was last edited: editing a
+        -- pending profile used to send it to the back of the queue.
+        order by coalesce(p.submitted_at, p.updated_at) asc`,
       [status],
     )
     return rows.map((r) => ({
@@ -80,7 +86,7 @@ export async function verificationQueue(adminId: string, status = 'pending'): Pr
       verificationStatus: r.verification_status, isPublished: r.is_published,
       categoryName: r.category_name, locationName: r.location_name,
       ownerEmail: r.owner_email, documentCount: r.document_count,
-      serviceCount: r.service_count, submittedAt: r.updated_at,
+      serviceCount: r.service_count, submittedAt: r.submitted_at,
     }))
   })
 }
@@ -96,6 +102,7 @@ export interface ReviewDocument {
 }
 
 export async function providerForReview(adminId: string, providerId: string) {
+  if (!isUuid(providerId)) return null
   return asUser(adminId, async (c) => {
     const { rows } = await c.query<any>(
       `select p.*, cat.name as category_name, loc.name as location_name,
@@ -284,15 +291,18 @@ export async function resolveReport(
   reportId: string,
   outcome: 'upheld' | 'dismissed',
   note?: string,
-): Promise<void> {
-  await asUser(adminId, (c) =>
-    c.query(
+): Promise<boolean> {
+  // Only an undecided report can be decided: two admins working the same
+  // queue no longer silently overwrite each other's call.
+  return asUser(adminId, async (c) => {
+    const result = await c.query(
       `update reports
           set status = $2, resolution_note = $3, resolved_by = $4, resolved_at = now()
-        where id = $1`,
+        where id = $1 and status in ('open', 'reviewing')`,
       [reportId, outcome, note ?? null, adminId],
-    ),
-  )
+    )
+    return (result.rowCount ?? 0) > 0
+  })
 }
 
 // ---------------------------------------------------------------------
@@ -371,13 +381,15 @@ export async function decidePayment(
   adminId: string,
   paymentId: string,
   decision: 'confirmed' | 'failed',
-): Promise<void> {
-  await asUser(adminId, (c) =>
-    c.query(
-      `update payments set status = $2, confirmed_by = $3, confirmed_at = now() where id = $1`,
+): Promise<boolean> {
+  return asUser(adminId, async (c) => {
+    const result = await c.query(
+      `update payments set status = $2, confirmed_by = $3, confirmed_at = now()
+        where id = $1 and status = 'submitted'`,
       [paymentId, decision, adminId],
-    ),
-  )
+    )
+    return (result.rowCount ?? 0) > 0
+  })
 }
 
 // ---------------------------------------------------------------------
@@ -464,7 +476,7 @@ export async function waitlistDemand(
          from newsletter_subscribers s,
               lateral jsonb_array_elements_text(coalesce(s.interests->'categories', '[]'::jsonb)) as cat_id
          join categories cat on cat.id::text = cat_id
-        where s.status in ('confirmed', 'pending')
+        where s.status in ('confirmed', 'pending') and s.audience = 'client'
         group by cat.name
         order by count(distinct s.id) desc, cat.name
         limit 12`,
@@ -474,7 +486,7 @@ export async function waitlistDemand(
          from newsletter_subscribers s,
               lateral jsonb_array_elements_text(coalesce(s.interests->'locations', '[]'::jsonb)) as loc_id
          join locations loc on loc.id::text = loc_id
-        where s.status in ('confirmed', 'pending')
+        where s.status in ('confirmed', 'pending') and s.audience = 'client'
         group by loc.name
         order by count(distinct s.id) desc, loc.name
         limit 12`,

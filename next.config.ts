@@ -3,7 +3,7 @@ import { withSentryConfig } from '@sentry/nextjs/config'
 
 /** Origin only (`https://host`), or null for an unset/malformed URL —
  *  used to build connect-src/img-src without hardcoding a deployment's
- *  media host, since MINIO_PUBLIC_URL and IMGPROXY_PUBLIC_URL vary by
+ *  media host, since MEDIA_S3_PUBLIC_ENDPOINT and IMGPROXY_PUBLIC_URL vary by
  *  environment (§40's own self-hosted-media point). */
 function origin(url: string | undefined): string | null {
   if (!url) return null
@@ -24,7 +24,11 @@ function origin(url: string | undefined): string | null {
  * reports get silently blocked by this exact policy.
  */
 function contentSecurityPolicy(): string {
-  const media = origin(process.env.MINIO_PUBLIC_URL)
+  // The host the browser PUTs presigned uploads to — the same variable
+  // lib/media.ts presigns against. MINIO_PUBLIC_URL is the media stack's
+  // own name for it (deploy/media), never set on the app, and reading it
+  // here left connect-src without the media host in production.
+  const media = origin(process.env.MEDIA_S3_PUBLIC_ENDPOINT || process.env.MINIO_PUBLIC_URL)
   const images = origin(process.env.IMGPROXY_PUBLIC_URL)
   const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN
   const sentryIngest = sentryDsn ? origin(`https://${new URL(sentryDsn).host}`) : null
@@ -53,11 +57,11 @@ function contentSecurityPolicy(): string {
     // either 'unsafe-inline' or per-request nonces threaded through
     // middleware into the root layout. Nonces are the fully-correct
     // answer and worth doing later; 'unsafe-inline' is the pragmatic one
-    // now, and the actual exposure it adds is small for this app
-    // specifically — `grep -r dangerouslySetInnerHTML app/` turns up
-    // exactly one use (JSON-LD structured data, JSON.stringify'd, not
-    // raw user HTML), so there is no real path for attacker-controlled
-    // markup to become an executable inline <script> in the first place.
+    // now. That makes every inline <script> trusted, so the one place
+    // this app writes one — the supplier page's JSON-LD, which carries
+    // supplier-typed text — MUST go through jsonForScript() (lib/safe.ts).
+    // Plain JSON.stringify does not escape '<', and a description holding
+    // "</script><script>…" ran as script for every visitor until it did.
     `script-src 'self' 'unsafe-inline'${vercelDevScripts ? ` ${vercelDevScripts}` : ''}${devEval ? ` ${devEval}` : ''}`,
     // Same reasoning as script-src: Next.js and React both set inline
     // `style=""` attributes for dynamic styling (this codebase's admin

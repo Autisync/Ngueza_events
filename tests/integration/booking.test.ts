@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { blockDate, expireStaleBookings, requestBooking, transition } from '@/lib/booking'
+import { blockDate, bookingDetail, completePastBookings, expireStaleBookings, providerBookings, requestBooking, transition } from '@/lib/booking'
+import { asUser } from '@/lib/db'
 import { asSystem } from '@/lib/db'
 
 /**
@@ -100,10 +101,11 @@ describe('booking', () => {
     expect(result).toEqual({ ok: false, reason: 'slot_taken' })
   })
 
-  it('still lets the constraint decide when the pre-check races', async () => {
+  it('still lets the constraint decide when two confirmations race', async () => {
     // The courtesy check in requestBooking can go stale between read and
-    // write. Confirming is where exclusivity is actually enforced, and it
-    // must hold even when two bookings got as far as being accepted.
+    // write, and the release in 0033 skips rows another transaction holds.
+    // Confirming is where exclusivity is actually enforced, and it must
+    // hold — without a deadlock — when both confirmations arrive at once.
     const a = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
       startsAt: at('2027-09-01T09:00:00Z'), endsAt: at('2027-09-01T22:00:00Z'),
@@ -117,8 +119,16 @@ describe('booking', () => {
 
     await transition(OWNER, idA, 'accepted')
     await transition(OWNER, idB, 'accepted')
-    expect(await transition(OWNER, idA, 'confirmed')).toEqual({ ok: true })
-    expect(await transition(OWNER, idB, 'confirmed')).toEqual({ ok: false, reason: 'slot_taken' })
+    const outcomes = await Promise.all([
+      transition(OWNER, idA, 'confirmed'),
+      transition(OWNER, idB, 'confirmed'),
+    ])
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(1)
+    // The loser either lost at the constraint or had already been
+    // released by the winner; never two confirmations, never an error.
+    for (const o of outcomes.filter((x) => !x.ok)) {
+      expect(['slot_taken', 'illegal_transition']).toContain((o as { reason: string }).reason)
+    }
   })
 
   it('refuses a transition the state machine does not allow', async () => {
@@ -275,7 +285,7 @@ describe('who may drive a transition (0021)', () => {
     })
   })
 
-  it('lets the supplier walk the whole accept -> confirm -> complete path', async () => {
+  it('lets the supplier walk the whole accept -> confirm -> complete path, completing only after it ends', async () => {
     const created = await requestBooking(JOAO, {
       providerId: HORIZONTE, resourceId: SALAO,
       startsAt: at('2027-09-15T09:00:00Z'), endsAt: at('2027-09-15T22:00:00Z'),
@@ -283,6 +293,13 @@ describe('who may drive a transition (0021)', () => {
     const id = (created as { bookingId: string }).bookingId
     expect(await transition(OWNER, id, 'accepted')).toEqual({ ok: true })
     expect(await transition(OWNER, id, 'confirmed')).toEqual({ ok: true })
+    // 0031: completing next year's booking today is how a supplier could
+    // mint a "Reserva verificada" review of their own listing.
+    expect(await transition(OWNER, id, 'completed')).toEqual({ ok: false, reason: 'illegal_transition' })
+
+    await asSystem((c) => c.query(
+      `update bookings set starts_at = now() - interval '2 days', ends_at = now() - interval '1 day' where id = $1`, [id],
+    ))
     expect(await transition(OWNER, id, 'completed')).toEqual({ ok: true })
   })
 
@@ -432,5 +449,428 @@ describe('reading bookings', () => {
     if (!created.ok) throw new Error('setup failed')
     const stranger = '40000000-0000-0000-0000-000000000002' // Quinta das Palmeiras' owner
     expect(await bookingDetail(stranger, created.bookingId)).toBeNull()
+  })
+})
+
+describe('integrity guards (0031)', () => {
+  const PALMEIRAS = '50000000-0000-0000-0000-000000000002'
+  const JARDIM = '60000000-0000-0000-0000-000000000002'
+  const COBERTA = '60000000-0000-0000-0000-000000000003'
+  const PALMEIRAS_OWNER = '40000000-0000-0000-0000-000000000002'
+
+  it('refuses a supplier booking their own listing', async () => {
+    const result = await requestBooking(OWNER, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-05-01T09:00:00Z'), endsAt: at('2027-05-01T22:00:00Z'),
+    })
+    expect(result).toEqual({ ok: false, reason: 'not_allowed' })
+  })
+
+  it('refuses a request for a date that has passed', async () => {
+    const result = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2025-05-01T09:00:00Z'), endsAt: at('2025-05-01T22:00:00Z'),
+    })
+    expect(result).toEqual({ ok: false, reason: 'not_allowed' })
+  })
+
+  it('ignores a client-supplied policy snapshot and total', async () => {
+    const id = await asUser(JOAO, async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at, policy_snapshot, total_minor)
+         values ($1, $2, $3, 'requested', '2027-06-01 09:00+01', '2027-06-01 22:00+01',
+                 '{"name":"tudo devolvido","tiers":[{"days_before":0,"refund_pct":100}]}', 1)
+         returning id`,
+        [HORIZONTE, JOAO, SALAO],
+      )
+      return rows[0]!.id
+    })
+    const row = await asSystem(async (c) =>
+      (await c.query(`select policy_snapshot->>'name' as name, total_minor from bookings where id = $1`, [id])).rows[0])
+    expect(row.name).not.toBe('tudo devolvido')
+    expect(row.total_minor).toBeNull()
+  })
+
+  it('refuses a party rewriting the dates or terms of a booking', async () => {
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-07-01T09:00:00Z'), endsAt: at('2027-07-01T22:00:00Z'),
+    })
+    const id = (created as { bookingId: string }).bookingId
+    await expect(asUser(JOAO, (c) =>
+      c.query(`update bookings set starts_at = starts_at + interval '1 day' where id = $1`, [id]),
+    )).rejects.toMatchObject({ code: '42501' })
+    await expect(asUser(OWNER, (c) =>
+      c.query(`update bookings set policy_snapshot = null where id = $1`, [id]),
+    )).rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('lets a multi-room venue block one room while another is held (trigger order)', async () => {
+    await asSystem((c) => c.query(
+      `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+       values ($1, $2, $3, 'confirmed', '2027-08-01 10:00+01', '2027-08-01 23:00+01')`,
+      [PALMEIRAS, ANA, JARDIM],
+    ))
+    const block = await blockDate(PALMEIRAS_OWNER, {
+      providerId: PALMEIRAS, resourceId: COBERTA,
+      startsAt: at('2027-08-01T09:00:00Z'), endsAt: at('2027-08-01T22:00:00Z'),
+    })
+    expect(block.ok).toBe(true)
+  })
+
+  it('completes confirmed bookings a day after they end', async () => {
+    const id = await asSystem(async (c) => (await c.query<{ id: string }>(
+      `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+       values ($1, $2, $3, 'confirmed', now() - interval '3 days', now() - interval '2 days') returning id`,
+      [HORIZONTE, JOAO, SALAO],
+    )).rows[0]!.id)
+    expect(await completePastBookings()).toBeGreaterThanOrEqual(1)
+    const status = await asSystem(async (c) =>
+      (await c.query(`select status from bookings where id = $1`, [id])).rows[0].status)
+    expect(status).toBe('completed')
+  })
+
+  it('does not release a date while a payment proof is under review', async () => {
+    const created = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at('2027-10-01T09:00:00Z'), endsAt: at('2027-10-01T22:00:00Z'),
+    })
+    const id = (created as { bookingId: string }).bookingId
+    expect(await transition(OWNER, id, 'accepted')).toEqual({ ok: true })
+    expect(await transition(OWNER, id, 'awaiting_payment', { totalMinor: 180000000n })).toEqual({ ok: true })
+
+    await asSystem((c) => c.query(
+      `insert into payments (booking_id, provider_key, amount_minor, status) values ($1, 'manual_proof', 5000000, 'submitted')`, [id],
+    ))
+    const held = await asSystem(async (c) =>
+      (await c.query(`select expires_at > now() + interval '60 hours' as held from bookings where id = $1`, [id])).rows[0].held)
+    expect(held).toBe(true)
+
+    // Even if the hold lapses, the sweep leaves it alone while the proof is pending.
+    await asSystem((c) => c.query(`update bookings set expires_at = now() - interval '1 minute' where id = $1`, [id]))
+    await expireStaleBookings()
+    const status = await asSystem(async (c) =>
+      (await c.query(`select status from bookings where id = $1`, [id])).rows[0].status)
+    expect(status).toBe('awaiting_payment')
+  })
+})
+
+describe('the two sides can reach each other (0034)', () => {
+  const OTHER_OWNER = '40000000-0000-0000-0000-000000000002'
+  const ADMIN = '40000000-0000-0000-0000-000000000099'
+  const request = (d: string) => requestBooking(JOAO, {
+    providerId: HORIZONTE, resourceId: SALAO,
+    startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T22:00:00Z`),
+    clientPhone: '+244923000111',
+  })
+  const idOf = (r: unknown) => (r as { bookingId: string }).bookingId
+  const joaoProfile = () => asSystem(async (c) =>
+    (await c.query(`select full_name, email, phone from profiles where id = $1`, [JOAO])).rows[0])
+
+  it('saves the phone the client gave to their profile, in the same request', async () => {
+    await asSystem((c) => c.query(`update profiles set phone = null where id = $1`, [JOAO]))
+    expect((await request('2027-11-01')).ok).toBe(true)
+    expect((await joaoProfile()).phone).toBe('+244923000111')
+  })
+
+  it('shows the supplier the client\'s name on a request, but not how to reach them', async () => {
+    const id = idOf(await request('2027-11-02'))
+    const seen = await bookingDetail(OWNER, id)
+    expect(seen?.clientName).toBe((await joaoProfile()).full_name)
+    expect(seen?.clientEmail).toBeNull()
+    expect(seen?.clientPhone).toBeNull()
+    expect(seen?.contactShared).toBe(false)
+    const listed = (await providerBookings(OWNER, HORIZONTE)).find((b) => b.id === id)
+    expect(listed?.clientName).toBe((await joaoProfile()).full_name)
+    expect(listed?.clientEmail).toBeNull()
+  })
+
+  it('shows email and phone once the supplier has accepted — and keeps them after', async () => {
+    const id = idOf(await request('2027-11-03'))
+    await transition(OWNER, id, 'accepted')
+    let seen = await bookingDetail(OWNER, id)
+    expect(seen?.contactShared).toBe(true)
+    expect(seen?.clientPhone).toBe('+244923000111')
+    expect(seen?.clientEmail).toBe((await joaoProfile()).email)
+    // A client cancelling afterwards does not make the history disappear.
+    await transition(JOAO, id, 'cancelled_client')
+    seen = await bookingDetail(OWNER, id)
+    expect(seen?.clientPhone).toBe('+244923000111')
+  })
+
+  it('never shares contact for a request the supplier only ever rejected', async () => {
+    const id = idOf(await request('2027-11-04'))
+    await transition(OWNER, id, 'rejected')
+    const seen = await bookingDetail(OWNER, id)
+    expect(seen?.clientPhone).toBeNull()
+    expect(seen?.clientEmail).toBeNull()
+  })
+
+  it('answers nothing to an unrelated supplier, a visitor calling it directly, or a stranger', async () => {
+    const id = idOf(await request('2027-11-05'))
+    await transition(OWNER, id, 'accepted')
+    const rows = await asUser(OTHER_OWNER, async (c) =>
+      (await c.query(`select * from booking_client_contact($1)`, [id])).rows)
+    expect(rows).toHaveLength(0)
+    const { asVisitor } = await import('@/lib/db')
+    await expect(asVisitor((c) => c.query(`select * from booking_client_contact($1)`, [id])))
+      .rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('lets an administrator see it, for support', async () => {
+    const id = idOf(await request('2027-11-06'))
+    await transition(OWNER, id, 'accepted')
+    const seen = await bookingDetail(ADMIN, id)
+    expect(seen?.clientPhone).toBe('+244923000111')
+  })
+
+  it('gives the client the supplier\'s own published numbers', async () => {
+    const id = idOf(await request('2027-11-07'))
+    const seen = await bookingDetail(JOAO, id)
+    const published = await asSystem(async (c) =>
+      (await c.query(`select phone, whatsapp from providers where id = $1`, [HORIZONTE])).rows[0])
+    expect(seen?.providerPhone).toBe(published.phone)
+    expect(seen?.providerWhatsapp).toBe(published.whatsapp)
+    expect(seen?.clientPhone).toBe('+244923000111')   // their own
+  })
+})
+
+describe('a taken date releases its competitors (0033)', () => {
+  const day = (d: string) => ({
+    providerId: HORIZONTE, resourceId: SALAO,
+    startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T22:00:00Z`),
+  })
+  const statusOf = (id: string) => asSystem(async (c) => {
+    const { rows } = await c.query<{ status: string }>(`select status from bookings where id = $1`, [id])
+    return rows[0]!.status
+  })
+  const idOf = (r: unknown) => (r as { bookingId: string }).bookingId
+
+  it('closes every overlapping request and acceptance when one starts to hold the date', async () => {
+    const winner = idOf(await requestBooking(JOAO, day('2027-10-01')))
+    const accepted = idOf(await requestBooking(ANA, day('2027-10-01')))
+    const pending = idOf(await requestBooking(ANA, { ...day('2027-10-01'), startsAt: at('2027-10-01T18:00:00Z') }))
+    const otherDay = idOf(await requestBooking(ANA, day('2027-10-02')))
+
+    await transition(OWNER, winner, 'accepted')
+    await transition(OWNER, accepted, 'accepted')
+    expect(await transition(OWNER, winner, 'awaiting_payment', { totalMinor: 180000000n })).toEqual({ ok: true })
+
+    expect(await statusOf(accepted)).toBe('unavailable')
+    expect(await statusOf(pending)).toBe('unavailable')
+    expect(await statusOf(otherDay)).toBe('requested')   // a different date is untouched
+    expect(await statusOf(winner)).toBe('awaiting_payment')
+  })
+
+  it('tells the displaced client, with the date and the supplier\'s zone for a new search', async () => {
+    const winner = idOf(await requestBooking(JOAO, day('2027-10-05')))
+    const loser = idOf(await requestBooking(ANA, day('2027-10-05')))
+    await transition(OWNER, winner, 'accepted')
+    await transition(OWNER, winner, 'confirmed')
+
+    const mail = await asSystem(async (c) => {
+      const { rows } = await c.query<{ kind: string; recipient_id: string; context: Record<string, string> }>(
+        `select kind, recipient_id, context from notification_outbox
+          where kind = 'booking_unavailable' and context->>'booking_id' = $1`, [loser])
+      return rows
+    })
+    expect(mail).toHaveLength(1)
+    expect(mail[0]!.recipient_id).toBe(ANA)
+    expect(mail[0]!.context.location_id).toBeTruthy()
+    expect(mail[0]!.context.category_id).toBeTruthy()
+  })
+
+  it('releases them when the supplier blocks the date for an off-platform booking, too', async () => {
+    const pending = idOf(await requestBooking(ANA, day('2027-10-08')))
+    expect((await blockDate(OWNER, { ...day('2027-10-08') })).ok).toBe(true)
+    expect(await statusOf(pending)).toBe('unavailable')
+  })
+
+  it('refuses to accept a request for a date that is already held', async () => {
+    const pending = idOf(await requestBooking(ANA, day('2027-10-10')))
+    expect((await blockDate(OWNER, { ...day('2027-10-10') })).ok).toBe(true)
+    // Released already; and a request that slipped in after the hold
+    // (the courtesy check racing) cannot become a second "aceite".
+    expect(await statusOf(pending)).toBe('unavailable')
+    const late = await asSystem(async (c) => {
+      const { rows } = await c.query<{ id: string }>(
+        `insert into bookings (provider_id, client_id, resource_id, status, starts_at, ends_at)
+         values ($1, $2, $3, 'requested', '2027-10-10T10:00:00Z', '2027-10-10T12:00:00Z') returning id`,
+        [HORIZONTE, JOAO, SALAO])
+      return rows[0]!.id
+    })
+    expect(await transition(OWNER, late, 'accepted')).toEqual({ ok: false, reason: 'slot_taken' })
+  })
+
+  it('lets nobody set it by hand — client, supplier or admin', async () => {
+    const id = idOf(await requestBooking(ANA, day('2027-10-12')))
+    const ADMIN = '40000000-0000-0000-0000-000000000099'
+    for (const actor of [ANA, OWNER, ADMIN]) {
+      expect(await transition(actor, id, 'unavailable')).toEqual({ ok: false, reason: 'not_allowed' })
+    }
+    expect(await statusOf(id)).toBe('requested')
+  })
+
+  it('gives the client\'s booking page the supplier\'s zone and category for the same-day search', async () => {
+    // Regression: 0033's fields were first added to the supplier list query
+    // instead of the booking detail, so the link read zona=undefined.
+    const id = idOf(await requestBooking(ANA, day('2027-10-16')))
+    const seen = await bookingDetail(ANA, id)
+    const p = await asSystem(async (c) =>
+      (await c.query(`select category_id, location_id from providers where id = $1`, [HORIZONTE])).rows[0])
+    expect(seen?.providerCategoryId).toBe(p.category_id)
+    expect(seen?.providerLocationId).toBe(p.location_id)
+  })
+
+  it('is terminal: nothing moves a released request again', async () => {
+    const winner = idOf(await requestBooking(JOAO, day('2027-10-14')))
+    const loser = idOf(await requestBooking(ANA, day('2027-10-14')))
+    await transition(OWNER, winner, 'accepted')
+    await transition(OWNER, winner, 'confirmed')
+    expect(await transition(OWNER, loser, 'accepted')).toEqual({ ok: false, reason: 'illegal_transition' })
+    expect(await transition(ANA, loser, 'cancelled_client')).toEqual({ ok: false, reason: 'illegal_transition' })
+  })
+})
+
+describe('payment terms (0035)', () => {
+  const ADMIN = '40000000-0000-0000-0000-000000000099'
+  const accepted = async (d: string) => {
+    const r = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T22:00:00Z`),
+    })
+    const id = (r as { bookingId: string }).bookingId
+    await transition(OWNER, id, 'accepted')
+    return id
+  }
+  const terms = (id: string) => asSystem(async (c) =>
+    (await c.query(`select status, total_minor, deposit_minor, payment_instructions from bookings where id = $1`, [id])).rows[0])
+
+  it('lets the supplier set total, sinal and instructions when asking for payment', async () => {
+    const id = await accepted('2028-01-10')
+    expect(await transition(OWNER, id, 'awaiting_payment', {
+      totalMinor: 180000000n, depositMinor: 54000000n, instructions: '  IBAN AO06 0000 ...  ',
+    })).toEqual({ ok: true })
+    expect(await terms(id)).toEqual({
+      status: 'awaiting_payment', total_minor: '180000000', deposit_minor: '54000000',
+      payment_instructions: 'IBAN AO06 0000 ...',
+    })
+    const seen = await bookingDetail(JOAO, id)
+    expect(seen?.depositMinor).toBe('54000000')
+    expect(seen?.paymentInstructions).toBe('IBAN AO06 0000 ...')
+  })
+
+  it('refuses "aguarda pagamento" without a total', async () => {
+    const id = await accepted('2028-01-11')
+    expect(await transition(OWNER, id, 'awaiting_payment')).toEqual({ ok: false, reason: 'terms_required' })
+    expect((await terms(id)).status).toBe('accepted')
+  })
+
+  it('refuses a sinal larger than the total', async () => {
+    const id = await accepted('2028-01-12')
+    expect(await transition(OWNER, id, 'awaiting_payment', { totalMinor: 100n, depositMinor: 101n }))
+      .toEqual({ ok: false, reason: 'invalid_terms' })
+  })
+
+  it('freezes the terms once set — for the supplier and the client alike', async () => {
+    const id = await accepted('2028-01-13')
+    await transition(OWNER, id, 'awaiting_payment', { totalMinor: 180000000n, depositMinor: 50000000n })
+    for (const actor of [OWNER, JOAO]) {
+      await expect(asUser(actor, (c) =>
+        c.query(`update bookings set total_minor = 1, deposit_minor = 1 where id = $1`, [id])))
+        .rejects.toMatchObject({ code: '42501' })
+    }
+    // Confirming does not reopen them either.
+    expect(await transition(OWNER, id, 'confirmed', { totalMinor: 1n })).toEqual({ ok: false, reason: 'not_allowed' })
+    expect((await terms(id)).total_minor).toBe('180000000')
+  })
+
+  it('never lets a supplier set terms outside the asking moment', async () => {
+    const id = await accepted('2028-01-14')
+    await expect(asUser(OWNER, (c) =>
+      c.query(`update bookings set total_minor = 5 where id = $1`, [id])))
+      .rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('still lets an administrator correct them, for support', async () => {
+    const id = await accepted('2028-01-15')
+    await transition(OWNER, id, 'awaiting_payment', { totalMinor: 180000000n })
+    await asUser(ADMIN, (c) => c.query(`update bookings set total_minor = 170000000 where id = $1`, [id]))
+    expect((await terms(id)).total_minor).toBe('170000000')
+  })
+
+  it('puts the amounts and instructions in the client\'s email', async () => {
+    const id = await accepted('2028-01-16')
+    await transition(OWNER, id, 'awaiting_payment', {
+      totalMinor: 180000000n, depositMinor: 54000000n, instructions: 'Multicaixa Express 923 000 000',
+    })
+    const ctx = await asSystem(async (c) => (await c.query(
+      `select context from notification_outbox where kind = 'booking_awaiting_payment' and context->>'booking_id' = $1`, [id],
+    )).rows[0]?.context)
+    expect(String(ctx.total_minor)).toBe('180000000')
+    expect(String(ctx.deposit_minor)).toBe('54000000')
+    expect(ctx.payment_instructions).toBe('Multicaixa Express 923 000 000')
+  })
+})
+
+describe('example profiles (0041)', () => {
+  const flag = (on: boolean) => asSystem((c) => c.query(`update providers set is_demo = $2 where id = $1`, [HORIZONTE, on]))
+
+  it('refuses a booking request for an example profile, in the database', async () => {
+    await flag(true)
+    try {
+      expect(await requestBooking(JOAO, {
+        providerId: HORIZONTE, resourceId: SALAO,
+        startsAt: at('2028-06-01T09:00:00Z'), endsAt: at('2028-06-01T22:00:00Z'),
+      })).toEqual({ ok: false, reason: 'not_allowed' })
+    } finally {
+      await flag(false)
+    }
+  })
+
+  it('labels it, and never shows it as verified', async () => {
+    const { getProvider } = await import('@/lib/provider')
+    const { search } = await import('@/lib/search')
+    await flag(true)
+    try {
+      const p = await getProvider('salao-horizonte-talatona')
+      expect(p?.isDemo).toBe(true)
+      expect(p?.verifiedAt).toBeNull()
+      const hit = (await search({ limit: 50 })).hits.find((h) => h.id === HORIZONTE)
+      expect(hit?.isDemo).toBe(true)
+    } finally {
+      await flag(false)
+    }
+  })
+
+  it('sorts examples after every real supplier, without repeating or skipping across pages', async () => {
+    const { search } = await import('@/lib/search')
+    const all = (await search({ limit: 50 })).hits.map((h) => h.id)
+    await flag(true)
+    try {
+      const seen: Array<{ id: string; isDemo: boolean }> = []
+      let cursor
+      do {
+        const page = await search({ limit: 2, cursor })
+        seen.push(...page.hits.map((h) => ({ id: h.id, isDemo: h.isDemo })))
+        cursor = page.nextCursor ?? undefined
+      } while (cursor)
+      expect(seen.map((h) => h.id).sort()).toEqual([...all].sort())
+      expect(new Set(seen.map((h) => h.id)).size).toBe(seen.length)
+      expect(seen.at(-1)).toEqual({ id: HORIZONTE, isDemo: true })
+    } finally {
+      await flag(false)
+    }
+  })
+
+  it('never matches it to a quote request', async () => {
+    await flag(true)
+    try {
+      const matched = await asSystem(async (c) => (await c.query<{ ok: boolean }>(
+        `select bool_or(quote_request_open_and_matches(qr.id, $1)) as ok from quote_requests qr`, [HORIZONTE])).rows[0]!.ok)
+      expect(matched ?? false).toBe(false)
+    } finally {
+      await flag(false)
+    }
   })
 })

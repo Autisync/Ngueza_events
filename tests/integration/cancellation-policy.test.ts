@@ -225,3 +225,26 @@ describe('refund entitlement', () => {
     expect(await refundEntitlement(OTHER_OWNER, created.bookingId)).toBeNull()
   })
 })
+
+describe('the dated steps say what the database will decide (slice 32)', () => {
+  it('matches compute_refund_pct() exactly at each cut-off, and one minute after', async () => {
+    const { datedTierSteps } = await import('@/lib/booking-labels')
+    const { asSystem: sys } = await import('@/lib/db')
+    const tiers = [{ daysBefore: 30, refundPct: 100 }, { daysBefore: 7, refundPct: 50 }, { daysBefore: 2, refundPct: 10 }]
+    const startsAt = '2027-12-15T09:00:00Z'
+    const steps = datedTierSteps(tiers, startsAt, new Date('2027-01-01T00:00:00Z'))
+    const pct = (decidedAt: Date) => sys(async (c) => (await c.query<{ p: number }>(
+      `select compute_refund_pct($1::jsonb, $2::timestamptz, $3::timestamptz) as p`,
+      [JSON.stringify(tiers.map((t) => ({ days_before: t.daysBefore, refund_pct: t.refundPct }))),
+       startsAt, decidedAt.toISOString()],
+    )).rows[0]!.p)
+
+    for (const [i, t] of tiers.entries()) {
+      const cutoff = new Date(new Date(startsAt).getTime() - t.daysBefore * 86_400_000)
+      // "Até <cutoff>" is inclusive: cancelling at that minute still earns the step.
+      expect(await pct(cutoff)).toBe(steps[i]!.refundPct)
+      // One minute later, the next step down applies.
+      expect(await pct(new Date(cutoff.getTime() + 60_000))).toBe(steps[i + 1]!.refundPct)
+    }
+  })
+})

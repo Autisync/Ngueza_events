@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { currentProfile } from '@/lib/auth'
+import { adminProfile } from '../guard'
 import { queueCounts } from '@/lib/admin'
 import { locationTree } from '@/lib/taxonomy'
 import { doCreateLocation } from '../taxonomy-actions'
@@ -43,7 +43,7 @@ function order(nodes: Awaited<ReturnType<typeof locationTree>>) {
 export default async function Localizacoes({
   searchParams,
 }: { searchParams: Promise<{ erro?: string; guardado?: string }> }) {
-  const profile = (await currentProfile())!
+  const profile = await adminProfile()
   const [counts, tree, flags] = await Promise.all([
     queueCounts(profile.id), locationTree(profile.id), searchParams,
   ])
@@ -63,7 +63,7 @@ export default async function Localizacoes({
         <div className={styles.card}>
           <h2>Árvore de localizações</h2>
           <p className={styles.note}>
-            País → Província → Município → Bairro (§43). Esta estrutura é o que permitirá no futuro
+            País → Província → Município → Bairro. Esta estrutura é o que permitirá no futuro
             pesquisas como «maquilhadoras perto de mim» e a expansão para outras províncias.
           </p>
           {ordered.map(({ node, depth }) => (

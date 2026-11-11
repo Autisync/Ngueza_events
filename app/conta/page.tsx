@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
+import { myUnreadNotificationCount } from '@/lib/notifications'
 import styles from '../auth.module.css'
 
 export const metadata: Metadata = { title: 'A minha conta', robots: { index: false } }
@@ -17,7 +18,7 @@ export default async function Conta({
 }: { searchParams: Promise<{ atualizado?: string }> }) {
   const profile = await currentProfile()
   if (!profile) redirect('/entrar?next=/conta')
-  const { atualizado } = await searchParams
+  const [{ atualizado }, unread] = await Promise.all([searchParams, myUnreadNotificationCount(profile.id)])
 
   return (
     <main className={styles.page}>
@@ -69,6 +70,14 @@ export default async function Conta({
       ) : null}
 
       <div className={styles.card}>
+        <h2>Notificações{unread > 0 ? <span className={`${styles.badge} ${styles.badgeWarn}`} style={{ marginLeft: 8 }}>{unread}</span> : null}</h2>
+        <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
+          Tudo o que lhe enviámos por email, com o atalho para o que há a fazer.
+        </p>
+        <a href="/conta/notificacoes">{unread > 0 ? `Ver ${unread} por ler` : 'Ver notificações'}</a>
+      </div>
+
+      <div className={styles.card}>
         <h2>Reservas</h2>
         <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.94rem' }}>
           Veja o estado dos seus pedidos e reservas.
@@ -90,6 +99,8 @@ export default async function Conta({
           Pode alterar a palavra-passe a qualquer momento.
         </p>
         <a href="/recuperar">Alterar palavra-passe</a>
+        {' · '}
+        <a href="/conta/seguranca">Verificação em dois passos</a>
       </div>
 
       {/* POST, so no page or image can sign someone out by linking here. */}

@@ -8,6 +8,10 @@ import {
   clearSession, readTokens, requestPasswordReset, revoke,
   signIn, signUp, storeSession, updatePassword,
 } from '@/lib/auth'
+import { safeNext } from '@/lib/safe'
+import { LIMITS, allow, allowAll, clientIp } from '@/lib/rate-limit'
+import { pausedNotice } from '@/lib/switches'
+import { recordSignupAcceptance } from '@/lib/legal'
 
 /**
  * Plain server actions bound to <form action={...}>, so every auth screen
@@ -36,16 +40,25 @@ export async function doSignIn(formData: FormData): Promise<void> {
     email: formData.get('email') ?? '',
     password: formData.get('password') ?? '',
   })
-  const next = String(formData.get('next') ?? '/conta')
+  // The hidden field is attacker-controlled; `startsWith('/')` alone let
+  // "//evil.example" through as an open redirect after sign-in.
+  const next = safeNext(formData.get('next'))
 
   if (!parsed.success) redirect(`/entrar?erro=dados&next=${encodeURIComponent(next)}`)
 
-  const result = await signIn(parsed.data.email, parsed.data.password)
+  // Per visitor and per account (slice 33): guessing one person's
+  // password from many addresses is caught by the second key.
+  const ip = clientIp(await headers())
+  if (!(await allowAll([[LIMITS.signInIp, ip], [LIMITS.signInEmail, parsed.data.email]]))) {
+    redirect(`/entrar?erro=rate_limited&next=${encodeURIComponent(next)}`)
+  }
+
+  const result = await signIn(parsed.data.email, parsed.data.password, ip)
   if (!result.ok) {
     redirect(`/entrar?erro=${result.error}&next=${encodeURIComponent(next)}`)
   }
   await storeSession(result.session)
-  redirect(next.startsWith('/') ? next : '/conta')
+  redirect(next)
 }
 
 export async function doSignUp(formData: FormData): Promise<void> {
@@ -53,18 +66,30 @@ export async function doSignUp(formData: FormData): Promise<void> {
     email: formData.get('email') ?? '',
     password: formData.get('password') ?? '',
   })
+  // Where the visitor was going when we asked them to create an account
+  // (a supplier's booking form, supplier registration). Losing it dropped
+  // every booking funnel onto /conta.
+  const next = safeNext(formData.get('next'))
+  const back = next === '/conta' ? '' : `&next=${encodeURIComponent(next)}`
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path[0]
-    redirect(`/criar-conta?erro=${field === 'password' ? 'palavra_passe_curta' : 'dados'}`)
+    redirect(`/criar-conta?erro=${field === 'password' ? 'palavra_passe_curta' : 'dados'}${back}`)
   }
 
+  if (await pausedNotice('signups_paused')) redirect(`/criar-conta?erro=pausado${back}`)
+  // Recorded against the versions in force (0042) once the account exists.
+  if (formData.get('aceito') !== 'on') redirect(`/criar-conta?erro=aceitar${back}`)
+  const ip = clientIp(await headers())
+  if (!(await allow(LIMITS.signUpIp, ip))) redirect(`/criar-conta?erro=rate_limited${back}`)
+
   const fullName = String(formData.get('nome') ?? '').trim().slice(0, 120) || undefined
-  const result = await signUp(parsed.data.email, parsed.data.password, fullName)
-  if (!result.ok) redirect(`/criar-conta?erro=${result.error}`)
+  const result = await signUp(parsed.data.email, parsed.data.password, fullName, ip)
+  if (!result.ok) redirect(`/criar-conta?erro=${result.error}${back}`)
+  if (result.userId) await recordSignupAcceptance(result.userId).catch((e) => console.error('legal acceptance', e))
 
   if (result.session) {
     await storeSession(result.session)
-    redirect('/conta')
+    redirect(next)
   }
   redirect('/criar-conta/confirmar')
 }
@@ -80,7 +105,13 @@ export async function doRequestReset(formData: FormData): Promise<void> {
   const email = z.string().trim().toLowerCase().email().safeParse(formData.get('email') ?? '')
   if (email.success) {
     const h = await headers()
-    await requestPasswordReset(email.data, `${site(h)}/nova-palavra-passe`)
+    const ip = clientIp(h)
+    // Over the limit: send nothing, but answer exactly as if we had — a
+    // different page would tell a stranger the limit was reached for
+    // this address.
+    if (await allowAll([[LIMITS.resetIp, ip], [LIMITS.resetEmail, email.data]])) {
+      await requestPasswordReset(email.data, `${site(h)}/nova-palavra-passe`, ip)
+    }
   }
   // The same destination either way. Telling a stranger whether an address
   // has an account is an enumeration oracle.

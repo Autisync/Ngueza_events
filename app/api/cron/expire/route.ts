@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { expireStaleBookings } from '@/lib/booking'
+import { completePastBookings, expireStaleBookings } from '@/lib/booking'
+import { expireStaleQuoteRequests } from '@/lib/quotes'
+import { pruneRateLimits } from '@/lib/rate-limit'
+import { pruneJobRuns, recordRun } from '@/lib/jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,8 +30,21 @@ async function run(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const released = await expireStaleBookings()
-  return NextResponse.json({ released })
+  // Every run is logged (0037), so /api/saude can tell when the sweep
+  // has stopped — a held date nobody paid for is otherwise silent.
+  try {
+    const summary = await recordRun('expire', async () => ({
+      released: await expireStaleBookings(),
+      completed: await completePastBookings(),
+      quotesExpired: await expireStaleQuoteRequests(),
+      rateLimitsPruned: await pruneRateLimits(),
+      jobRunsPruned: await pruneJobRuns(),
+    }))
+    return NextResponse.json(summary)
+  } catch (error) {
+    console.error('cron expire failed', error)
+    return NextResponse.json({ error: 'expire failed' }, { status: 500 })
+  }
 }
 
 export const GET = run

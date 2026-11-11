@@ -1,11 +1,15 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
-import { bookingDetail, type BookingStatus } from '@/lib/booking'
-import { formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { bookingDetail, lastPaymentInstructions, type BookingStatus } from '@/lib/booking'
+import { bookingPayments, paymentProgress } from '@/lib/payments'
+import { PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
+import { formatMinor } from '@/lib/money'
+import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
+import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { ownedProvider } from '@/lib/painel'
 import { refundEntitlement } from '@/lib/cancellation-policy'
-import { doSupplierTransition } from '@/app/booking-actions'
+import { doRequestPayment, doSupplierTransition } from '@/app/booking-actions'
 import styles from '../../../painel.module.css'
 
 export const metadata: Metadata = { title: 'Reserva', robots: { index: false } }
@@ -24,8 +28,9 @@ const NEXT_STEPS: Partial<Record<BookingStatus, Array<{ to: BookingStatus; label
     { to: 'accepted', label: 'Aceitar', tone: 'go' },
     { to: 'rejected', label: 'Rejeitar', tone: 'no' },
   ],
+  // Asking for payment is its own form below ("Pedir pagamento"): it
+  // needs the amounts, not just a button (slice 31).
   accepted: [
-    { to: 'awaiting_payment', label: 'Marcar como aguarda pagamento', tone: 'go' },
     { to: 'confirmed', label: 'Confirmar directamente', tone: 'go' },
     { to: 'cancelled_provider', label: 'Cancelar', tone: 'no' },
   ],
@@ -37,6 +42,11 @@ const NEXT_STEPS: Partial<Record<BookingStatus, Array<{ to: BookingStatus; label
     { to: 'completed', label: 'Marcar como concluída', tone: 'go' },
     { to: 'no_show', label: 'Cliente não compareceu', tone: 'no' },
     { to: 'cancelled_provider', label: 'Cancelar', tone: 'no' },
+  ],
+  // A manual block (§27) used to be permanent: nothing offered the one
+  // transition spec/states.md allows out of it.
+  blocked: [
+    { to: 'cancelled_provider', label: 'Desbloquear data', tone: 'no' },
   ],
 }
 
@@ -56,10 +66,21 @@ export default async function ReservaFornecedor({
   const [booking, flags] = await Promise.all([bookingDetail(profile.id, bookingId), searchParams])
   if (!booking || booking.providerId !== providerId) notFound()
 
-  const steps = NEXT_STEPS[booking.status] ?? []
-  const showEntitlement = steps.length > 0
-    || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+  // 'Concluída' and 'não compareceu' only make sense once the event has
+  // started; the database refuses completion before it ends (0031).
+  const started = new Date(booking.startsAt) <= new Date()
+  const ended = new Date(booking.endsAt) <= new Date()
+  const steps = (NEXT_STEPS[booking.status] ?? []).filter((step) =>
+    step.to === 'completed' ? ended : step.to === 'no_show' ? started : true,
+  )
+  const showEntitlement = booking.status !== 'blocked'
+    && (steps.length > 0 || booking.status === 'cancelled_client')
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
+  const [payments, lastInstructions] = await Promise.all([
+    bookingPayments(profile.id, booking.id),
+    booking.status === 'accepted' ? lastPaymentInstructions(profile.id, providerId) : Promise.resolve(null),
+  ])
+  const progress = paymentProgress(booking.totalMinor, payments)
 
   return (
     <main>
@@ -88,9 +109,7 @@ export default async function ReservaFornecedor({
           {booking.resourceName ? (
             <div className={styles.row}><span>Espaço</span><span>{booking.resourceName}</span></div>
           ) : null}
-          {booking.clientEmail ? (
-            <div className={styles.row}><span>Contacto</span><span>{booking.clientEmail}</span></div>
-          ) : null}
+
           {booking.partySize ? (
             <div className={styles.row}><span>Pessoas</span><span>{booking.partySize}</span></div>
           ) : null}
@@ -99,10 +118,93 @@ export default async function ReservaFornecedor({
           ) : null}
         </div>
 
+        {booking.clientId ? <ClientContact booking={booking} providerName={provider.name} /> : null}
+
+        {booking.status === 'accepted' ? (
+          <div className={styles.card} id="pagamento">
+            <h2>Pedir pagamento</h2>
+            <p className={styles.note}>
+              O cliente paga-lhe directamente, fora da NGUEZA, e envia o comprovativo aqui. Diga
+              quanto e como — o cliente recebe estes dados por email e na página da reserva.
+              Depois de enviados, não podem ser alterados.
+            </p>
+            <form action={doRequestPayment}>
+              <input type="hidden" name="bookingId" value={booking.id} />
+              <input type="hidden" name="providerId" value={providerId} />
+              <div className={styles.two}>
+                <label className={styles.field}>
+                  <span className={styles.label}>Total acordado (Kz)</span>
+                  <input className={styles.input} name="total" required inputMode="decimal"
+                         placeholder="1.800.000" />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.label}>Sinal a pagar agora (Kz)</span>
+                  <input className={styles.input} name="deposit" inputMode="decimal"
+                         placeholder="Vazio = o total" />
+                  <span className={styles.hint}>O resto paga-se como combinarem.</span>
+                </label>
+              </div>
+              <label className={styles.field}>
+                <span className={styles.label}>Como pagar</span>
+                <textarea className={styles.area} name="instructions" maxLength={500}
+                          defaultValue={lastInstructions ?? ''}
+                          placeholder="Ex.: Transferência para o IBAN AO06 0000 0000 0000 0000 0000 0 (Salão Horizonte, Lda) ou Multicaixa Express 923 000 000. Indique a referência da reserva." />
+              </label>
+              <button className={`${styles.btn} ${styles.go}`} type="submit">Pedir pagamento ao cliente</button>
+            </form>
+          </div>
+        ) : null}
+
+        {booking.totalMinor !== null || payments.length > 0 ? (
+          <div className={styles.card} id="pagamento">
+            <h2>Pagamento</h2>
+            {booking.totalMinor !== null ? (
+              <>
+                <div className={styles.row}><span>Total acordado</span><span>{formatMinor(BigInt(booking.totalMinor))}</span></div>
+                {booking.depositMinor !== null ? (
+                  <div className={styles.row}><span>Sinal pedido</span><span>{formatMinor(BigInt(booking.depositMinor))}</span></div>
+                ) : null}
+                <div className={styles.row}><span>Declarado pelo cliente</span><span>{formatMinor(progress.declaredMinor)}</span></div>
+                {progress.remainingMinor !== null ? (
+                  <div className={styles.row}><span>Por pagar</span><strong>{formatMinor(progress.remainingMinor)}</strong></div>
+                ) : null}
+              </>
+            ) : null}
+            {payments.length === 0 ? (
+              <p className={styles.note} style={{ margin: '12px 0 0' }}>O cliente ainda não enviou comprovativo.</p>
+            ) : (
+              <div className={styles.list} style={{ marginTop: 14 }}>
+                {payments.map((p) => (
+                  <div className={styles.item} key={p.id}>
+                    <div>
+                      <strong>{formatMinor(BigInt(p.amountMinor))}</strong>
+                      <span className={styles.meta}>
+                        {formatWhen(p.createdAt)}{p.reference ? ` · ref. ${p.reference}` : ''}
+                      </span>
+                      <span className={styles.meta}>{PAYMENT_STATUS_LABEL[p.status]}</span>
+                    </div>
+                    {p.documentId ? (
+                      <a href={`/api/reservas/comprovativo?id=${p.documentId}`} target="_blank" rel="noopener noreferrer">
+                        Ver comprovativo
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+            {booking.status === 'awaiting_payment' ? (
+              <p className={styles.note} style={{ margin: '12px 0 0' }}>
+                Confirme só depois de ver o dinheiro na sua conta. «Comprovativo verificado» quer
+                dizer que a NGUEZA achou o documento legível e plausível — não que o dinheiro chegou.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {entitlement ? (
           <div className={styles.card}>
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>
-              {entitlement.isFinal ? 'Reembolso devido ao cliente' : 'Se cancelar hoje'}
+              {entitlement.isFinal ? 'Reembolso devido ao cliente' : 'Se o cliente cancelar hoje'}
             </h2>
             <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
               Segundo a política «{entitlement.policyName}». O reembolso em si é combinado
@@ -148,5 +250,56 @@ export default async function ReservaFornecedor({
         </div>
       </div>
     </main>
+  )
+}
+
+/** How the supplier reaches the client (0034): the name always; phone,
+ *  WhatsApp and email once they have accepted the request. */
+function ClientContact({
+  booking, providerName,
+}: {
+  booking: NonNullable<Awaited<ReturnType<typeof bookingDetail>>>
+  providerName: string
+}) {
+  const phone = normalizePhone(booking.clientPhone)
+  const firstName = booking.clientName?.split(' ')[0]
+  const hello = `Olá${firstName ? ` ${firstName}` : ''}! Fala ${providerName}, sobre o seu pedido de reserva na NGUEZA para ${eventDay(booking.startsAt)} (ref. ${bookingRef(booking.id)}).`
+
+  return (
+    <div className={styles.card}>
+      <h2>Cliente</h2>
+      <div className={styles.row}><span>Nome</span><span>{booking.clientName ?? '—'}</span></div>
+      {booking.contactShared === false ? (
+        <p className={styles.note} style={{ margin: '12px 0 0' }}>
+          O telefone e o email do cliente aparecem aqui depois de aceitar o pedido.
+        </p>
+      ) : (
+        <>
+          {booking.clientPhone ? (
+            <div className={styles.row}>
+              <span>Telemóvel</span>
+              <a href={`tel:${phone ?? booking.clientPhone}`}>{booking.clientPhone}</a>
+            </div>
+          ) : null}
+          {booking.clientEmail ? (
+            <div className={styles.row}>
+              <span>Email</span><a href={`mailto:${booking.clientEmail}`}>{booking.clientEmail}</a>
+            </div>
+          ) : null}
+          {phone ? (
+            <div className={styles.actions} style={{ marginTop: 14 }}>
+              <a className={`${styles.btn} ${styles.go}`} style={{ textDecoration: 'none' }}
+                 href={whatsappUrl(phone, hello)} target="_blank" rel="noopener noreferrer">
+                Falar no WhatsApp
+              </a>
+            </div>
+          ) : !booking.clientPhone ? (
+            <p className={styles.note} style={{ margin: '12px 0 0' }}>
+              Este pedido foi feito antes de pedirmos o telefone. Use o email para combinar.
+            </p>
+          ) : null}
+        </>
+      )}
+    </div>
   )
 }

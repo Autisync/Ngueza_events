@@ -3,7 +3,7 @@
 // policies, and computes what a cancellation is worth.
 import 'server-only'
 
-import { asUser, isCheckViolation } from '@/lib/db'
+import { asUser, asVisitor, isCheckViolation } from '@/lib/db'
 
 /**
  * The cancellation & refund policy engine (Phase Two, slice 19).
@@ -55,6 +55,21 @@ function toPolicy(r: any): CancellationPolicy {
  *  `provider_id`, world-readable) visible alongside their own. */
 export async function activePolicy(actorId: string, providerId: string): Promise<CancellationPolicy | null> {
   return asUser(actorId, async (c) => {
+    const { rows } = await c.query<any>(
+      `select * from cancellation_policies
+        where is_active and (provider_id = $1 or provider_id is null)
+        order by provider_id nulls last
+        limit 1`,
+      [providerId],
+    )
+    return rows[0] ? toPolicy(rows[0]) : null
+  })
+}
+
+/** The same policy, for anyone — a visitor deciding whether to book
+ *  (slice 32). Active policies are world-readable (policies_public_read). */
+export async function publicPolicy(providerId: string): Promise<CancellationPolicy | null> {
+  return asVisitor(async (c) => {
     const { rows } = await c.query<any>(
       `select * from cancellation_policies
         where is_active and (provider_id = $1 or provider_id is null)
@@ -146,7 +161,15 @@ export async function refundEntitlement(actorId: string, bookingId: string): Pro
     const booking = rows[0]
     if (!booking || !booking.policy_snapshot) return null
 
-    const isCancelled = booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+    // The tiers describe what a CLIENT gets back for cancelling with N
+    // days' notice. They say nothing about a supplier cancelling, and
+    // applying them there told clients they were owed 0% when the
+    // supplier walked away. What a supplier owes on their own
+    // cancellation is a policy NGUEZA has to set; until it does, there is
+    // no number to show.
+    if (booking.status === 'cancelled_provider') return null
+
+    const isCancelled = booking.status === 'cancelled_client'
     let decidedAt: string | null = null
 
     if (isCancelled) {

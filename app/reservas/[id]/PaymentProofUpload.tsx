@@ -18,7 +18,9 @@ import styles from '../reservas.module.css'
  */
 const MAX_BYTES = 10 * 1024 * 1024
 
-export function PaymentProofUpload({ bookingId }: { bookingId: string }) {
+/** defaultAmount: what is due now, in pt-AO format ("450.000"), so the
+ *  client confirms a number rather than working one out (slice 31). */
+export function PaymentProofUpload({ bookingId, defaultAmount }: { bookingId: string; defaultAmount?: string }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,7 +101,7 @@ export function PaymentProofUpload({ bookingId }: { bookingId: string }) {
       <label className={styles.field}>
         <span className={styles.label}>Valor pago (Kz)</span>
         <input className={styles.area} style={{ minHeight: 'auto' }} type="text" name="amount"
-               inputMode="decimal" placeholder="50 000,00" required />
+               inputMode="decimal" placeholder="50 000,00" required defaultValue={defaultAmount} />
       </label>
       <label className={styles.field}>
         <span className={styles.label}>
