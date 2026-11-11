@@ -9,7 +9,6 @@ export const metadata: Metadata = {
 export default function Termos() {
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <div className={`${styles.icon} ${styles.iconWait}`} aria-hidden="true">···</div>
       <h1 className={styles.title}>Termos de Utilização</h1>
       <p className={styles.body}>

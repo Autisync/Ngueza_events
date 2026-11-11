@@ -9,7 +9,6 @@ export const metadata: Metadata = {
 export default function Obrigado() {
   return (
     <main className={styles.page}>
-      <p className={styles.mark}>NGUEZA</p>
       <div className={`${styles.icon} ${styles.iconOk}`} aria-hidden="true">
         ✓
       </div>

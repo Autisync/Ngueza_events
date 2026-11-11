@@ -7,7 +7,6 @@ export const metadata: Metadata = { title: 'Recuperar palavra-passe', robots: { 
 export default function Recuperar() {
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Recuperar palavra-passe</h1>
       <p className={styles.lede}>
         Escreva o email da sua conta e enviamos-lhe uma ligação para definir uma nova palavra-passe.

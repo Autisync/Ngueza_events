@@ -24,7 +24,6 @@ export default async function Cancelar({
   if (result === null) {
     return (
       <main className={styles.page}>
-        <p className={styles.mark}>NGUEZA</p>
         <h1 className={styles.title}>Cancelar subscrição</h1>
         <p className={styles.body}>Deixa de receber as novidades da NGUEZA. Os emails sobre reservas continuam.</p>
         <form action={doUnsubscribe}>
@@ -37,7 +36,6 @@ export default async function Cancelar({
 
   return (
     <main className={styles.page}>
-      <p className={styles.mark}>NGUEZA</p>
       {result === 'unknown' ? (
         <>
           <div className={`${styles.icon} ${styles.iconWarn}`} aria-hidden="true">

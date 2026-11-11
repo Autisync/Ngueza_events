@@ -30,7 +30,6 @@ export default async function Ajuda({
     <main>
       <section className={styles.top}>
         <div className={styles.wrap}>
-          <a className={styles.mark} href="/">← NGUEZA</a>
           <h1 className={styles.title}>Ajuda</h1>
           <p className={styles.sub}>Como funciona, como pagar com segurança, e como falar connosco.</p>
         </div>

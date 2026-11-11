@@ -22,7 +22,6 @@ export default async function Conta({
 
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>A minha conta</h1>
 
       {atualizado ? (

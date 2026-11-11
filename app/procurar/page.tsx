@@ -138,9 +138,6 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
     <main>
       <section className={styles.bar}>
         <div className={styles.wrap}>
-          <a className={styles.mark} href="/">
-            NGUEZA
-          </a>
           <form className={styles.form} method="get" action="/procurar">
             <label className={styles.f}>
               <span className={styles.lab}>O que procura</span>
@@ -181,8 +178,8 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
             {/* Kept out of the way on a phone, where six stacked fields
                 pushed every result below the first screen; open whenever
                 one of them is in use. */}
-            <details className={styles.more} open={Boolean(query.maxPriceMinor) || query.sort !== 'relevancia'}>
-              <summary className={styles.lab}>Mais filtros</summary>
+            <details className={styles.moreFilters} open={Boolean(query.maxPriceMinor) || query.sort !== 'relevancia'}>
+              <summary>Mais filtros</summary>
             <label className={styles.f}>
               <span className={styles.lab}>Orçamento até (Kz)</span>
               <input className={styles.ctl} name="orcamento" inputMode="decimal" placeholder="500.000"

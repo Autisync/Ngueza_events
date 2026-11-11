@@ -194,17 +194,12 @@ export default async function Waitlist({
           </ol>
         </section>
 
-        <footer className={styles.foot}>
+        <div className={styles.foot}>
           <p>
             É fornecedor? Estamos a registar salões, casas de festas e salas de conferência em
             Luanda. Escreva para fornecedores@ngueza.com.
           </p>
-          <p>
-            NGUEZA · Luanda, Angola ·{' '}
-            <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
-          </p>
-        </footer>
+        </div>
       </div>
     </main>
   )

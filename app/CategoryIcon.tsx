@@ -59,11 +59,11 @@ export function CategoryThumb({ slug, coverImageId }: { slug: string; coverImage
  * app rather than emoji, which render inconsistently across platforms
  * and can't take the brand's blue. Also CategoryThumb's fallback above.
  */
-export function CategoryIcon({ slug }: { slug: string }) {
+export function CategoryIcon({ slug, size = 28 }: { slug: string; size?: number }) {
   return (
     <svg
-      width="28"
-      height="28"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

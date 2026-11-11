@@ -9,7 +9,6 @@ export const metadata: Metadata = { title: 'Página não encontrada', robots: { 
 export default function NotFound() {
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Página não encontrada</h1>
       <p className={styles.lede}>
         Esta página não existe ou já não está disponível. Se seguiu um link de um fornecedor,

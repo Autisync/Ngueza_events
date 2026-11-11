@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { doSignIn } from '../auth-actions'
 import { currentProfile, currentUser, googleAuthorizeUrl } from '@/lib/auth'
@@ -30,7 +31,6 @@ export default async function Entrar({
   if (user && !(await currentProfile())) {
     return (
       <main className={styles.page}>
-        <a className={styles.mark} href="/">NGUEZA</a>
         <h1 className={styles.title}>Conta indisponível</h1>
         <p className={styles.lede}>
           Esta conta não está ativa neste momento. Se acha que é um engano, contacte a NGUEZA.
@@ -46,9 +46,12 @@ export default async function Entrar({
 
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Entrar</h1>
       <p className={styles.lede}>Aceda à sua conta para gerir reservas.</p>
+      {/* Set by proxy.ts when a session could not be renewed (slice 43). */}
+      {(await cookies()).get('ngz_expired') && !erro ? (
+        <p className={styles.alert} role="status">A sua sessão expirou. Entre novamente para continuar onde estava.</p>
+      ) : null}
 
       {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
 

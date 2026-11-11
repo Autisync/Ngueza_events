@@ -140,3 +140,29 @@
 .strip { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; }
 .strip img, .strip span { width: 96px; height: 64px; object-fit: cover; border-radius: 7px;
                           flex: none; background: var(--azul-050); }
+
+/* The dashboard tiles (slice 43). A tile is one area of the business, its
+   number, and a blue state when something waits on the supplier. */
+.tiles { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
+@media (min-width: 720px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: 14px; text-decoration: none;
+        color: var(--tinta); background: var(--branco); border: 1px solid var(--linha); box-shadow: var(--sombra);
+        min-width: 0; transition: transform 0.15s var(--ease-out), border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out); }
+.tile:hover { transform: translateY(-2px); border-color: var(--azul-300); }
+.tileIcon { width: 38px; height: 38px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+            background: var(--azul-050); color: var(--azul-700); margin-bottom: 8px; }
+.tileTitle { font-weight: 700; font-size: 0.92rem; color: var(--tinta-2); }
+.tileNum { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; color: var(--azul-800);
+           font-variant-numeric: tabular-nums; }
+.tileNum small { font-size: 0.9rem; font-weight: 600; color: var(--tinta-3); }
+.tileSub { font-size: 0.82rem; color: var(--tinta-3); line-height: 1.4; }
+.tile .strip { margin: 10px 0 0; }
+.tile .strip img, .tile .strip span { width: 44px; height: 34px; border-radius: 6px; }
+.tileHot { background: linear-gradient(160deg, var(--azul-700), var(--azul-900)); border-color: var(--azul-700); color: var(--branco); }
+.tileHot .tileIcon { background: rgba(255,255,255,0.14); color: var(--branco); }
+.tileHot .tileTitle, .tileHot .tileSub { color: var(--azul-200); }
+.tileHot .tileNum { color: var(--branco); }
+.jump { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 0 18px; font-size: 0.86rem; color: var(--tinta-3); }
+.jump a { padding: 6px 11px; border-radius: 999px; background: var(--azul-050); border: 1px solid var(--linha);
+          color: var(--azul-700); text-decoration: none; font-weight: 600; }
+.jump a:hover { border-color: var(--azul-300); }

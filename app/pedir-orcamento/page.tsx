@@ -33,7 +33,6 @@ export default async function PedirOrcamento({
     <main>
       <section className={styles.top}>
         <div className={styles.wrap}>
-          <a className={styles.mark} href="/">← NGUEZA</a>
           <h1 className={styles.title}>Pedir orçamento</h1>
           <p className={styles.sub}>
             Descreva o que precisa uma vez só. Cada fornecedor verificado que corresponda —

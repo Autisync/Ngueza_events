@@ -12,7 +12,6 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
 
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Algo correu mal</h1>
       <p className={styles.lede}>
         Não conseguimos mostrar esta página. Tente de novo dentro de momentos — se o problema

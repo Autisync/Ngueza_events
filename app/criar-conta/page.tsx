@@ -33,7 +33,6 @@ export default async function CriarConta({
   if (user && !(await currentProfile())) {
     return (
       <main className={styles.page}>
-        <a className={styles.mark} href="/">NGUEZA</a>
         <h1 className={styles.title}>Conta indisponível</h1>
         <p className={styles.lede}>
           Esta conta não está ativa neste momento. Se acha que é um engano, contacte a NGUEZA.
@@ -52,7 +51,6 @@ export default async function CriarConta({
 
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Criar conta</h1>
       <p className={styles.lede}>Precisa de conta para reservar e para avaliar um serviço.</p>
 

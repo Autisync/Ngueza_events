@@ -38,6 +38,8 @@ export interface PublicProvider {
   /** Its own registered category — still what SEO titles and the
    *  breadcrumb lead with. */
   categoryName: string
+  /** For the hero illustration when there are no photos (slice 43). */
+  categorySlug: string
   /** Every category this provider is actually discoverable under:
    *  categoryName plus each active service's own category, deduplicated,
    *  categoryName first (slice 22). What search and quote-request
@@ -92,7 +94,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       `select p.id, p.slug, p.name, p.description, p.supplier_type, p.category_id,
               p.location_id, p.address_line, p.lat, p.lng, p.phone, p.whatsapp,
               p.website, p.years_active_declared, p.verified_at, p.is_demo,
-              cat.name as category_name,
+              cat.name as category_name, cat.slug as category_slug,
               (select array_agg(l.name order by depth desc)
                  from (
                    with recursive up as (
@@ -151,6 +153,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       description: p.description,
       supplierType: p.supplier_type,
       categoryName: p.category_name,
+      categorySlug: p.category_slug,
       categoryNames,
       locationPath: (p.location_path ?? []) as string[],
       addressLine: p.address_line,

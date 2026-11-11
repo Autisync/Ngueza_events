@@ -67,12 +67,6 @@ export default async function Home() {
 
   return (
     <main>
-      <div className={styles.wrap}>
-        <div className={styles.top}>
-          <span className={styles.mark}>NGUEZA</span>
-          <a className={styles.entrar} href="/entrar">Entrar</a>
-        </div>
-      </div>
 
       <section className={styles.hero}>
         <div className={styles.wrap}>
@@ -206,17 +200,12 @@ export default async function Home() {
           <a className={styles.supplierCtaBtn} href="/registar-negocio">Registar o meu negócio</a>
         </section>
 
-        <footer className={styles.foot}>
+        <div className={styles.foot}>
           <p>
             Não encontrou a sua zona ou categoria?{' '}
             <a href="/lista-de-espera">Entre na lista de espera</a> e avisamos quando abrir.
           </p>
-          <p>
-            NGUEZA · Luanda, Angola ·{' '}
-            <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
-          </p>
-        </footer>
+        </div>
       </div>
     </main>
   )

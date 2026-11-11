@@ -6,7 +6,6 @@ export const metadata: Metadata = { title: 'Ligação enviada', robots: { index:
 export default function Enviado() {
   return (
     <main className={styles.page}>
-      <a className={styles.mark} href="/">NGUEZA</a>
       <h1 className={styles.title}>Verifique o seu email</h1>
       {/* Deliberately the same message whether or not the address exists —
           otherwise this page tells a stranger who has an account here. */}

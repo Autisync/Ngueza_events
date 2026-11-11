@@ -5,7 +5,7 @@
   color: var(--azul-300); margin: 0 0 14px; text-decoration: none; display: inline-block;
 }
 .form { display: grid; gap: 10px; grid-template-columns: 1fr; }
-@media (min-width: 720px) { .form { grid-template-columns: 1.4fr 1fr 0.8fr auto; align-items: end; } }
+@media (min-width: 720px) { .form { grid-template-columns: 1.4fr 1fr 0.9fr 0.6fr auto; align-items: end; } }
 .f { display: block; }
 .lab { display: block; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em;
        text-transform: uppercase; color: var(--azul-300); margin-bottom: 5px; }
@@ -38,10 +38,16 @@
         transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out); }
 .more:hover { background: var(--azul-050); border-color: var(--azul-700); }
 
-/* "Mais filtros" (slice 42): budget and sort, folded away on a phone. */
-.more { grid-column: 1 / -1; }
-.more summary { cursor: pointer; list-style: none; padding: 4px 0; }
-.more summary::-webkit-details-marker { display: none; }
-.more summary::after { content: ' +'; }
-.more[open] summary::after { content: ' −'; }
-.more[open] { display: grid; gap: 12px; }
+/* "Mais filtros" (slice 42): budget and sort, folded away on a phone.
+   Last in the grid (order), so the main row and the button stay together. */
+.moreFilters { grid-column: 1 / -1; order: 1; }
+.moreFilters summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+                       color: var(--azul-200); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.04em;
+                       padding: 6px 0; }
+.moreFilters summary::-webkit-details-marker { display: none; }
+.moreFilters summary::after { content: '+'; display: inline-flex; width: 18px; height: 18px; align-items: center;
+                              justify-content: center; border-radius: 50%; background: rgba(255,255,255,0.14); }
+.moreFilters[open] summary::after { content: '−'; }
+.moreFilters[open] { display: grid; gap: 10px; }
+@media (min-width: 720px) { .moreFilters[open] { grid-template-columns: repeat(2, minmax(0, 260px)); }
+                            .moreFilters[open] summary { grid-column: 1 / -1; } }
