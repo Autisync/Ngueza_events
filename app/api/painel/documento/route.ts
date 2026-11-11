@@ -23,13 +23,13 @@ export const dynamic = 'force-dynamic'
  */
 
 const presignBody = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.guid(),
   contentType: z.string().max(120),
   byteSize: z.number().int().positive().max(MAX_DOCUMENT_BYTES),
 })
 
 const recordBody = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.guid(),
   kind: z.enum(['identity', 'nif', 'commercial_registration', 'proof_of_address', 'other']),
   externalId: z.string().min(1).max(300),
   filename: z.string().max(200).optional(),

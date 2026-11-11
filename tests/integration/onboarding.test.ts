@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { asSystem, asUser } from '@/lib/db'
 import {
-  addResource, addService, createProvider, recordDocument,
+  addResource, addService, createProvider, providerInput, recordDocument,
   removeService, serviceInput, submitForVerification, updateProvider,
 } from '@/lib/onboarding'
 
@@ -322,5 +322,17 @@ describe('resources', () => {
     })
     expect(rows.map((r) => r.name)).toEqual(['Espaço principal', 'Jardim'])
     expect(rows.find((r) => r.name === 'Jardim')?.capacity).toBe(400)
+  })
+})
+
+describe('the website field', () => {
+  const base = { name: 'Salão Teste', categoryId: SALOES, locationId: TALATONA }
+  it('accepts http(s) and an empty value', () => {
+    expect(providerInput.safeParse({ ...base, website: 'https://salao.ao' }).success).toBe(true)
+    expect(providerInput.safeParse({ ...base, website: '' }).success).toBe(true)
+  })
+  it('refuses a javascript: or data: link, which url() alone would accept', () => {
+    expect(providerInput.safeParse({ ...base, website: 'javascript:alert(1)' }).success).toBe(false)
+    expect(providerInput.safeParse({ ...base, website: 'data:text/html,x' }).success).toBe(false)
   })
 })
