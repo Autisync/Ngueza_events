@@ -34,6 +34,7 @@ const requestForm = z.object({
 const REASON_ERROR: Record<string, string> = {
   slot_taken: 'data_indisponivel',
   not_allowed: 'indisponivel',
+  paused: 'pausado',
   invalid: 'dados',
 }
 

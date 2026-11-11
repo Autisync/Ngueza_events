@@ -9,6 +9,7 @@ import { isCrawler, sessionId } from '@/lib/session'
 import { currentProfile } from '@/lib/auth'
 import { doRequestBooking } from '@/app/booking-actions'
 import { publicPolicy } from '@/lib/cancellation-policy'
+import { pausedNotice } from '@/lib/switches'
 import { jsonForScript, todayInLuanda } from '@/lib/safe'
 import { formatRating, relativeTierSteps, reviewCountLabel } from '@/lib/booking-labels'
 import { PhoneLink } from './PhoneLink'
@@ -67,9 +68,10 @@ export default async function ProviderPage({
     await recordProviderView(provider.id, await sessionId())
   }
 
-  const [days, policy] = await Promise.all([
+  const [days, policy, bookingsPaused] = await Promise.all([
     availability(provider.id, todayInLuanda(), 28),
     publicPolicy(provider.id),
+    pausedNotice('bookings_paused'),
   ])
   // One calendar per space: a two-salão venue used to show only the first,
   // so a free second room looked unavailable.
@@ -301,7 +303,9 @@ export default async function ProviderPage({
                   ? 'Essa data já passou. Escolha uma data a partir de hoje.'
                   : flags.erro === 'indisponivel'
                     ? 'Não é possível pedir uma reserva a este fornecedor neste momento.'
-                    : flags.erro === 'telefone'
+                    : flags.erro === 'pausado'
+                      ? 'Os novos pedidos de reserva estão temporariamente suspensos.'
+                      : flags.erro === 'telefone'
                       ? 'Indique um número de telemóvel válido, por exemplo 923 456 789.'
                       : 'Verifique os dados introduzidos.'}
             </p>
@@ -337,6 +341,12 @@ export default async function ProviderPage({
               para solicitar uma reserva. Ainda não tem conta?{' '}
               <a href={`/criar-conta?next=/fornecedor/${provider.slug}%23reservar`}>Criar conta</a>.
             </p>
+          ) : bookingsPaused ? (
+            // Kill switch (slice 37). The database refuses new requests
+            // while it is on; this just says so instead of a dead form.
+            <p className={styles.p} role="status" style={{
+              padding: '12px 14px', borderRadius: 'var(--raio)', background: 'var(--aviso-fundo)', color: 'var(--aviso)',
+            }}>{bookingsPaused}</p>
           ) : (
             <form action={doRequestBooking}>
               <input type="hidden" name="providerId" value={provider.id} />

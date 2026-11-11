@@ -10,6 +10,7 @@ import {
 } from '@/lib/auth'
 import { safeNext } from '@/lib/safe'
 import { LIMITS, allow, allowAll, clientIp } from '@/lib/rate-limit'
+import { pausedNotice } from '@/lib/switches'
 
 /**
  * Plain server actions bound to <form action={...}>, so every auth screen
@@ -74,6 +75,7 @@ export async function doSignUp(formData: FormData): Promise<void> {
     redirect(`/criar-conta?erro=${field === 'password' ? 'palavra_passe_curta' : 'dados'}${back}`)
   }
 
+  if (await pausedNotice('signups_paused')) redirect(`/criar-conta?erro=pausado${back}`)
   const ip = clientIp(await headers())
   if (!(await allow(LIMITS.signUpIp, ip))) redirect(`/criar-conta?erro=rate_limited${back}`)
 

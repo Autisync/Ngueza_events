@@ -36,7 +36,7 @@ export interface BookingRequest {
 
 export type RequestOutcome =
   | { ok: true; bookingId: string }
-  | { ok: false; reason: 'slot_taken' | 'not_allowed' | 'invalid' }
+  | { ok: false; reason: 'slot_taken' | 'not_allowed' | 'invalid' | 'paused' }
 
 /**
  * A client asks for a date.
@@ -121,6 +121,8 @@ export async function requestBooking(
     // 23P01 covers both paths: the exclusion constraint for venues and the
     // concurrency trigger for services. One code path, both supplier types.
     if (isSlotTaken(error)) return { ok: false, reason: 'slot_taken' }
+    // The kill switch (0039): new requests are paused platform-wide.
+    if ((error as { code?: string }).code === '55000') return { ok: false, reason: 'paused' }
     // RLS refusing the row (0031): a past date, the supplier's own
     // listing, or a supplier that is not public.
     if (isInsufficientPrivilege(error)) return { ok: false, reason: 'not_allowed' }
