@@ -23,6 +23,7 @@ export default function Termos() {
         <span>Termos de Utilização</span>
         <a href="/privacidade">Política de Privacidade</a>
         <a href="/cancelamento">Política de Cancelamento</a>
+        <a href="/ajuda">Ajuda</a>
       </nav>
     </main>
   )

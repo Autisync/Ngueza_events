@@ -1,0 +1,30 @@
+.top { background: linear-gradient(170deg, var(--azul-900) 0%, var(--azul-800) 100%);
+       color: var(--branco); padding: 20px 0 30px; margin-bottom: 26px; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 0 18px; }
+.mark { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--azul-300); text-decoration: none; }
+.title { font-size: clamp(1.5rem, 4.5vw, 1.9rem); font-weight: 700; margin: 16px 0 6px; letter-spacing: -0.02em; }
+.sub { color: var(--azul-200); margin: 0; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px; padding: 0; list-style: none; }
+.toc a { display: inline-block; padding: 7px 12px; border-radius: 999px; font-size: 0.86rem;
+         background: var(--azul-050); border: 1px solid var(--linha); color: var(--azul-700);
+         text-decoration: none; font-weight: 600; }
+.sec { border: 1px solid var(--linha); border-radius: 12px; background: var(--branco);
+       padding: 20px 22px; margin-bottom: 14px; box-shadow: var(--sombra); scroll-margin-top: 14px; }
+.sec h2 { font-size: 1.08rem; margin: 0 0 10px; }
+.sec p, .sec li { color: var(--tinta-2); font-size: 0.95rem; line-height: 1.55; }
+.sec ul, .sec ol { padding-left: 20px; margin: 8px 0; }
+.warn { border-left: 4px solid var(--erro); }
+.field { display: block; margin-bottom: 14px; }
+.label { display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; }
+.input { width: 100%; padding: 11px 12px; font: inherit; font-size: 0.98rem; color: var(--tinta);
+         background: var(--branco); border: 1px solid var(--linha); border-radius: 9px; }
+.input:focus-visible { border-color: var(--azul-500); outline: 3px solid var(--azul-500); outline-offset: 1px; }
+.area { min-height: 130px; resize: vertical; }
+.hint { display: block; margin-top: 5px; font-size: 0.83rem; color: var(--tinta-3); }
+.submit { padding: 13px 22px; font: inherit; font-weight: 700; color: var(--branco);
+          background: var(--azul-700); border: 0; border-radius: 9px; cursor: pointer; min-height: 44px; }
+.submit:hover { background: var(--azul-800); }
+.alert { padding: 12px 14px; border-radius: 9px; margin: 0 0 16px; font-size: 0.93rem;
+         background: var(--erro-fundo); color: var(--erro); }
+.ok { background: var(--bom-fundo); color: var(--bom); }

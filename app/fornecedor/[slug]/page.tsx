@@ -180,7 +180,10 @@ export default async function ProviderPage({
               and a complete profile. Each is labelled for what it is. */}
           <div className={styles.seals}>
             {provider.verifiedAt ? (
-              <span className={`${styles.seal} ${styles.sealStrong}`}>✓ Fornecedor verificado</span>
+              <a className={`${styles.seal} ${styles.sealStrong}`} href="/ajuda#verificado"
+                 title="O que quer dizer «verificado»" style={{ textDecoration: 'none' }}>
+                ✓ Fornecedor verificado <span aria-hidden="true" style={{ opacity: 0.6 }}>ⓘ</span>
+              </a>
             ) : null}
             {provider.reviewCount > 0 ? (
               <span className={styles.seal}>
@@ -425,7 +428,8 @@ export default async function ProviderPage({
               </button>
               <p style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--tinta-3)' }}>
                 O fornecedor tem até 48 horas para responder. A data só fica reservada depois de
-                aceite e confirmada.
+                aceite e confirmada. Pague sempre pelos dados da página da reserva —{' '}
+                <a href="/ajuda#pagar">como pagar com segurança</a>.
               </p>
             </form>
           )}
@@ -500,7 +504,7 @@ export default async function ProviderPage({
           </p>
           <p>
             <a href="/termos">Termos</a> · <a href="/privacidade">Privacidade</a> ·{' '}
-            <a href="/cancelamento">Cancelamento</a>
+            <a href="/cancelamento">Cancelamento</a> · <a href="/ajuda">Ajuda</a>
           </p>
         </footer>
       </div>

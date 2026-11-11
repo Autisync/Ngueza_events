@@ -22,18 +22,20 @@ export interface QueueCounts {
   submittedDocuments: number
   openReports: number
   submittedPayments: number
+  openSupport: number
 }
 
 export async function queueCounts(adminId: string): Promise<QueueCounts> {
   return asUser(adminId, async (c) => {
     const { rows } = await c.query<{
-      providers: string; documents: string; reports: string; payments: string
+      providers: string; documents: string; reports: string; payments: string; support: string
     }>(
       `select
          (select count(*) from providers where verification_status = 'pending')::text as providers,
          (select count(*) from provider_documents where status = 'submitted')::text  as documents,
          (select count(*) from reports where status in ('open','reviewing'))::text    as reports,
-         (select count(*) from payments where status = 'submitted')::text             as payments`,
+         (select count(*) from payments where status = 'submitted')::text             as payments,
+         (select count(*) from support_requests where status = 'open')::text          as support`,
     )
     const r = rows[0]!
     return {
@@ -41,6 +43,7 @@ export async function queueCounts(adminId: string): Promise<QueueCounts> {
       submittedDocuments: Number(r.documents),
       openReports: Number(r.reports),
       submittedPayments: Number(r.payments),
+      openSupport: Number(r.support),
     }
   })
 }

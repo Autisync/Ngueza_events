@@ -20,7 +20,7 @@ make contact.
 |---|---|
 | Launch scope | Venues, Luanda, six categories — now discoverable across every category a listing actually offers (slice 22), not only the one it registered under |
 | Stack | Next.js 16 · Supabase (Postgres) · self-hosted MinIO + imgproxy · Vercel |
-| Verified | 37 migrations from empty · 370 tests · 59 database assertions |
+| Verified | 38 migrations from empty · 376 tests · 59 database assertions |
 
 ### Done
 
@@ -60,6 +60,7 @@ make contact.
 | 32 | The booking page as one hub — "Próximo passo" with the real deadline and the one action to take, venue and reference; cancellation tiers as dated steps on the booking and relative ones on the supplier page before booking; see `spec/slices/32-booking-hub.md` |
 | 33 | Rate limits on sign-in, sign-up, password reset and the waitlist — per visitor and per address, in Postgres, hashed keys; the visitor's IP forwarded to Supabase Auth; see `spec/slices/33-rate-limits.md` |
 | 34 | Heartbeats for the scheduled jobs — every run logged, `/api/saude` answers 503 when the expiry sweep or the mailer stops or email backs up, the same status on the admin dashboard; see `spec/slices/34-job-heartbeats.md` |
+| 35 | Help centre and support inbox — `/ajuda` (how booking works, paying safely, what «Verificado» means, a form that works signed out), `/admin/apoio`, safety notes and help links in context; see `spec/slices/35-help-and-safety.md` |
 
 ### Infrastructure
 

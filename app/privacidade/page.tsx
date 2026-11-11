@@ -23,6 +23,7 @@ export default function Privacidade() {
         <a href="/termos">Termos de Utilização</a>
         <span>Política de Privacidade</span>
         <a href="/cancelamento">Política de Cancelamento</a>
+        <a href="/ajuda">Ajuda</a>
       </nav>
     </main>
   )
