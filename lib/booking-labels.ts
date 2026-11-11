@@ -47,6 +47,8 @@ export const TRANSITION_ERROR: Record<string, string> = {
   not_found: 'Reserva não encontrada.',
   not_allowed: 'Não tem permissão para fazer essa alteração.',
   already_reviewed: 'Esta reserva já tem uma avaliação.',
+  terms_required: 'Indique o valor total acordado para pedir o pagamento.',
+  invalid_terms: 'O sinal não pode ser maior do que o total. Use valores como 450.000 ou 450.000,50.',
   dados: 'Verifique os dados introduzidos.',
 }
 

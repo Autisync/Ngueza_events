@@ -22,6 +22,23 @@ beforeEach(() => {
 })
 
 describe('booking notifications', () => {
+  it('tells the client how much to pay and how, when the supplier set terms (slice 31)', () => {
+    const mail = render('booking_awaiting_payment', {
+      ...BOOKING_CONTEXT, booking_id: 'b1',
+      total_minor: 180000000, deposit_minor: '54000000', payment_instructions: 'IBAN AO06 0000',
+    })
+    expect(mail.text).toMatch(/Total acordado: 1\s800\s000,00\sKz/)
+    expect(mail.text).toMatch(/Sinal a pagar agora: 540\s000,00\sKz/)
+    expect(mail.text).toContain('Como pagar:\nIBAN AO06 0000')
+    expect(mail.text).toContain('/reservas/b1')
+  })
+
+  it('falls back to "contact the supplier" for a booking with no terms', () => {
+    const mail = render('booking_awaiting_payment', { ...BOOKING_CONTEXT, booking_id: 'b1' })
+    expect(mail.text).toContain('Contacte o fornecedor')
+    expect(mail.text).not.toContain('Total acordado')
+  })
+
   it('tells a displaced client the date went to someone else, with the same-day search (0033)', () => {
     const mail = render('booking_unavailable', {
       ...BOOKING_CONTEXT, category_id: 'cat-1', location_id: 'loc-1',

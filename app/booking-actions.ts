@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { requireProfile } from '@/lib/auth'
 import { blockDate, requestBooking, transition, type BookingStatus } from '@/lib/booking'
 import { calendarDate, isUuid, normalizePhone, todayInLuanda } from '@/lib/safe'
+import { parseMajor } from '@/lib/money'
 import { sessionId } from '@/lib/session'
 
 /**
@@ -122,6 +123,40 @@ export async function doSupplierTransition(formData: FormData): Promise<void> {
   ]
   if (!allowed.includes(to)) redirect(`/painel/${providerId}/reservas/${bookingId}?erro=illegal_transition`)
   await doTransition(bookingId, to, `/painel/${providerId}/reservas/${bookingId}`)
+}
+
+/**
+ * The supplier asks for payment (slice 31): the agreed total, the sinal
+ * due now (optional — blank means the whole total), and how to pay. All
+ * three are written in the same UPDATE as accepted -> awaiting_payment,
+ * the only moment the database lets anyone write them (0035).
+ */
+export async function doRequestPayment(formData: FormData): Promise<void> {
+  const bookingId = String(formData.get('bookingId') ?? '')
+  const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(bookingId) || !isUuid(providerId)) redirect('/painel')
+  const back = `/painel/${providerId}/reservas/${bookingId}`
+  const profile = await requireProfile()
+
+  const amount = (raw: string | undefined): bigint | null | 'bad' => {
+    if (!raw) return null
+    try {
+      const v = parseMajor(raw)
+      return v < 0n ? 'bad' : v
+    } catch {
+      return 'bad'
+    }
+  }
+  const total = amount(str(formData, 'total'))
+  const deposit = amount(str(formData, 'deposit'))
+  if (total === null || total === 'bad' || total === 0n) redirect(`${back}?erro=terms_required#pagamento`)
+  if (deposit === 'bad' || (deposit !== null && deposit > total)) redirect(`${back}?erro=invalid_terms#pagamento`)
+  const instructions = str(formData, 'instructions')?.slice(0, 500) ?? null
+
+  const result = await transition(profile.id, bookingId, 'awaiting_payment', {
+    totalMinor: total, depositMinor: deposit, instructions,
+  })
+  redirect(result.ok ? `${back}?feito=1` : `${back}?erro=${result.reason}#pagamento`)
 }
 
 const blockForm = z.object({

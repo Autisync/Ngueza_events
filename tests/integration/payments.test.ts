@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { asSystem, asUser } from '@/lib/db'
-import { clientPayments, submitPaymentProof } from '@/lib/payments'
+import { bookingPayments, paymentProgress, proofDocumentUrl, submitPaymentProof } from '@/lib/payments'
 import { decidePayment, paymentQueue } from '@/lib/admin'
 
 /**
@@ -66,7 +66,7 @@ describe('proof of payment', () => {
     })
     expect(result.ok).toBe(true)
 
-    const mine = await clientPayments(ANA, AWAITING)
+    const mine = await bookingPayments(ANA, AWAITING)
     expect(mine).toHaveLength(1)
     expect(mine[0]?.status).toBe('submitted')
     expect(mine[0]?.amountMinor).toBe('5000000')
@@ -107,9 +107,9 @@ describe('proof of payment', () => {
     expect(count.rows[0]?.n).toBe(0)
   })
 
-  it('scopes clientPayments to the booking asked for, not every booking', async () => {
+  it('scopes bookingPayments to the booking asked for, not every booking', async () => {
     await submitPaymentProof(ANA, { bookingId: AWAITING, amountMinor: 1000n, document: doc() })
-    expect(await clientPayments(ANA, REQUESTED)).toHaveLength(0)
+    expect(await bookingPayments(ANA, REQUESTED)).toHaveLength(0)
   })
 })
 
@@ -171,4 +171,44 @@ describe('the admin review queue', () => {
   // the same reason documentViewUrl(), its sibling for identity
   // paperwork, has no test in this suite either. Covered by test:media
   // (deploy/media/), not here.
+})
+
+describe('the supplier sees the proof before confirming (slice 31)', () => {
+  const OWNER = '40000000-0000-0000-0000-000000000001'          // Horizonte's owner
+  const OTHER_OWNER = '40000000-0000-0000-0000-000000000002'    // Palmeiras' owner
+
+  it('lists the client\'s submissions on the supplier\'s own booking, with the document', async () => {
+    await submitPaymentProof(ANA, { bookingId: AWAITING, amountMinor: 5000000n, reference: 'MCX-1', document: doc() })
+    const seen = await bookingPayments(OWNER, AWAITING)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.reference).toBe('MCX-1')
+    expect(seen[0]!.documentId).toBeTruthy()
+    expect(await bookingPayments(OTHER_OWNER, AWAITING)).toHaveLength(0)
+  })
+
+  it('signs a short-lived link for the client, the supplier and an admin — and nobody else', async () => {
+    Object.assign(process.env, {
+      MEDIA_S3_PUBLIC_ENDPOINT: 'http://localhost:9000',
+      MEDIA_ACCESS_KEY_ID: 'test', MEDIA_SECRET_ACCESS_KEY: 'test-secret',
+    })
+    await submitPaymentProof(ANA, { bookingId: AWAITING, amountMinor: 5000000n, document: doc() })
+    const documentId = (await bookingPayments(ANA, AWAITING))[0]!.documentId!
+    for (const actor of [ANA, OWNER, ADMIN]) {
+      const url = await proofDocumentUrl(actor, documentId)
+      expect(url).toContain('/ngueza-documents/')
+      expect(url).toContain('X-Amz-Expires=180')
+    }
+    expect(await proofDocumentUrl(OTHER_OWNER, documentId)).toBeNull()
+    expect(await proofDocumentUrl(JOAO, documentId)).toBeNull()
+  })
+
+  it('adds up what has been declared, leaving out rejected submissions', () => {
+    const p = (amount: string, status: 'submitted' | 'confirmed' | 'failed') =>
+      ({ id: amount, status, amountMinor: amount, currency: 'AOA', reference: null,
+         createdAt: '', confirmedAt: null, hasDocument: true, documentId: null })
+    expect(paymentProgress('10000', [p('3000', 'submitted'), p('2000', 'confirmed'), p('9000', 'failed')]))
+      .toEqual({ declaredMinor: 5000n, remainingMinor: 5000n })
+    expect(paymentProgress('10000', [p('12000', 'submitted')])).toEqual({ declaredMinor: 12000n, remainingMinor: 0n })
+    expect(paymentProgress(null, [p('3000', 'submitted')])).toEqual({ declaredMinor: 3000n, remainingMinor: null })
+  })
 })

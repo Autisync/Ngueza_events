@@ -5,9 +5,10 @@ import { bookingDetail } from '@/lib/booking'
 import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITION_ERROR } from '@/lib/booking-labels'
 import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { reviewExistsForBooking } from '@/lib/reviews'
-import { clientPayments } from '@/lib/payments'
+import { bookingPayments } from '@/lib/payments'
 import { PAYMENT_STATUS_CLASS, PAYMENT_STATUS_LABEL } from '@/lib/payment-labels'
-import { formatMinor } from '@/lib/money'
+import { formatMinor, majorInput } from '@/lib/money'
+import { paymentProgress } from '@/lib/payments'
 import { refundEntitlement } from '@/lib/cancellation-policy'
 import { eventTips } from '@/lib/event-tips'
 import { planningContext } from '@/lib/provider'
@@ -40,8 +41,15 @@ export default async function ReservaDetalhe({
   const canCancel = ['requested', 'accepted', 'awaiting_payment', 'confirmed'].includes(booking.status)
   const canReview = booking.status === 'completed' && !(await reviewExistsForBooking(profile.id, booking.id))
   const payments = ['awaiting_payment', 'confirmed'].includes(booking.status)
-    ? await clientPayments(profile.id, booking.id)
+    ? await bookingPayments(profile.id, booking.id)
     : []
+  // What to prefill as "valor pago": the rest of the sinal while it is
+  // outstanding, then the rest of the total (slice 31).
+  const progress = paymentProgress(booking.totalMinor, payments)
+  const deposit = booking.depositMinor === null ? null : BigInt(booking.depositMinor)
+  const dueNow = deposit !== null && progress.declaredMinor < deposit
+    ? deposit - progress.declaredMinor
+    : progress.remainingMinor && progress.remainingMinor > 0n ? progress.remainingMinor : null
   const showEntitlement = canCancel
     || booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
@@ -132,12 +140,35 @@ export default async function ReservaDetalhe({
         ) : null}
 
         {payments.length > 0 || booking.status === 'awaiting_payment' ? (
-          <div className={styles.card}>
+          <div className={styles.card} id="pagamento">
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Pagamento</h2>
-            <p style={{ margin: '0 0 16px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
-              O pagamento é feito directamente ao fornecedor, fora da NGUEZA. Submeta o
-              comprovativo aqui para o fornecedor confirmar a reserva.
+            <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+              Paga directamente ao fornecedor, fora da NGUEZA. Depois envie aqui o comprovativo;
+              a reserva fica confirmada quando o fornecedor confirmar que recebeu.
             </p>
+            {booking.totalMinor !== null ? (
+              <>
+                <div className={styles.row}><span>Total acordado</span><span>{formatMinor(BigInt(booking.totalMinor))}</span></div>
+                {booking.depositMinor !== null ? (
+                  <div className={styles.row}><span>Sinal a pagar agora</span><strong>{formatMinor(BigInt(booking.depositMinor))}</strong></div>
+                ) : null}
+                <div className={styles.row}><span>Já declarado</span><span>{formatMinor(progress.declaredMinor)}</span></div>
+                {progress.remainingMinor !== null ? (
+                  <div className={styles.row}><span>Por pagar</span><span>{formatMinor(progress.remainingMinor)}</span></div>
+                ) : null}
+              </>
+            ) : null}
+            {booking.paymentInstructions ? (
+              <div style={{ margin: '14px 0', padding: '12px 14px', borderRadius: 9,
+                            background: 'var(--azul-050)', border: '1px solid var(--linha)' }}>
+                <strong style={{ display: 'block', fontSize: '0.88rem', marginBottom: 4 }}>Como pagar</strong>
+                <span style={{ whiteSpace: 'pre-line', fontSize: '0.92rem' }}>{booking.paymentInstructions}</span>
+                <span style={{ display: 'block', marginTop: 6, fontSize: '0.85rem', color: 'var(--tinta-3)' }}>
+                  Indique a referência {bookingRef(booking.id)} no pagamento. A NGUEZA nunca lhe pede
+                  para pagar para outra conta.
+                </span>
+              </div>
+            ) : null}
             {payments.map((p) => (
               <div className={styles.row} key={p.id}>
                 <span>
@@ -154,7 +185,7 @@ export default async function ReservaDetalhe({
             ))}
             {booking.status === 'awaiting_payment' ? (
               <div style={{ marginTop: payments.length > 0 ? 16 : 0 }}>
-                <PaymentProofUpload bookingId={booking.id} />
+                <PaymentProofUpload bookingId={booking.id} defaultAmount={dueNow === null ? undefined : majorInput(dueNow)} />
               </div>
             ) : null}
           </div>

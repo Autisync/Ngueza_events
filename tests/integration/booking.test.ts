@@ -537,7 +537,7 @@ describe('integrity guards (0031)', () => {
     })
     const id = (created as { bookingId: string }).bookingId
     expect(await transition(OWNER, id, 'accepted')).toEqual({ ok: true })
-    expect(await transition(OWNER, id, 'awaiting_payment')).toEqual({ ok: true })
+    expect(await transition(OWNER, id, 'awaiting_payment', { totalMinor: 180000000n })).toEqual({ ok: true })
 
     await asSystem((c) => c.query(
       `insert into payments (booking_id, provider_key, amount_minor, status) values ($1, 'manual_proof', 5000000, 'submitted')`, [id],
@@ -654,7 +654,7 @@ describe('a taken date releases its competitors (0033)', () => {
 
     await transition(OWNER, winner, 'accepted')
     await transition(OWNER, accepted, 'accepted')
-    expect(await transition(OWNER, winner, 'awaiting_payment')).toEqual({ ok: true })
+    expect(await transition(OWNER, winner, 'awaiting_payment', { totalMinor: 180000000n })).toEqual({ ok: true })
 
     expect(await statusOf(accepted)).toBe('unavailable')
     expect(await statusOf(pending)).toBe('unavailable')
@@ -729,5 +729,86 @@ describe('a taken date releases its competitors (0033)', () => {
     await transition(OWNER, winner, 'confirmed')
     expect(await transition(OWNER, loser, 'accepted')).toEqual({ ok: false, reason: 'illegal_transition' })
     expect(await transition(ANA, loser, 'cancelled_client')).toEqual({ ok: false, reason: 'illegal_transition' })
+  })
+})
+
+describe('payment terms (0035)', () => {
+  const ADMIN = '40000000-0000-0000-0000-000000000099'
+  const accepted = async (d: string) => {
+    const r = await requestBooking(JOAO, {
+      providerId: HORIZONTE, resourceId: SALAO,
+      startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T22:00:00Z`),
+    })
+    const id = (r as { bookingId: string }).bookingId
+    await transition(OWNER, id, 'accepted')
+    return id
+  }
+  const terms = (id: string) => asSystem(async (c) =>
+    (await c.query(`select status, total_minor, deposit_minor, payment_instructions from bookings where id = $1`, [id])).rows[0])
+
+  it('lets the supplier set total, sinal and instructions when asking for payment', async () => {
+    const id = await accepted('2028-01-10')
+    expect(await transition(OWNER, id, 'awaiting_payment', {
+      totalMinor: 180000000n, depositMinor: 54000000n, instructions: '  IBAN AO06 0000 ...  ',
+    })).toEqual({ ok: true })
+    expect(await terms(id)).toEqual({
+      status: 'awaiting_payment', total_minor: '180000000', deposit_minor: '54000000',
+      payment_instructions: 'IBAN AO06 0000 ...',
+    })
+    const seen = await bookingDetail(JOAO, id)
+    expect(seen?.depositMinor).toBe('54000000')
+    expect(seen?.paymentInstructions).toBe('IBAN AO06 0000 ...')
+  })
+
+  it('refuses "aguarda pagamento" without a total', async () => {
+    const id = await accepted('2028-01-11')
+    expect(await transition(OWNER, id, 'awaiting_payment')).toEqual({ ok: false, reason: 'terms_required' })
+    expect((await terms(id)).status).toBe('accepted')
+  })
+
+  it('refuses a sinal larger than the total', async () => {
+    const id = await accepted('2028-01-12')
+    expect(await transition(OWNER, id, 'awaiting_payment', { totalMinor: 100n, depositMinor: 101n }))
+      .toEqual({ ok: false, reason: 'invalid_terms' })
+  })
+
+  it('freezes the terms once set — for the supplier and the client alike', async () => {
+    const id = await accepted('2028-01-13')
+    await transition(OWNER, id, 'awaiting_payment', { totalMinor: 180000000n, depositMinor: 50000000n })
+    for (const actor of [OWNER, JOAO]) {
+      await expect(asUser(actor, (c) =>
+        c.query(`update bookings set total_minor = 1, deposit_minor = 1 where id = $1`, [id])))
+        .rejects.toMatchObject({ code: '42501' })
+    }
+    // Confirming does not reopen them either.
+    expect(await transition(OWNER, id, 'confirmed', { totalMinor: 1n })).toEqual({ ok: false, reason: 'not_allowed' })
+    expect((await terms(id)).total_minor).toBe('180000000')
+  })
+
+  it('never lets a supplier set terms outside the asking moment', async () => {
+    const id = await accepted('2028-01-14')
+    await expect(asUser(OWNER, (c) =>
+      c.query(`update bookings set total_minor = 5 where id = $1`, [id])))
+      .rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('still lets an administrator correct them, for support', async () => {
+    const id = await accepted('2028-01-15')
+    await transition(OWNER, id, 'awaiting_payment', { totalMinor: 180000000n })
+    await asUser(ADMIN, (c) => c.query(`update bookings set total_minor = 170000000 where id = $1`, [id]))
+    expect((await terms(id)).total_minor).toBe('170000000')
+  })
+
+  it('puts the amounts and instructions in the client\'s email', async () => {
+    const id = await accepted('2028-01-16')
+    await transition(OWNER, id, 'awaiting_payment', {
+      totalMinor: 180000000n, depositMinor: 54000000n, instructions: 'Multicaixa Express 923 000 000',
+    })
+    const ctx = await asSystem(async (c) => (await c.query(
+      `select context from notification_outbox where kind = 'booking_awaiting_payment' and context->>'booking_id' = $1`, [id],
+    )).rows[0]?.context)
+    expect(String(ctx.total_minor)).toBe('180000000')
+    expect(String(ctx.deposit_minor)).toBe('54000000')
+    expect(ctx.payment_instructions).toBe('Multicaixa Express 923 000 000')
   })
 })

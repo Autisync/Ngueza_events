@@ -5,7 +5,11 @@ import type { PaymentStatus } from '@/lib/payments'
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   pending: 'Pendente',
   submitted: 'Em análise',
-  confirmed: 'Confirmado',
+  // An administrator found the proof legible and plausible ("Plausível").
+  // It is NOT "the money arrived" — only the supplier confirming the
+  // booking says that (slice 16). It used to read "Confirmado", which a
+  // client reasonably took to mean exactly that.
+  confirmed: 'Comprovativo verificado',
   failed: 'Rejeitado',
   refunded: 'Reembolsado',
 }
