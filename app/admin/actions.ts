@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { requireProfile } from '@/lib/auth'
 import { isUuid } from '@/lib/safe'
 import { resolveSupportRequest } from '@/lib/support'
+import { setSwitch } from '@/lib/switches'
 import {
   decideDocument, decidePayment, rejectProvider, reinstateProvider, resolveReport,
   setAccountStatus, suspendProvider, verifyProvider,
@@ -97,4 +98,14 @@ export async function doResolveSupport(formData: FormData): Promise<void> {
   const admin = await requireProfile('admin')
   await resolveSupportRequest(admin.id, uuid(formData, 'requestId'))
   redirect('/admin/apoio')
+}
+
+
+/** Flips a kill switch (slice 37). Audited by the database (0039). */
+export async function doSetSwitch(formData: FormData): Promise<void> {
+  const admin = await requireProfile('admin')
+  const key = String(formData.get('key') ?? '')
+  if (key !== 'bookings_paused' && key !== 'signups_paused') redirect('/admin')
+  await setSwitch(admin.id, key, formData.get('on') === '1', text(formData, 'message') ?? null)
+  redirect('/admin#interruptores')
 }

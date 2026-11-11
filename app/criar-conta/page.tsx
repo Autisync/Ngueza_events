@@ -6,6 +6,7 @@ import { safeNext } from '@/lib/safe'
 import { siteUrl } from '@/lib/env'
 import { GoogleMark } from '../GoogleMark'
 import styles from '../auth.module.css'
+import { pausedNotice } from '@/lib/switches'
 
 export const metadata: Metadata = { title: 'Criar conta', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -43,7 +44,10 @@ export default async function CriarConta({
     )
   }
   if (user) redirect(target)
-  const googleUrl = googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent(target)}`)
+  // Kill switch (slice 37): while sign-ups are paused, say so and offer
+  // no way to create an account here — the action refuses it anyway.
+  const paused = await pausedNotice('signups_paused')
+  const googleUrl = paused ? null : googleAuthorizeUrl(`${siteUrl()}/auth/google?next=${encodeURIComponent(target)}`)
 
   return (
     <main className={styles.page}>
@@ -51,9 +55,10 @@ export default async function CriarConta({
       <h1 className={styles.title}>Criar conta</h1>
       <p className={styles.lede}>Precisa de conta para reservar e para avaliar um serviço.</p>
 
-      {erro ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
+      {erro && erro !== 'pausado' ? <p className={styles.alert} role="alert">{ERRORS[erro] ?? ERRORS.unknown}</p> : null}
+      {paused ? <p className={styles.alert} role="status">{paused}</p> : null}
 
-      {googleUrl ? (
+      {paused ? null : googleUrl ? (
         <>
           <a className={styles.google} href={googleUrl}>
             <GoogleMark /> Continuar com Google
@@ -62,7 +67,7 @@ export default async function CriarConta({
         </>
       ) : null}
 
-      <form action={doSignUp}>
+      {paused ? null : <form action={doSignUp}>
         <input type="hidden" name="next" value={target} />
         <label className={styles.field}>
           <span className={styles.label}>Nome</span>
@@ -83,7 +88,7 @@ export default async function CriarConta({
           </span>
         </label>
         <button className={styles.submit} type="submit">Criar conta</button>
-      </form>
+      </form>}
 
       <p className={styles.alt}>Já tem conta?{' '}
         <a href={target === '/conta' ? '/entrar' : `/entrar?next=${encodeURIComponent(target)}`}>Entrar</a></p>
