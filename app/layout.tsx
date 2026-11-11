@@ -4,6 +4,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import { siteUrl } from '@/lib/env'
 import './globals.css'
 import { SiteFooter, SiteHeader } from './SiteHeader'
+import site from './site.module.css'
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
@@ -40,8 +41,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-AO">
       <body>
+        {/* Keyboard and screen-reader users skip the header (slice 49, review R056). */}
+        <a className={site.skip} href="#conteudo">Saltar para o conteúdo</a>
         <SiteHeader />
-        {children}
+        <div id="conteudo" tabIndex={-1} className={site.content}>{children}</div>
         <SiteFooter />
         <Analytics />
         <SpeedInsights />
