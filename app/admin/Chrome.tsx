@@ -4,7 +4,7 @@ export function Chrome({
   title, active, counts,
 }: {
   title: string
-  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'localizacoes' | 'registo' | 'metricas' | 'pagamentos' | 'espera' | 'apoio'
+  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'localizacoes' | 'registo' | 'metricas' | 'pagamentos' | 'espera' | 'apoio' | 'consola'
   counts?: { pendingProviders: number; openReports: number; submittedPayments?: number; openSupport?: number }
 }) {
   const link = (href: string, key: typeof active, label: string, badge?: number) => (
@@ -26,6 +26,7 @@ export function Chrome({
         <a className={styles.mark} href="/">← NGUEZA</a>
         <div className={styles.sidebarNav}>
           {link('/admin', 'inicio', 'Início')}
+          {link('/admin/consola', 'consola', 'Consola')}
           {link('/admin/metricas', 'metricas', 'Métricas')}
           {link('/admin/fornecedores', 'fornecedores', 'Fornecedores', counts?.pendingProviders)}
           {link('/admin/pagamentos', 'pagamentos', 'Pagamentos', counts?.submittedPayments)}
