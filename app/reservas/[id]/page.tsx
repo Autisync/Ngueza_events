@@ -15,7 +15,8 @@ import { refundEntitlement } from '@/lib/cancellation-policy'
 import { eventTips } from '@/lib/event-tips'
 import { planningContext } from '@/lib/provider'
 import { eventWeather } from '@/lib/weather'
-import { doClientCancel } from '@/app/booking-actions'
+import { doAnswerRefund, doClientCancel } from '@/app/booking-actions'
+import { REFUND_METHOD_PHRASE, refundsFor } from '@/lib/refunds'
 import { doLeaveReview } from '@/app/review-actions'
 import { PaymentProofUpload } from './PaymentProofUpload'
 import styles from '../reservas.module.css'
@@ -42,9 +43,15 @@ export default async function ReservaDetalhe({
 
   const canCancel = ['requested', 'accepted', 'awaiting_payment', 'confirmed'].includes(booking.status)
   const canReview = booking.status === 'completed' && !(await reviewExistsForBooking(profile.id, booking.id))
-  const payments = ['awaiting_payment', 'confirmed'].includes(booking.status)
-    ? await bookingPayments(profile.id, booking.id)
-    : []
+  const cancelled = booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+  const [payments, refunds] = await Promise.all([
+    ['awaiting_payment', 'confirmed', 'cancelled_client', 'cancelled_provider'].includes(booking.status)
+      ? bookingPayments(profile.id, booking.id) : Promise.resolve([]),
+    cancelled ? refundsFor(profile.id, booking.id) : Promise.resolve([]),
+  ])
+  const cancelledAt = cancelled
+    ? booking.history.filter((h) => h.toStatus === booking.status).at(-1)?.createdAt ?? null
+    : null
   // What to prefill as "valor pago": the rest of the sinal while it is
   // outstanding, then the rest of the total (slice 31).
   const progress = paymentProgress(booking.totalMinor, payments)
@@ -177,7 +184,7 @@ export default async function ReservaDetalhe({
           </div>
         ) : null}
 
-        {payments.length > 0 || booking.status === 'awaiting_payment' ? (
+        {(payments.length > 0 && !cancelled) || booking.status === 'awaiting_payment' ? (
           <div className={styles.card} id="pagamento">
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Pagamento</h2>
             <p style={{ margin: '0 0 12px', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
@@ -255,13 +262,72 @@ export default async function ReservaDetalhe({
         ) : null}
 
         {booking.status === 'cancelled_provider' ? (
+          // Neutral facts, not a percentage (slice 47, review R013): the
+          // client's cancellation tiers don't apply when the supplier cancels.
           <div className={styles.card}>
             <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Cancelada pelo fornecedor</h2>
-            <p style={{ margin: 0, color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
+            {cancelledAt ? (
+              <div className={styles.row}><span>Quando</span>
+                <span>{new Date(cancelledAt).toLocaleDateString('pt-AO', { timeZone: 'Africa/Luanda' })}</span></div>
+            ) : null}
+            {booking.cancellationReason ? (
+              <div className={styles.row}><span>Motivo</span><span>{booking.cancellationReason}</span></div>
+            ) : null}
+            {progress.declaredMinor > 0n ? (
+              <div className={styles.row}><span>O que declarou ter pago</span>
+                <span>{formatMinor(progress.declaredMinor)} ({payments.length} {payments.length === 1 ? 'comprovativo' : 'comprovativos'})</span></div>
+            ) : null}
+            <p style={{ margin: '10px 0 0', color: 'var(--tinta-2)', fontSize: '0.9rem' }}>
               Os prazos de cancelamento da política aplicam-se quando é o cliente a cancelar,
               por isso não se aplicam aqui. Se já tinha pago, combine a devolução com o
-              fornecedor ou contacte a NGUEZA — a NGUEZA não guarda nem transfere dinheiro.
+              fornecedor — a NGUEZA não guarda nem transfere dinheiro.
             </p>
+          </div>
+        ) : null}
+
+        {refunds.length > 0 ? (
+          // The supplier's statements of what they returned; the client
+          // answers each, once (0045).
+          <div className={styles.card} id="devolucao">
+            <h2 style={{ fontSize: '1rem', margin: '0 0 4px' }}>Devolução</h2>
+            {refunds.map((r) => (
+              <div key={r.id} style={{ borderBottom: '1px solid var(--linha)', padding: '10px 0' }}>
+                <p style={{ margin: 0 }}>
+                  {booking.providerName} diz que lhe devolveu <strong>{formatMinor(r.amountMinor)}</strong>{' '}
+                  por {REFUND_METHOD_PHRASE[r.method]}{r.reference ? ` (ref. ${r.reference})` : ''}.
+                </p>
+                {r.clientResponse ? (
+                  <p style={{ margin: '6px 0 0' }}>
+                    <span className={`${styles.pill} ${r.clientResponse === 'received' ? styles.ok : styles.bad}`}>
+                      {r.clientResponse === 'received' ? 'Confirmou que recebeu' : 'Disse que não recebeu'}
+                    </span>
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+                    <form action={doAnswerRefund}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <input type="hidden" name="attestationId" value={r.id} />
+                      <input type="hidden" name="response" value="received" />
+                      <button className={styles.submit} type="submit">Recebi</button>
+                    </form>
+                    <details style={{ flex: '1 1 220px' }}>
+                      <summary className={styles.btn} style={{ display: 'inline-block', listStyle: 'none' }}>Não recebi…</summary>
+                      <form action={doAnswerRefund} style={{ marginTop: 10 }}>
+                        <input type="hidden" name="bookingId" value={booking.id} />
+                        <input type="hidden" name="attestationId" value={r.id} />
+                        <input type="hidden" name="response" value="disputed" />
+                        <label className={styles.field}>
+                          <span className={styles.label}>O que aconteceu? <span style={{ fontWeight: 400 }}>(o fornecedor vê)</span></span>
+                          <textarea className={styles.area} name="note" maxLength={1000}
+                                    placeholder="Por exemplo: o valor não chegou à minha conta." />
+                        </label>
+                        <button className={styles.btn} type="submit">Confirmar que não recebi</button>
+                      </form>
+                    </details>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         ) : null}
 

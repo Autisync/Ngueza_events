@@ -8,6 +8,7 @@ import { isUuid, normalizePhone, todayInLuanda } from '@/lib/safe'
 import { eventWindow } from '@/lib/booking-labels'
 import { parseMajor } from '@/lib/money'
 import { sessionId } from '@/lib/session'
+import { answerRefund, attestRefund, REFUND_METHODS, type RefundMethod } from '@/lib/refunds'
 
 /**
  * Booking actions shared across the public provider page, the client's
@@ -133,7 +134,50 @@ export async function doSupplierTransition(formData: FormData): Promise<void> {
     'completed', 'no_show', 'cancelled_provider',
   ]
   if (!allowed.includes(to)) redirect(`/painel/${providerId}/reservas/${bookingId}?erro=illegal_transition`)
-  await doTransition(bookingId, to, `/painel/${providerId}/reservas/${bookingId}`)
+  const back = `/painel/${providerId}/reservas/${bookingId}`
+  // Cancelling says why, in the same update (0045). The database requires
+  // it for a real booking and refuses it ever being edited afterwards.
+  const reason = to === 'cancelled_provider' ? str(formData, 'reason')?.slice(0, 500) : undefined
+  if (reason !== undefined) {
+    const profile = await requireProfile()
+    const result = await transition(profile.id, bookingId, to, undefined, reason)
+    redirect(result.ok ? `${back}?feito=1` : `${back}?erro=${result.reason}`)
+  }
+  await doTransition(bookingId, to, back)
+}
+
+/** The supplier records a refund they made (0045). A statement, not a
+ *  payment: NGUEZA moves no money. */
+export async function doAttestRefund(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const bookingId = String(formData.get('bookingId') ?? '')
+  const providerId = String(formData.get('providerId') ?? '')
+  if (!isUuid(bookingId) || !isUuid(providerId)) redirect('/painel')
+  const back = `/painel/${providerId}/reservas/${bookingId}`
+  let amountMinor: bigint
+  try {
+    amountMinor = parseMajor(str(formData, 'amount') ?? '')
+  } catch {
+    redirect(`${back}?erro=refund_amount#devolucao`)
+  }
+  if (amountMinor <= 0n) redirect(`${back}?erro=refund_amount#devolucao`)
+  const method = String(formData.get('method') ?? '')
+  if (!(method in REFUND_METHODS)) redirect(`${back}?erro=dados#devolucao`)
+  const result = await attestRefund(profile.id, bookingId, {
+    amountMinor, method: method as RefundMethod, reference: str(formData, 'reference')?.slice(0, 120),
+  })
+  redirect(result === 'ok' ? `${back}?feito=1#devolucao` : `${back}?erro=not_allowed#devolucao`)
+}
+
+/** The client answers a refund statement: received, or not (0045). */
+export async function doAnswerRefund(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const bookingId = String(formData.get('bookingId') ?? '')
+  const attestationId = String(formData.get('attestationId') ?? '')
+  if (!isUuid(bookingId) || !/^\d{1,18}$/.test(attestationId)) redirect('/reservas')
+  const response = formData.get('response') === 'received' ? 'received' : 'disputed'
+  const result = await answerRefund(profile.id, attestationId, response, str(formData, 'note')?.slice(0, 1000))
+  redirect(`/reservas/${bookingId}?${result === 'ok' ? 'feito=1' : 'erro=not_allowed'}#devolucao`)
 }
 
 /**

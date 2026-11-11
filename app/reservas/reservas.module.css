@@ -79,3 +79,4 @@
 .star:has(input:focus-visible) { outline: 3px solid var(--azul-500); outline-offset: 1px; }
 .star:has(input:checked) { background: var(--azul-050); border-color: var(--azul-500); }
 .star input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.row > .pill { flex: none; white-space: nowrap; }

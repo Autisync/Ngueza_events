@@ -9,7 +9,8 @@ import { bookingRef, eventDay, formatWhen, STATUS_CLASS, STATUS_LABEL, TRANSITIO
 import { normalizePhone, whatsappUrl } from '@/lib/safe'
 import { ownedProvider } from '@/lib/painel'
 import { refundEntitlement } from '@/lib/cancellation-policy'
-import { doRequestPayment, doSupplierTransition } from '@/app/booking-actions'
+import { doAttestRefund, doRequestPayment, doSupplierTransition } from '@/app/booking-actions'
+import { REFUND_METHODS, refundsFor } from '@/lib/refunds'
 import styles from '../../../painel.module.css'
 
 export const metadata: Metadata = { title: 'Reserva', robots: { index: false } }
@@ -76,10 +77,17 @@ export default async function ReservaFornecedor({
   const showEntitlement = booking.status !== 'blocked'
     && (steps.length > 0 || booking.status === 'cancelled_client')
   const entitlement = showEntitlement ? await refundEntitlement(profile.id, booking.id) : null
-  const [payments, lastInstructions] = await Promise.all([
+  const cancelled = booking.status === 'cancelled_client' || booking.status === 'cancelled_provider'
+  const [payments, lastInstructions, refunds] = await Promise.all([
     bookingPayments(profile.id, booking.id),
     booking.status === 'accepted' ? lastPaymentInstructions(profile.id, providerId) : Promise.resolve(null),
+    cancelled ? refundsFor(profile.id, booking.id) : Promise.resolve([]),
   ])
+  // Cancelling a real booking is its own two-step form (slice 47);
+  // unblocking a manual block stays one button.
+  const cancelStep = booking.status !== 'blocked' && steps.some((s) => s.to === 'cancelled_provider')
+  const buttons = steps.filter((s) => !(cancelStep && s.to === 'cancelled_provider'))
+  const refundedMinor = refunds.reduce((sum, r) => sum + r.amountMinor, 0n)
   const progress = paymentProgress(booking.totalMinor, payments)
 
   return (
@@ -165,7 +173,7 @@ export default async function ReservaFornecedor({
                   <div className={styles.row}><span>Sinal pedido</span><span>{formatMinor(BigInt(booking.depositMinor))}</span></div>
                 ) : null}
                 <div className={styles.row}><span>Declarado pelo cliente</span><span>{formatMinor(progress.declaredMinor)}</span></div>
-                {progress.remainingMinor !== null ? (
+                {progress.remainingMinor !== null && !cancelled ? (
                   <div className={styles.row}><span>Por pagar</span><strong>{formatMinor(progress.remainingMinor)}</strong></div>
                 ) : null}
               </>
@@ -221,7 +229,7 @@ export default async function ReservaFornecedor({
           <div className={styles.card}>
             <h2>Decisão</h2>
             <div className={styles.actions}>
-              {steps.map((step) => (
+              {buttons.map((step) => (
                 <form action={doSupplierTransition} key={step.to}>
                   <input type="hidden" name="bookingId" value={booking.id} />
                   <input type="hidden" name="providerId" value={providerId} />
@@ -235,6 +243,89 @@ export default async function ReservaFornecedor({
                 </form>
               ))}
             </div>
+            {cancelStep ? (
+              // Two steps and a reason (slice 47, review R013): the client
+              // reads the reason, and the consequence is said before, not after.
+              <details className={styles.cancelBox}>
+                <summary>Cancelar esta reserva…</summary>
+                <ul className={styles.consequences}>
+                  <li>O cliente recebe um email com o motivo que escrever abaixo.</li>
+                  <li>A data fica livre para outros pedidos.</li>
+                  {progress.declaredMinor > 0n ? (
+                    <li>
+                      O cliente declarou ter pago <strong>{formatMinor(progress.declaredMinor)}</strong>. A
+                      devolução é combinada entre si e o cliente; registe-a aqui depois de a fazer.
+                    </li>
+                  ) : null}
+                  <li>Cancelamentos pelo fornecedor ficam no histórico da reserva.</li>
+                </ul>
+                <form action={doSupplierTransition}>
+                  <input type="hidden" name="bookingId" value={booking.id} />
+                  <input type="hidden" name="providerId" value={providerId} />
+                  <input type="hidden" name="to" value="cancelled_provider" />
+                  <label className={styles.field}>
+                    <span className={styles.label}>Motivo — o cliente vê este texto</span>
+                    <textarea className={styles.input} name="reason" required minLength={3} maxLength={500} rows={3}
+                              placeholder="Por exemplo: avaria no gerador do salão, sem reparação a tempo." />
+                  </label>
+                  <button className={`${styles.btn} ${styles.no}`} type="submit">Confirmar cancelamento</button>
+                </form>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        {cancelled ? (
+          // What happened to the money (0045). Statements by each side;
+          // NGUEZA moves none of it.
+          <div className={styles.card} id="devolucao">
+            <h2>Devolução</h2>
+            {booking.cancellationReason ? (
+              <p className={styles.note}>Motivo do cancelamento: «{booking.cancellationReason}»</p>
+            ) : null}
+            <div className={styles.row}><span>Declarado pago pelo cliente</span>
+              <span>{formatMinor(progress.declaredMinor)}</span></div>
+            <div className={styles.row}><span>Devolução registada por si</span>
+              <span>{formatMinor(refundedMinor)}</span></div>
+            {refunds.map((r) => (
+              <div className={styles.row} key={r.id}>
+                <span>
+                  {formatMinor(r.amountMinor)} · {REFUND_METHODS[r.method]}{r.reference ? ` · ref. ${r.reference}` : ''}
+                  <span className={styles.meta}>{formatWhen(r.createdAt)}</span>
+                  {r.clientNote ? <span className={styles.meta}>«{r.clientNote}»</span> : null}
+                </span>
+                <span className={`${styles.pill} ${
+                  r.clientResponse === 'received' ? styles.pillOk
+                  : r.clientResponse === 'disputed' ? styles.pillBad : styles.pillWait}`}>
+                  {r.clientResponse === 'received' ? 'Cliente confirmou'
+                    : r.clientResponse === 'disputed' ? 'Cliente diz que não recebeu' : 'À espera do cliente'}
+                </span>
+              </div>
+            ))}
+            <form action={doAttestRefund} style={{ marginTop: 16 }}>
+              <input type="hidden" name="bookingId" value={booking.id} />
+              <input type="hidden" name="providerId" value={providerId} />
+              <p className={styles.note}>
+                Já devolveu dinheiro ao cliente? Registe-o aqui. O cliente é avisado e confirma se recebeu.
+              </p>
+              <div className={styles.two}>
+                <label className={styles.field}>
+                  <span className={styles.label}>Valor devolvido (Kz)</span>
+                  <input className={styles.input} name="amount" inputMode="decimal" required placeholder="450.000" />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.label}>Como</span>
+                  <select className={styles.input} name="method" defaultValue="transferencia">
+                    {Object.entries(REFUND_METHODS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className={styles.field}>
+                <span className={styles.label}>Referência <span className={styles.meta}>(opcional)</span></span>
+                <input className={styles.input} name="reference" maxLength={120} placeholder="N.º da transferência" />
+              </label>
+              <button className={`${styles.btn} ${styles.go}`} type="submit">Registar devolução</button>
+            </form>
           </div>
         ) : null}
 

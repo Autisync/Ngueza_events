@@ -100,8 +100,9 @@ listed first), or reports in `/admin/denuncias`.
    NGUEZA's legal decision, not an engineering one.
 
 Remember the model: NGUEZA never holds money. There is nothing to refund
-from the platform; the record of what happened is `booking_events` and
-`payments`.
+from the platform; the record of what happened is `booking_events`,
+`payments`, and `refund_attestations` (what the supplier says they returned,
+and whether the client confirmed or disputed it, slice 47).
 
 ## Two clients say they have the same date
 

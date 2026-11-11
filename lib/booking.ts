@@ -141,7 +141,7 @@ export async function requestBooking(
 
 export type TransitionOutcome =
   | { ok: true }
-  | { ok: false; reason: 'slot_taken' | 'illegal_transition' | 'not_found' | 'not_allowed' | 'terms_required' | 'invalid_terms' }
+  | { ok: false; reason: 'slot_taken' | 'illegal_transition' | 'not_found' | 'not_allowed' | 'terms_required' | 'invalid_terms' | 'reason_required' }
 
 /** What the supplier sets when asking for payment (0035). Written in the
  *  same UPDATE as the transition — the only moment the database allows it. */
@@ -164,10 +164,15 @@ export async function transition(
   bookingId: string,
   to: BookingStatus,
   terms?: PaymentTerms,
+  /** Why, when cancelling (0045). Required of a supplier cancelling a booking. */
+  cancellationReason?: string,
 ): Promise<TransitionOutcome> {
   try {
     const changed = await asUser(actorId, async (c) => {
-      const result = terms
+      const result = cancellationReason !== undefined
+        ? await c.query(`update bookings set status = $2, cancellation_reason = $3 where id = $1`,
+            [bookingId, to, cancellationReason.trim() || null])
+        : terms
         ? await c.query(
             `update bookings
                 set status = $2, total_minor = $3, deposit_minor = $4, payment_instructions = $5
@@ -194,6 +199,10 @@ export async function transition(
     }
     if (isCheckViolation(error) && e.constraint === 'bookings_deposit_within_total') {
       return { ok: false, reason: 'invalid_terms' }
+    }
+    if (isCheckViolation(error) && (e.message?.includes('must say why')
+        || e.constraint === 'bookings_cancellation_reason_check')) {
+      return { ok: false, reason: 'reason_required' }
     }
     if (isCheckViolation(error)) return { ok: false, reason: 'illegal_transition' }
     throw error
@@ -362,6 +371,8 @@ export interface BookingDetail extends BookingSummary {
   /** The sinal and how to pay, set by the supplier when asking for payment (0035). */
   depositMinor: string | null
   paymentInstructions: string | null
+  /** Said once, by whoever cancelled (0045). */
+  cancellationReason: string | null
   /** For "find another on the same date" when a date is lost (0033). */
   providerCategoryId: string
   providerLocationId: string
@@ -414,6 +425,7 @@ export async function bookingDetail(actorId: string, bookingId: string): Promise
       clientPhone: row.client_phone, contactShared: row.contact_shared ?? null,
       providerPhone: row.provider_phone, providerWhatsapp: row.provider_whatsapp,
       depositMinor: row.deposit_minor, paymentInstructions: row.payment_instructions,
+      cancellationReason: row.cancellation_reason ?? null,
       providerAddress: row.provider_address, providerZone: row.provider_zone,
       history: history.rows.map((h) => ({
         fromStatus: h.from_status, toStatus: h.to_status, createdAt: h.created_at,

@@ -201,3 +201,12 @@
 .sent summary { cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--azul-700); }
 .linkBtn { background: none; border: 0; padding: 0; font: inherit; font-size: 0.85rem; font-weight: 700;
            color: var(--erro); cursor: pointer; text-decoration: underline; }
+
+/* Slice 47: cancelling in two steps, and the refund record. */
+.cancelBox { margin-top: 14px; border: 1px solid var(--linha); border-radius: 10px; padding: 12px 14px; }
+.cancelBox summary { cursor: pointer; font-weight: 700; color: var(--erro); }
+.cancelBox[open] summary { margin-bottom: 10px; }
+.consequences { margin: 0 0 14px; padding-left: 18px; font-size: 0.9rem; color: var(--tinta-2); display: grid; gap: 4px; }
+.row .meta { display: block; font-size: 0.82rem; color: var(--tinta-3); margin-top: 2px; }
+.row span:first-child .meta { color: var(--tinta-3); }
+.row > .pill { flex: none; white-space: nowrap; align-self: center; }
