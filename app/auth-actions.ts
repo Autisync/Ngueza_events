@@ -9,6 +9,7 @@ import {
   signIn, signUp, storeSession, updatePassword,
 } from '@/lib/auth'
 import { safeNext } from '@/lib/safe'
+import { LIMITS, allow, allowAll, clientIp } from '@/lib/rate-limit'
 
 /**
  * Plain server actions bound to <form action={...}>, so every auth screen
@@ -43,7 +44,14 @@ export async function doSignIn(formData: FormData): Promise<void> {
 
   if (!parsed.success) redirect(`/entrar?erro=dados&next=${encodeURIComponent(next)}`)
 
-  const result = await signIn(parsed.data.email, parsed.data.password)
+  // Per visitor and per account (slice 33): guessing one person's
+  // password from many addresses is caught by the second key.
+  const ip = clientIp(await headers())
+  if (!(await allowAll([[LIMITS.signInIp, ip], [LIMITS.signInEmail, parsed.data.email]]))) {
+    redirect(`/entrar?erro=rate_limited&next=${encodeURIComponent(next)}`)
+  }
+
+  const result = await signIn(parsed.data.email, parsed.data.password, ip)
   if (!result.ok) {
     redirect(`/entrar?erro=${result.error}&next=${encodeURIComponent(next)}`)
   }
@@ -66,8 +74,11 @@ export async function doSignUp(formData: FormData): Promise<void> {
     redirect(`/criar-conta?erro=${field === 'password' ? 'palavra_passe_curta' : 'dados'}${back}`)
   }
 
+  const ip = clientIp(await headers())
+  if (!(await allow(LIMITS.signUpIp, ip))) redirect(`/criar-conta?erro=rate_limited${back}`)
+
   const fullName = String(formData.get('nome') ?? '').trim().slice(0, 120) || undefined
-  const result = await signUp(parsed.data.email, parsed.data.password, fullName)
+  const result = await signUp(parsed.data.email, parsed.data.password, fullName, ip)
   if (!result.ok) redirect(`/criar-conta?erro=${result.error}${back}`)
 
   if (result.session) {
@@ -88,7 +99,13 @@ export async function doRequestReset(formData: FormData): Promise<void> {
   const email = z.string().trim().toLowerCase().email().safeParse(formData.get('email') ?? '')
   if (email.success) {
     const h = await headers()
-    await requestPasswordReset(email.data, `${site(h)}/nova-palavra-passe`)
+    const ip = clientIp(h)
+    // Over the limit: send nothing, but answer exactly as if we had — a
+    // different page would tell a stranger the limit was reached for
+    // this address.
+    if (await allowAll([[LIMITS.resetIp, ip], [LIMITS.resetEmail, email.data]])) {
+      await requestPasswordReset(email.data, `${site(h)}/nova-palavra-passe`, ip)
+    }
   }
   // The same destination either way. Telling a stranger whether an address
   // has an account is an enumeration oracle.

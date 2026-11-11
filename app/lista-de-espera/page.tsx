@@ -45,6 +45,7 @@ async function options(): Promise<{ categories: Option[]; municipalities: Option
 const ERRORS: Record<string, string> = {
   email: 'Escreva um endereço de email válido.',
   consentimento: 'Precisamos da sua autorização para lhe enviar novidades.',
+  limite: 'Recebemos muitos pedidos deste endereço. Tente novamente daqui a uma hora.',
 }
 
 export default async function Waitlist({

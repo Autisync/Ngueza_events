@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { completePastBookings, expireStaleBookings } from '@/lib/booking'
 import { expireStaleQuoteRequests } from '@/lib/quotes'
+import { pruneRateLimits } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,8 @@ async function run(request: Request): Promise<NextResponse> {
   const released = await expireStaleBookings()
   const completed = await completePastBookings()
   const quotesExpired = await expireStaleQuoteRequests()
-  return NextResponse.json({ released, completed, quotesExpired })
+  const rateLimitsPruned = await pruneRateLimits()
+  return NextResponse.json({ released, completed, quotesExpired, rateLimitsPruned })
 }
 
 export const GET = run
