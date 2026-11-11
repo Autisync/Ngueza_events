@@ -1,5 +1,9 @@
 import { coverImageUrl } from '@/lib/media'
 import { formatPrice } from '@/lib/money'
+
+// What a card's price is per (slice 42): "180 000 Kz" alone hid whether
+// that was the whole event or each guest.
+const UNIT: Record<string, string> = { event: 'evento', day: 'dia', hour: 'hora', person: 'pessoa' }
 import type { SearchHit } from '@/lib/search'
 import styles from './supplier-card.module.css'
 import { formatRating } from '@/lib/booking-labels'
@@ -43,6 +47,8 @@ export function SupplierCard({ hit }: { hit: SearchHit }) {
         {hit.capacity ? <span className={styles.cap}>até {hit.capacity} pessoas</span> : null}
         <p className={hit.hasPrice ? styles.price : styles.priceQuiet}>
           {hit.price ? formatPrice(hit.price) : 'Sob consulta'}
+          {hit.price && hit.price.mode !== 'on_request' && hit.priceUnit && UNIT[hit.priceUnit]
+            ? <span className={styles.unit}> / {UNIT[hit.priceUnit]}</span> : null}
         </p>
       </div>
     </a>

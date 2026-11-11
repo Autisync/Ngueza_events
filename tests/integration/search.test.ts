@@ -200,3 +200,51 @@ describe('multi-category matching (slice 22 / migration 0028)', () => {
     }
   })
 })
+
+describe('budget and sort (slice 42)', () => {
+  const all = async (q: Parameters<typeof search>[0]) => {
+    const out: Awaited<ReturnType<typeof search>>['hits'] = []
+    let cursor
+    do {
+      const page = await search({ ...q, limit: 2, cursor })
+      out.push(...page.hits)
+      cursor = page.nextCursor ?? undefined
+    } while (cursor)
+    return out
+  }
+
+  it('keeps suppliers within the budget, and those who price on request', async () => {
+    const hits = (await search({ maxPriceMinor: 100000000n, limit: 50 })).hits
+    const names = hits.map((h) => h.name)
+    expect(names).toContain('Espaço Mirante')      // a partir de 950 000
+    expect(names).toContain('Casa da Baía')        // sob consulta: not over budget, just unknown
+    expect(names).not.toContain('Salão Horizonte') // 1 800 000
+  })
+
+  it('sorts cheapest first, price on request last, and pages without repeats or gaps', async () => {
+    const hits = await all({ sort: 'preco' })
+    const priced = hits.filter((h) => h.hasPrice).map((h) => (h.price as { minor: bigint }).minor)
+    expect(priced).toEqual([...priced].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+    expect(hits.at(-1)?.hasPrice).toBe(false)
+    expect(new Set(hits.map((h) => h.id)).size).toBe(hits.length)
+    expect(hits.length).toBe((await search({ limit: 50 })).hits.length)
+  })
+
+  it('sorts best rated first when asked, and pages without repeats or gaps', async () => {
+    const hits = await all({ sort: 'avaliacao' })
+    const ratings = hits.map((h) => h.ratingAverage ?? 0)
+    expect(ratings).toEqual([...ratings].sort((a, b) => b - a))
+    expect(new Set(hits.map((h) => h.id)).size).toBe(hits.length)
+  })
+
+  it('ignores a cursor made for another sort instead of misapplying it', async () => {
+    const first = await search({ sort: 'preco', limit: 2 })
+    const wrong = await search({ sort: 'relevancia', limit: 50, cursor: first.nextCursor ?? undefined })
+    expect(wrong.hits.length).toBe((await search({ limit: 50 })).hits.length)
+  })
+
+  it('says what a price is per', async () => {
+    const hit = (await search({ limit: 50 })).hits.find((h) => h.name === 'Centro Kianda')
+    expect(hit?.priceUnit).toBe('day')
+  })
+})
