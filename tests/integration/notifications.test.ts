@@ -172,6 +172,10 @@ describe('provider decisions enqueue the right notification', () => {
       const { rows } = await c.query(`select id from providers where owner_id = $1`, [SUPPLIER])
       return rows[0]!.id
     })
+    // Verifying needs an accepted document (0044).
+    await asSystem((c) => c.query(
+      `insert into provider_documents (provider_id, kind, external_id, status)
+       values ($1, 'identity', $2, 'accepted') on conflict do nothing`, [providerId, `${providerId}/bi.pdf`]))
     await verifyProvider(ADMIN, providerId)
 
     const eventId = await lastProviderAuditId(providerId)

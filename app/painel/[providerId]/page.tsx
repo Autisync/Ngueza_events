@@ -14,6 +14,9 @@ import { verificationLabel } from '@/lib/painel-labels'
 import { coverImageUrl } from '@/lib/media'
 import { MAX_PHOTOS, ownedPhotos } from '@/lib/photos'
 import { activeAmenities, type Amenity } from '@/lib/amenities'
+import { documentKinds } from '@/lib/documents'
+import { checklist, outstanding } from '@/lib/document-checklist'
+import { doWithdrawDocument } from '../actions'
 import styles from '../painel.module.css'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
@@ -27,20 +30,14 @@ const ERRORS: Record<string, string> = {
   espaco: 'Indique o nome e a capacidade do espaço (até 100 000 pessoas).',
   ultimo_espaco: 'Um local precisa de pelo menos um espaço activo.',
   sem_documentos: 'Anexe pelo menos um documento antes de submeter.',
+  documentos_em_falta: 'Ainda falta enviar documentos obrigatórios — veja a lista abaixo.',
+  documento_decidido: 'Esse documento já foi analisado e não pode ser retirado. Envie um novo, se for preciso.',
   servico_name: 'O nome do serviço precisa de pelo menos 3 caracteres.',
   servico_price: 'Indique um preço válido, por exemplo 180.000',
   servico_minCapacity: 'A capacidade mínima tem de estar entre 1 e 100 000.',
   servico_maxCapacity: 'A capacidade máxima tem de estar entre 1 e 100 000.',
   servico_priceMax: 'O valor máximo não pode ser inferior ao mínimo.',
   dados: 'Verifique os dados introduzidos.',
-}
-
-const DOC_KINDS: Record<string, string> = {
-  identity: 'Documento de identificação',
-  nif: 'NIF',
-  commercial_registration: 'Certidão comercial',
-  proof_of_address: 'Comprovativo de morada',
-  other: 'Outro',
 }
 
 const UNITS: Record<string, string> = {
@@ -51,7 +48,7 @@ export default async function GerirNegocio({
   params, searchParams,
 }: {
   params: Promise<{ providerId: string }>
-  searchParams: Promise<{ erro?: string; guardado?: string; novo?: string; submetido?: string; editar?: string }>
+  searchParams: Promise<{ erro?: string; guardado?: string; novo?: string; submetido?: string; editar?: string; tipo?: string }>
 }) {
   const profile = await currentProfile()
   if (!profile) redirect('/entrar?next=/painel')
@@ -61,7 +58,7 @@ export default async function GerirNegocio({
   // RLS already hides other people's businesses, so nothing here is a 403.
   if (!provider) notFound()
 
-  const [photos, counts, services, resources, documents, { categories, locations }, flags, amenities] = await Promise.all([
+  const [photos, counts, services, resources, documents, { categories, locations }, flags, amenities, kinds] = await Promise.all([
     ownedPhotos(profile.id, providerId),
     dashboardCounts(profile.id, providerId),
     ownedServices(profile.id, providerId),
@@ -70,7 +67,16 @@ export default async function GerirNegocio({
     formOptions(),
     searchParams,
     activeAmenities(),
+    documentKinds(),
   ])
+  // The verification checklist (slice 46, review R035).
+  const items = checklist(kinds, documents.map((d) => ({
+    kind: d.kind, status: d.status as 'submitted' | 'accepted' | 'rejected',
+    reviewNote: d.review_note, createdAt: d.created_at.toISOString(),
+  })), provider.supplierType)
+  const missing = outstanding(items)
+  const kindName = (slug: string) => kinds.find((k) => k.slug === slug)?.name ?? slug
+  const uploadKind = kinds.some((k) => k.slug === flags.tipo) ? flags.tipo : missing[0]?.kind.slug
 
   // After a rejection the supplier fixes what was asked and re-queues;
   // the decision itself is still an administrator's.
@@ -188,43 +194,90 @@ export default async function GerirNegocio({
             <p className={styles.alert}>{provider.rejectionReason}</p>
           ) : null}
 
-          <h3 style={{ fontSize: '0.92rem', margin: '0 0 8px' }}>Documentos</h3>
-          {documents.length === 0 ? (
-            <p className={styles.empty}>
-              Ainda não anexou documentos. São necessários o documento de identificação do
-              responsável e, se aplicável, o NIF.
-            </p>
-          ) : (
-            <div className={styles.list}>
-              {documents.map((d) => (
-                <div className={styles.item} key={d.id}>
-                  <div>
-                    <strong>{DOC_KINDS[d.kind] ?? d.kind}</strong>
-                    <span className={styles.meta}>{d.original_filename ?? '—'}</span>
-                    {d.review_note ? <span className={styles.meta}>{d.review_note}</span> : null}
-                  </div>
-                  <span className={`${styles.pill} ${
-                    d.status === 'accepted' ? styles.pillOk
-                    : d.status === 'rejected' ? styles.pillBad : styles.pillWait}`}>
-                    {d.status === 'accepted' ? 'Aceite'
-                      : d.status === 'rejected' ? 'Rejeitado' : 'Em análise'}
-                  </span>
+          <h3 style={{ fontSize: '0.92rem', margin: '0 0 8px' }}>Documentos para a verificação</h3>
+          {/* One line per paper this kind of business needs (0044): what is
+              missing, waiting, accepted, or rejected and why. */}
+          <ul className={styles.checklist}>
+            {items.map((i) => (
+              <li key={i.kind.slug} className={styles[`ck_${i.state}`]}>
+                <span className={styles.ckMark} aria-hidden="true">
+                  {i.state === 'accepted' ? '✓' : i.state === 'submitted' ? '…' : i.state === 'rejected' ? '!' : ''}
+                </span>
+                <div className={styles.ckBody}>
+                  <strong>{i.kind.name}</strong>
+                  {!i.required ? <span className={styles.meta}> (opcional)</span> : null}
+                  {i.state === 'rejected' ? (
+                    <span className={styles.ckNote}>
+                      Rejeitado{i.note ? `: ${i.note}` : ''}. Corrija e envie de novo.
+                    </span>
+                  ) : i.state === 'missing' && i.kind.hint ? (
+                    <span className={styles.meta}>{i.kind.hint}</span>
+                  ) : null}
                 </div>
-              ))}
-            </div>
-          )}
+                <span className={styles.ckState}>
+                  {i.state === 'accepted' ? 'Aceite'
+                    : i.state === 'submitted' ? 'Em análise'
+                    : (
+                      <a href={`/painel/${provider.id}?tipo=${i.kind.slug}#anexar`}>
+                        {i.state === 'rejected' ? 'Enviar outro' : 'Enviar'}
+                      </a>
+                    )}
+                </span>
+              </li>
+            ))}
+          </ul>
 
-          <div style={{ marginTop: 16, marginBottom: 16 }}>
-            <DocumentUpload providerId={provider.id} />
+          {documents.length > 0 ? (
+            <details className={styles.sent}>
+              <summary>Ficheiros enviados ({documents.length})</summary>
+              <div className={styles.list} style={{ marginTop: 10 }}>
+                {documents.map((d) => (
+                  <div className={styles.item} key={d.id}>
+                    <div>
+                      <strong>{kindName(d.kind)}</strong>
+                      <span className={styles.meta}>{d.original_filename ?? '—'}</span>
+                      {d.review_note ? <span className={styles.meta}>{d.review_note}</span> : null}
+                    </div>
+                    <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <span className={`${styles.pill} ${
+                        d.status === 'accepted' ? styles.pillOk
+                        : d.status === 'rejected' ? styles.pillBad : styles.pillWait}`}>
+                        {d.status === 'accepted' ? 'Aceite'
+                          : d.status === 'rejected' ? 'Rejeitado' : 'Em análise'}
+                      </span>
+                      {/* Sent the wrong file? Withdraw it while it waits. */}
+                      {d.status === 'submitted' ? (
+                        <form action={doWithdrawDocument}>
+                          <input type="hidden" name="providerId" value={provider.id} />
+                          <input type="hidden" name="documentId" value={d.id} />
+                          <button type="submit" className={styles.linkBtn}>Retirar</button>
+                        </form>
+                      ) : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
+
+          <div id="anexar" style={{ marginTop: 16, marginBottom: 16, scrollMarginTop: 80 }}>
+            <DocumentUpload providerId={provider.id} defaultKind={uploadKind}
+                            kinds={kinds.map((k) => ({ value: k.slug, label: k.name }))} />
           </div>
 
           {canSubmit ? (
-            <form action={doSubmitForVerification}>
-              <input type="hidden" name="providerId" value={provider.id} />
-              <button className={styles.submit} type="submit">
-                {provider.verificationStatus === 'rejected' ? 'Voltar a submeter para verificação' : 'Submeter para verificação'}
-              </button>
-            </form>
+            missing.length > 0 ? (
+              <p className={styles.hint}>
+                Para submeter, falta enviar: {missing.map((i) => i.kind.name).join(', ')}.
+              </p>
+            ) : (
+              <form action={doSubmitForVerification}>
+                <input type="hidden" name="providerId" value={provider.id} />
+                <button className={styles.submit} type="submit">
+                  {provider.verificationStatus === 'rejected' ? 'Voltar a submeter para verificação' : 'Submeter para verificação'}
+                </button>
+              </form>
+            )
           ) : null}
         </div>
 

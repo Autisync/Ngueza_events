@@ -10,6 +10,8 @@ import {
 } from '@/lib/onboarding'
 import { movePhoto, removePhoto, setCover, updateCaption } from '@/lib/photos'
 import { setResourceAmenities } from '@/lib/amenities'
+import { providerChecklist, withdrawDocument } from '@/lib/documents'
+import { outstanding } from '@/lib/document-checklist'
 
 /** Ticked amenity ids from the space form; anything not a uuid is dropped. */
 const amenityIds = (f: FormData) => f.getAll('amenity').map(String).filter(isUuid).slice(0, 50)
@@ -159,6 +161,11 @@ export async function doSubmitForVerification(formData: FormData): Promise<void>
   const profile = await requireProfile()
   const providerId = String(formData.get('providerId') ?? '')
   if (!isUuid(providerId)) redirect('/painel')
+  // Every required document sent (slice 46): a submission the reviewer
+  // can only reject for "documentos insuficientes" wastes both sides' days.
+  const items = await providerChecklist(profile.id, providerId)
+  if (!items) redirect('/painel')
+  if (outstanding(items).length > 0) redirect(`/painel/${providerId}?erro=documentos_em_falta#verificacao`)
   const result = await submitForVerification(profile.id, providerId)
   redirect(
     result === 'no_documents'
@@ -217,4 +224,14 @@ export async function doRemovePhoto(formData: FormData): Promise<void> {
     console.error(`photo ${objectId}: removed from listing, storage not configured`, error)
   }
   redirect(`/painel/${providerId}/fotos?feito=removida`)
+}
+
+/** Withdraw a document sent by mistake, while it still awaits review. */
+export async function doWithdrawDocument(formData: FormData): Promise<void> {
+  const profile = await requireProfile()
+  const providerId = String(formData.get('providerId') ?? '')
+  const documentId = String(formData.get('documentId') ?? '')
+  if (!isUuid(providerId) || !isUuid(documentId)) redirect('/painel')
+  const ok = await withdrawDocument(profile.id, providerId, documentId)
+  redirect(`/painel/${providerId}?${ok ? 'guardado=1' : 'erro=documento_decidido'}#verificacao`)
 }
