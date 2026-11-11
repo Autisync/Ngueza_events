@@ -157,3 +157,22 @@
 .stat .n { display: block; font-size: 1.5rem; font-weight: 700; color: var(--azul-700); letter-spacing: -0.02em; }
 .stat .label { display: block; font-size: 0.78rem; color: var(--tinta-3); margin-top: 2px; }
 .statWarn .n { color: var(--aviso); }
+
+/* Form pieces the taxonomy pages (categorias, localizações) and the
+   amenities page use. They were referenced but never defined, so those
+   forms rendered with browser defaults (slice 45). */
+.field { display: block; margin-bottom: 14px; }
+.field .label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--tinta-2); margin: 0 0 6px; }
+.two { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .two { grid-template-columns: 1fr 1fr; } }
+.select { width: 100%; padding: 11px 12px; font: inherit; font-size: 0.95rem; color: var(--tinta);
+          border: 1px solid var(--linha); border-radius: 9px; background: var(--branco); }
+.select:focus-visible { border-color: var(--azul-500); outline: 3px solid var(--azul-500); outline-offset: 1px; }
+.submit { padding: 11px 20px; font: inherit; font-size: 0.94rem; font-weight: 700; border: 0; border-radius: 9px;
+          cursor: pointer; background: var(--azul-700); color: var(--branco);
+          transition: background 0.15s ease, transform 0.1s ease; }
+.submit:hover { background: var(--azul-800); }
+.submit:active { transform: scale(0.98); }
+.inline { margin-left: 12px; color: var(--azul-700); font-size: 0.9rem; }
+.inline:hover { color: var(--azul-800); text-decoration: underline; }
+.state { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

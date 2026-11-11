@@ -27,6 +27,8 @@ export interface PublicResource {
   id: string
   name: string
   capacity: number | null
+  /** Amenity names for this space, in the admin's order (0043). */
+  amenities: string[]
 }
 
 export interface PublicProvider {
@@ -122,9 +124,13 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
     // so an empty result here is a genuine 404 and not an authorisation leak.
     if (!p) return null
 
-    const resources = await c.query<{ id: string; name: string; capacity: number | null }>(
-      `select id, name, capacity from resources
-        where provider_id = $1 and is_active order by sort_order, name`,
+    const resources = await c.query<PublicResource>(
+      `select r.id, r.name, r.capacity,
+              coalesce((select array_agg(a.name order by a.sort_order, a.name)
+                          from resource_amenities ra join amenities a on a.id = ra.amenity_id
+                         where ra.resource_id = r.id and a.is_active), '{}') as amenities
+         from resources r
+        where r.provider_id = $1 and r.is_active order by r.sort_order, r.name`,
       [p.id],
     )
     const services = await c.query<any>(

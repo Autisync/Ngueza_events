@@ -13,6 +13,7 @@ import { Icon } from '@/app/SiteHeader'
 import { verificationLabel } from '@/lib/painel-labels'
 import { coverImageUrl } from '@/lib/media'
 import { MAX_PHOTOS, ownedPhotos } from '@/lib/photos'
+import { activeAmenities, type Amenity } from '@/lib/amenities'
 import styles from '../painel.module.css'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
@@ -60,7 +61,7 @@ export default async function GerirNegocio({
   // RLS already hides other people's businesses, so nothing here is a 403.
   if (!provider) notFound()
 
-  const [photos, counts, services, resources, documents, { categories, locations }, flags] = await Promise.all([
+  const [photos, counts, services, resources, documents, { categories, locations }, flags, amenities] = await Promise.all([
     ownedPhotos(profile.id, providerId),
     dashboardCounts(profile.id, providerId),
     ownedServices(profile.id, providerId),
@@ -68,6 +69,7 @@ export default async function GerirNegocio({
     ownedDocuments(profile.id, providerId),
     formOptions(),
     searchParams,
+    activeAmenities(),
   ])
 
   // After a rejection the supplier fixes what was asked and re-queues;
@@ -323,6 +325,7 @@ export default async function GerirNegocio({
                         Indique a capacidade — sem ela este espaço não aparece em procuras por número de pessoas.
                       </p>
                     )}
+                    <AmenityChecks amenities={amenities} checked={r.amenity_ids} />
                     <button className={`${styles.btn} ${styles.go}`} type="submit">Guardar espaço</button>
                   </form>
                   {resources.length > 1 ? (
@@ -348,6 +351,7 @@ export default async function GerirNegocio({
                   <input className={styles.input} name="capacity" type="number" min={1} max={100000} required />
                 </label>
               </div>
+              <AmenityChecks amenities={amenities} checked={[]} />
               <button className={`${styles.submit} ${styles.ghost}`} type="submit">
                 Adicionar espaço
               </button>
@@ -422,5 +426,22 @@ export default async function GerirNegocio({
         </div>
       </div>
     </main>
+  )
+}
+
+/** What a space has (0043). Clients filter on these, so only what is
+ *  true of this space — a jardim and a salão usually differ. */
+function AmenityChecks({ amenities, checked }: { amenities: Amenity[]; checked: string[] }) {
+  if (amenities.length === 0) return null
+  return (
+    <fieldset className={styles.amenities}>
+      <legend className={styles.label}>O que este espaço tem</legend>
+      {amenities.map((a) => (
+        <label key={a.id} className={styles.amenity}>
+          <input type="checkbox" name="amenity" value={a.id} defaultChecked={checked.includes(a.id)} />
+          <span>{a.name}</span>
+        </label>
+      ))}
+    </fieldset>
   )
 }

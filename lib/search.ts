@@ -23,6 +23,8 @@ export interface SearchQuery {
   capacity?: number
   date?: string           // YYYY-MM-DD, Africa/Luanda
   maxPriceMinor?: bigint
+  /** Amenity slugs (0043). A space matches only with every one of them. */
+  amenities?: string[]
   sort?: SearchSort
   cursor?: Cursor
   limit?: number
@@ -180,6 +182,16 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
           -- Service suppliers have no spaces (r.id is null) and still pass.
           and ($3::int  is null or r.id is null or r.capacity >= $3)
           and ($4::bigint is null or s.price_minor is null or s.price_minor <= $4)
+          -- Amenities (0043): the same space must have every one asked
+          -- for — a jardim with parking and a salão with a generator is
+          -- not "gerador + estacionamento". Only spaces have amenities,
+          -- so asking for one leaves service suppliers out.
+          and (cardinality($14::text[]) = 0 or (
+                r.id is not null and not exists (
+                  select 1 from amenities a
+                   where a.slug = any($14::text[]) and a.is_active
+                     and not exists (select 1 from resource_amenities ra
+                                      where ra.resource_id = r.id and ra.amenity_id = a.id))))
           -- Availability, via resource_is_free (0014).
           --
           -- This MUST NOT be an inline subquery over bookings: RLS hides
@@ -238,6 +250,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
         cursor?.isDemo ?? false,
         sort,
         cursor?.sortNum ?? '0',
+        query.amenities ?? [],
       ],
     )
     return rows
@@ -296,6 +309,7 @@ export async function recordSearch(params: {
           // evidence (slice 42); text, because JSON has no bigint.
           max_price_minor: params.query.maxPriceMinor?.toString() ?? null,
           sort: params.query.sort ?? 'relevancia',
+          amenities: params.query.amenities ?? [],
           result_count: params.resultCount,
         },
       ],

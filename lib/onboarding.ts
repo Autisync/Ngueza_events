@@ -208,12 +208,15 @@ export async function addResource(
   ownerId: string,
   providerId: string,
   input: z.infer<typeof resourceInput>,
-): Promise<void> {
-  await asUser(ownerId, (c) =>
-    c.query(`insert into resources (provider_id, name, capacity) values ($1, $2, $3)`, [
-      providerId, input.name, input.capacity ?? null,
-    ]),
-  )
+): Promise<string | null> {
+  // RETURNING needs a SELECT policy; the owner has one (resources_public_read).
+  return asUser(ownerId, async (c) => {
+    const { rows } = await c.query<{ id: string }>(
+      `insert into resources (provider_id, name, capacity) values ($1, $2, $3) returning id`,
+      [providerId, input.name, input.capacity ?? null],
+    )
+    return rows[0]?.id ?? null
+  })
 }
 
 export async function updateResource(

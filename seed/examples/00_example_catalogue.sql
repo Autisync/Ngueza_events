@@ -135,6 +135,25 @@ insert into resources (id, provider_id, name, capacity) values
   ('5d000000-0000-4000-8002-000000100001', '5d000000-0000-4000-8001-000000000010', 'Salão', 160)
 on conflict (id) do nothing;
 
+-- What each example space has (0043, slice 45), taken from its own
+-- description, so the search filter has something honest to show.
+insert into resource_amenities (resource_id, amenity_id)
+select r::uuid, a.id
+  from (values
+    ('5d000000-0000-4000-8002-000000010001', 'ar-condicionado'), ('5d000000-0000-4000-8002-000000010001', 'coberto'),
+    ('5d000000-0000-4000-8002-000000020001', 'gerador'),         ('5d000000-0000-4000-8002-000000020001', 'coberto'),
+    ('5d000000-0000-4000-8002-000000030001', 'ar-condicionado'), ('5d000000-0000-4000-8002-000000030001', 'coberto'),
+    ('5d000000-0000-4000-8002-000000030002', 'coberto'),
+    ('5d000000-0000-4000-8002-000000040001', 'coberto'),
+    ('5d000000-0000-4000-8002-000000050001', 'ao-ar-livre'),     ('5d000000-0000-4000-8002-000000050001', 'estacionamento'),
+    ('5d000000-0000-4000-8002-000000050001', 'catering-externo'),
+    ('5d000000-0000-4000-8002-000000050002', 'coberto'),         ('5d000000-0000-4000-8002-000000050002', 'estacionamento'),
+    ('5d000000-0000-4000-8002-000000050002', 'catering-externo'),
+    ('5d000000-0000-4000-8002-000000060001', 'ao-ar-livre'),     ('5d000000-0000-4000-8002-000000060001', 'cozinha')
+  ) as v(r, slug)
+  join amenities a on a.slug = v.slug
+on conflict do nothing;
+
 insert into services (id, provider_id, category_id, name, description, price_mode,
                       price_minor, price_max_minor, price_unit, min_capacity, max_capacity) values
   ('5d000000-0000-4000-8003-000000010001', '5d000000-0000-4000-8001-000000000001', (select id from categories where slug = 'saloes-de-festas'), 'Aluguer do salão (dia inteiro)', 'Mesas, cadeiras, ar condicionado, segurança e limpeza no fim. Não inclui decoração nem catering.', 'exact', 220000000, null, 'event', 80, 300),

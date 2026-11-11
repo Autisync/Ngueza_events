@@ -51,3 +51,14 @@
 .moreFilters[open] { display: grid; gap: 10px; }
 @media (min-width: 720px) { .moreFilters[open] { grid-template-columns: repeat(2, minmax(0, 260px)); }
                             .moreFilters[open] summary { grid-column: 1 / -1; } }
+
+/* Amenity chips (slice 45): checkboxes styled as pills, inside "Mais filtros". */
+.amen { grid-column: 1 / -1; border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.amen legend { margin-bottom: 8px; padding: 0; }
+.amenChip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px;
+            font-size: 0.88rem; color: var(--branco); cursor: pointer;
+            background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.22);
+            transition: background 0.15s var(--ease-out), border-color 0.15s var(--ease-out); }
+.amenChip:hover { background: rgba(255, 255, 255, 0.16); }
+.amenChip:has(input:checked) { background: var(--branco); color: var(--azul-800); border-color: var(--branco); font-weight: 700; }
+.amenChip input { accent-color: var(--azul-600); margin: 0; }

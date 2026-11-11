@@ -133,3 +133,9 @@ a.day:active { transform: scale(0.94); }
 .stickyCta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stickyCta .btn { padding: 11px 18px; flex: none; }
 @media (min-width: 720px) { .stickyCta { display: none; } }
+
+/* Amenities per space (slice 45). */
+.amenities { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.amenities li { padding: 5px 11px; border-radius: 999px; font-size: 0.82rem; font-weight: 600;
+                background: var(--azul-050); color: var(--azul-800); border: 1px solid var(--azul-100, var(--linha)); }
+.amenities li::before { content: '✓'; margin-right: 5px; color: var(--azul-600); }

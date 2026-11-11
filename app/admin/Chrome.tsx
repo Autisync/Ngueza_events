@@ -4,7 +4,7 @@ export function Chrome({
   title, active, counts,
 }: {
   title: string
-  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'localizacoes' | 'registo' | 'metricas' | 'pagamentos' | 'espera' | 'apoio' | 'consola'
+  active: 'inicio' | 'fornecedores' | 'denuncias' | 'categorias' | 'comodidades' | 'localizacoes' | 'registo' | 'metricas' | 'pagamentos' | 'espera' | 'apoio' | 'consola'
   counts?: { pendingProviders: number; openReports: number; submittedPayments?: number; openSupport?: number }
 }) {
   const link = (href: string, key: typeof active, label: string, badge?: number) => (
@@ -35,6 +35,7 @@ export function Chrome({
           {link('/admin/lista-de-espera', 'espera', 'Lista de espera')}
           {link('/admin/categorias', 'categorias', 'Categorias')}
           {link('/admin/localizacoes', 'localizacoes', 'Localizações')}
+          {link('/admin/comodidades', 'comodidades', 'Comodidades')}
           {link('/admin/registo', 'registo', 'Registo')}
         </div>
       </nav>

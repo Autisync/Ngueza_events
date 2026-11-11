@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { recordSearch, search, type Cursor, type SearchSort } from '@/lib/search'
 import { majorInput, parseMajor } from '@/lib/money'
+import { amenitiesInUse } from '@/lib/amenities'
 import { isCrawler, sessionId } from '@/lib/session'
 import { EmptyState } from '@/app/EmptyState'
 import { SupplierCard } from '@/app/SupplierCard'
@@ -21,7 +22,7 @@ export const dynamic = 'force-dynamic'
 // reaches a Postgres cast unvalidated. An invalid value is treated as
 // absent, so a mistyped or WhatsApp-mangled link still shows results
 // instead of a 500.
-type Params = Record<'categoria' | 'zona' | 'pessoas' | 'data' | 'depois' | 'orcamento' | 'ordem', string | string[] | undefined>
+type Params = Record<'categoria' | 'zona' | 'pessoas' | 'data' | 'depois' | 'orcamento' | 'ordem' | 'comodidade', string | string[] | undefined>
 
 const SORTS: Record<SearchSort, string> = {
   relevancia: 'Relevância',
@@ -92,7 +93,11 @@ const encodeCursor = (c: Cursor) => Buffer.from(JSON.stringify(c)).toString('bas
 
 export default async function Procurar({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams
-  const { categories, municipalities } = await filters()
+  const [{ categories, municipalities }, amenities] = await Promise.all([filters(), amenitiesInUse()])
+  // Repeated ?comodidade=gerador&comodidade=estacionamento; only known
+  // slugs survive, so nothing hand-typed reaches the query.
+  const askedAmenities = [params.comodidade ?? []].flat()
+  const chosen = amenities.filter((a) => askedAmenities.includes(a.slug))
   const category = resolve(params.categoria, categories)
   const zone = resolve(params.zona, municipalities)
   const date = calendarDate(params.data)
@@ -105,6 +110,7 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
     // A past date is not "livre" — it is simply not a question we answer.
     date: pastDate ? undefined : date,
     maxPriceMinor: budget(firstParam(params.orcamento)),
+    amenities: chosen.map((a) => a.slug),
     sort: (firstParam(params.ordem) ?? '') in SORTS ? (firstParam(params.ordem) as SearchSort) : 'relevancia' as SearchSort,
     cursor: decodeCursor(firstParam(params.depois)),
   }
@@ -131,6 +137,7 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
   if (query.date) next.set('data', query.date)
   if (query.maxPriceMinor) next.set('orcamento', majorInput(query.maxPriceMinor))
   if (query.sort !== 'relevancia') next.set('ordem', query.sort)
+  for (const a of chosen) next.append('comodidade', a.slug)
   if (results.nextCursor) next.set('depois', encodeCursor(results.nextCursor))
   const quoteHref = `/pedir-orcamento${category ? `?categoria=${category.id}` : ''}`
 
@@ -178,7 +185,7 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
             {/* Kept out of the way on a phone, where six stacked fields
                 pushed every result below the first screen; open whenever
                 one of them is in use. */}
-            <details className={styles.moreFilters} open={Boolean(query.maxPriceMinor) || query.sort !== 'relevancia'}>
+            <details className={styles.moreFilters} open={Boolean(query.maxPriceMinor) || query.sort !== 'relevancia' || chosen.length > 0}>
               <summary>Mais filtros</summary>
             <label className={styles.f}>
               <span className={styles.lab}>Orçamento até (Kz)</span>
@@ -191,6 +198,19 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
                 {Object.entries(SORTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
+            {/* Amenities (slice 45): only those some listed space has. */}
+            {amenities.length > 0 ? (
+              <fieldset className={styles.amen}>
+                <legend className={styles.lab}>O espaço tem</legend>
+                {amenities.map((a) => (
+                  <label key={a.id} className={styles.amenChip}>
+                    <input type="checkbox" name="comodidade" value={a.slug}
+                           defaultChecked={chosen.some((c) => c.id === a.id)} />
+                    <span>{a.name}</span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
             </details>
             <button className={styles.go} type="submit">
               Procurar
@@ -208,6 +228,7 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
             {query.date ? ` ${results.hits.length === 1 && !results.nextCursor ? 'livre' : 'livres'} a ${query.date.split('-').reverse().join('/')}` : ''}
             {query.capacity ? ` · ${query.capacity} pessoas` : ''}
             {query.maxPriceMinor ? ` · até ${majorInput(query.maxPriceMinor)} Kz` : ''}
+            {chosen.length > 0 ? ` · com ${chosen.map((a) => a.name.toLowerCase()).join(', ')}` : ''}
           </p>
           {pastDate ? <p className={styles.count}>Essa data já passou — a mostrar sem filtro de data.</p> : null}
         </div>
