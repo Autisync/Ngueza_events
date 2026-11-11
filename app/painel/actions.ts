@@ -9,6 +9,10 @@ import {
   serviceInput, removeService, submitForVerification, updateProvider, updateService,
 } from '@/lib/onboarding'
 import { movePhoto, removePhoto, setCover, updateCaption } from '@/lib/photos'
+import { setResourceAmenities } from '@/lib/amenities'
+
+/** Ticked amenity ids from the space form; anything not a uuid is dropped. */
+const amenityIds = (f: FormData) => f.getAll('amenity').map(String).filter(isUuid).slice(0, 50)
 import { mediaStore } from '@/lib/media'
 
 /** Plain server actions, so every screen works without JavaScript. */
@@ -120,7 +124,8 @@ export async function doAddResource(formData: FormData): Promise<void> {
     capacity: str(formData, 'capacity'),
   })
   if (!parsed.success) redirect(`/painel/${providerId}?erro=espaco#espacos`)
-  await addResource(profile.id, providerId, parsed.data)
+  const resourceId = await addResource(profile.id, providerId, parsed.data)
+  if (resourceId) await setResourceAmenities(profile.id, providerId, resourceId, amenityIds(formData))
   redirect(`/painel/${providerId}?guardado=1#espacos`)
 }
 
@@ -135,6 +140,7 @@ export async function doUpdateResource(formData: FormData): Promise<void> {
   })
   if (!parsed.success || parsed.data.capacity === undefined) redirect(`/painel/${providerId}?erro=espaco#espacos`)
   await updateResource(profile.id, providerId, resourceId, parsed.data)
+  await setResourceAmenities(profile.id, providerId, resourceId, amenityIds(formData))
   redirect(`/painel/${providerId}?guardado=1#espacos`)
 }
 

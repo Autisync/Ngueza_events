@@ -94,9 +94,12 @@ export async function ownedServices(ownerId: string, providerId: string): Promis
 
 export async function ownedResources(ownerId: string, providerId: string) {
   return asUser(ownerId, async (c) => {
-    const { rows } = await c.query<{ id: string; name: string; capacity: number | null }>(
-      `select id, name, capacity from resources
-        where provider_id = $1 and is_active order by sort_order, name`,
+    const { rows } = await c.query<{ id: string; name: string; capacity: number | null; amenity_ids: string[] }>(
+      `select r.id, r.name, r.capacity,
+              coalesce((select array_agg(ra.amenity_id) from resource_amenities ra
+                         where ra.resource_id = r.id), '{}') as amenity_ids
+         from resources r
+        where r.provider_id = $1 and r.is_active order by r.sort_order, r.name`,
       [providerId],
     )
     return rows

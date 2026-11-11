@@ -289,6 +289,12 @@ export default async function ProviderPage({
                     {resource.name}{resource.capacity ? ` — até ${resource.capacity} pessoas` : ''}
                   </p>
                 ) : null}
+                {/* What this space has (0043, slice 45). */}
+                {resource.amenities.length > 0 ? (
+                  <ul className={styles.amenities} aria-label={`Comodidades — ${resource.name}`}>
+                    {resource.amenities.map((name) => <li key={name}>{name}</li>)}
+                  </ul>
+                ) : null}
                 <div className={styles.cal}>
                   {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((w) => (
                     <span key={w} className={styles.wd} aria-hidden="true">{w}</span>
