@@ -91,10 +91,13 @@ VPN, or bind it to localhost.
 
 ## 6. Point the application at it
 
-In the app's environment:
+In the app's environment. If the app runs on Vercel (production does), it
+cannot see the Docker network: set `MEDIA_S3_ENDPOINT` to the same public
+URL as `MEDIA_S3_PUBLIC_ENDPOINT`. The internal name only works for an app
+running on the same Docker host.
 
 ```bash
-MEDIA_S3_ENDPOINT=http://ngueza-minio:9000        # server-side, internal
+MEDIA_S3_ENDPOINT=http://ngueza-minio:9000        # server-side; on Vercel, the public URL
 MEDIA_S3_PUBLIC_ENDPOINT=https://media.ngueza.com  # what the browser uses
 MEDIA_BUCKET=ngueza-media
 MEDIA_REGION=us-east-1
