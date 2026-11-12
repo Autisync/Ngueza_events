@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { asUser } from '@/lib/db'
 import type { Minor } from '@/lib/money'
 

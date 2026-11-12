@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { asUser, asVisitor } from '@/lib/db'
 import { documentStore } from '@/lib/media'
 import { checklist, type ChecklistItem, type DocumentKind, type DocumentRow, type RequiredFor, type SupplierType } from '@/lib/document-checklist'
