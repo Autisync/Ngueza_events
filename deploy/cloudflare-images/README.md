@@ -43,6 +43,37 @@ when `IMAGES_PUBLIC_URL` and `IMAGES_KEY` are set, and imgproxy otherwise.
   buckets. Its Access Key ID and Secret Access Key are the app's
   `MEDIA_ACCESS_KEY_ID` / `MEDIA_SECRET_ACCESS_KEY`.
 
+## Quick path — one script
+
+From a **clean clone of `main`** (after this PR is merged):
+
+```bash
+git clone https://github.com/Autisync/Ngueza_events ngueza-setup
+cd ngueza-setup
+node scripts/cloudflare-setup.mjs
+```
+
+It signs in to Cloudflare and Vercel (a browser opens once for each),
+generates `IMAGES_KEY` and `CRON_SECRET` locally without printing them,
+deploys both Workers with their secrets, sets `IMAGES_PUBLIC_URL`,
+`IMAGES_KEY` and `CRON_SECRET` on Vercel (Production and Preview), and
+redeploys production. `--dry-run` prints the steps without doing them.
+Steps 1–2 below are the same thing by hand.
+
+## Scheduled jobs — `deploy/cloudflare-cron`
+
+The booking expiry sweep and the email outbox run from a second Worker,
+`ngueza-cron`, on Cloudflare's free cron triggers: expiry every 5 minutes,
+email every 2. It POSTs to `/api/cron/expire` and `/api/cron/notify` with
+`Authorization: Bearer $CRON_SECRET`. Vercel's free plan only runs cron
+once a day, and this keeps the load off the shared server that the
+Portainer cron stack (`deploy/cron/`) would have used.
+
+By hand: `cd deploy/cloudflare-cron && npx wrangler deploy && npx wrangler
+secret put CRON_SECRET`, with the same value as the app's `CRON_SECRET`.
+Logs: dashboard → Workers → ngueza-cron → Logs. `/api/saude` turns 503 if
+either job stops.
+
 ## 1. Deploy the Worker
 
 From this folder, once, on any machine with Node:
