@@ -1,5 +1,10 @@
 # Media stack — Portainer
 
+> **Production now uses Cloudflare** (R2 + an image Worker) — see
+> [`deploy/cloudflare-images/README.md`](../cloudflare-images/README.md).
+> This stack remains for local development and CI, and as a fallback: the
+> app uses it whenever `IMAGES_PUBLIC_URL` / `IMAGES_KEY` are not set.
+
 Two containers replacing Cloudflare Images + R2 on your own host.
 
 | | Replaces | Does |
