@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { ALLOWED_IMAGE_TYPES, coverImageUrl, imgproxyUrl, presignDelete, presignPut, signImgproxyPath } from '@/lib/media'
+import { ALLOWED_IMAGE_TYPES, coverImageUrl, imageWorkerUrl, imgproxyUrl, presignDelete, presignPut, signImagePath, signImgproxyPath } from '@/lib/media'
+import worker, { outputFormat, parsePath, verifySignature, type Env } from '@/deploy/cloudflare-images/src/index'
 
 const KEY = '943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881'
 const SALT = '520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5'
@@ -125,7 +126,7 @@ describe('accepted types', () => {
 })
 
 describe('coverImageUrl — never throws, unlike mediaStore()', () => {
-  const ENV_KEYS = ['MEDIA_BUCKET', 'IMGPROXY_PUBLIC_URL', 'IMGPROXY_KEY', 'IMGPROXY_SALT'] as const
+  const ENV_KEYS = ['MEDIA_BUCKET', 'IMGPROXY_PUBLIC_URL', 'IMGPROXY_KEY', 'IMGPROXY_SALT', 'IMAGES_PUBLIC_URL', 'IMAGES_KEY'] as const
   afterEach(() => {
     for (const k of ENV_KEYS) delete process.env[k]
   })
@@ -146,5 +147,137 @@ describe('coverImageUrl — never throws, unlike mediaStore()', () => {
     const url = coverImageUrl('some-object-id', 'card')
     expect(url).toContain('https://img.ngueza.com/')
     expect(url).toContain('/rs:fill:640:427/')
+  })
+})
+
+describe('coverImageUrl — Cloudflare Worker wins over imgproxy', () => {
+  const ENV_KEYS = ['IMGPROXY_PUBLIC_URL', 'IMGPROXY_KEY', 'IMGPROXY_SALT', 'IMAGES_PUBLIC_URL', 'IMAGES_KEY'] as const
+  afterEach(() => {
+    for (const k of ENV_KEYS) delete process.env[k]
+  })
+
+  it('uses the Worker when IMAGES_PUBLIC_URL and IMAGES_KEY are set, even with imgproxy configured', () => {
+    process.env.IMGPROXY_PUBLIC_URL = 'https://img.ngueza.com'
+    process.env.IMGPROXY_KEY = KEY
+    process.env.IMGPROXY_SALT = SALT
+    process.env.IMAGES_PUBLIC_URL = 'https://ngueza-images.example.workers.dev/'
+    process.env.IMAGES_KEY = KEY
+    const url = coverImageUrl(OBJECT, 'card')!
+    expect(url.startsWith('https://ngueza-images.example.workers.dev/')).toBe(true)
+    expect(url.endsWith(`/card/${OBJECT}`)).toBe(true)
+    expect(url).not.toContain('rs:fill')
+  })
+
+  it('is null, not a throw, when IMAGES_KEY is too short to sign with', () => {
+    process.env.IMAGES_PUBLIC_URL = 'https://ngueza-images.example.workers.dev'
+    process.env.IMAGES_KEY = 'abcd'
+    expect(coverImageUrl(OBJECT, 'card')).toBeNull()
+  })
+})
+
+const OBJECT = '6f1c2a3b-4d5e-4f60-8a9b-0c1d2e3f4a5b/0e9d8c7b-6a5f-4e3d-9c2b-1a0f9e8d7c6b'
+
+describe('image Worker signing — app and Worker agree', () => {
+  it('a URL the app builds verifies in the Worker', async () => {
+    const url = new URL(imageWorkerUrl({ baseUrl: 'https://w.example', objectId: OBJECT, variant: 'hero', keyHex: KEY }))
+    const parsed = parsePath(url.pathname)!
+    expect(parsed).not.toBeNull()
+    expect(parsed.variant).toBe('hero')
+    expect(parsed.objectId).toBe(OBJECT)
+    expect(await verifySignature(parsed.signedPath, parsed.signature, KEY)).toBe(true)
+  })
+
+  it('a URL whose variant was swapped does not verify', async () => {
+    const url = new URL(imageWorkerUrl({ baseUrl: 'https://w.example', objectId: OBJECT, variant: 'thumb', keyHex: KEY }))
+    const parsed = parsePath(url.pathname.replace('/thumb/', '/full/'))!
+    expect(await verifySignature(parsed.signedPath, parsed.signature, KEY)).toBe(false)
+  })
+
+  it('does not verify under a different key', async () => {
+    const sig = signImagePath(`/card/${OBJECT}`, KEY)
+    expect(await verifySignature(`/card/${OBJECT}`, sig, 'b'.repeat(64))).toBe(false)
+  })
+
+  it('refuses to sign with a short key', () => {
+    expect(() => signImagePath('/card/x', 'abcd')).toThrow()
+  })
+
+  it('rejects unknown variants and malformed object ids before any signature work', () => {
+    expect(parsePath(`/sig/huge/${OBJECT}`)).toBeNull()
+    expect(parsePath('/sig/card/../secrets')).toBeNull()
+    expect(parsePath('/sig/card/not-a-uuid/also-not')).toBeNull()
+    expect(parsePath(`/sig/card/${OBJECT}/extra`)).toBeNull()
+  })
+
+  it('prefers AVIF, falls back to WebP — never the original format', () => {
+    expect(outputFormat('image/avif,image/webp,*/*')).toBe('image/avif')
+    expect(outputFormat('image/webp,*/*')).toBe('image/webp')
+    expect(outputFormat(null)).toBe('image/webp')
+  })
+})
+
+describe('image Worker request handling', () => {
+  function fakeEnv(object: { size: number } | null, transform: () => Promise<Response>) {
+    const calls: Record<string, unknown>[] = []
+    const env: Env = {
+      IMAGES_KEY: KEY,
+      MEDIA: { get: async () => (object ? { body: new ReadableStream(), size: object.size } : null) },
+      IMAGES: {
+        input: () => {
+          const t = {
+            transform: (o: Record<string, unknown>) => { calls.push(o); return t },
+            output: async (o: { format: string }) => {
+              calls.push(o)
+              const r = await transform()
+              return { response: () => r }
+            },
+          }
+          return t
+        },
+      },
+    }
+    return { env, calls }
+  }
+  const signed = (variant: 'card' | 'thumb') =>
+    new Request(imageWorkerUrl({ baseUrl: 'https://w.example', objectId: OBJECT, variant, keyHex: KEY }), {
+      headers: { accept: 'image/avif,image/webp' },
+    })
+
+  it('serves a resized AVIF with a long immutable cache', async () => {
+    const { env, calls } = fakeEnv({ size: 1000 }, async () => new Response('img', { headers: { 'content-type': 'image/avif' } }))
+    const res = await worker.fetch(signed('card'), env)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toContain('immutable')
+    expect(res.headers.get('vary')).toBe('Accept')
+    expect(calls[0]).toMatchObject({ width: 640, height: 427, fit: 'cover' })
+    expect(calls[1]).toMatchObject({ format: 'image/avif' })
+  })
+
+  it('403s a tampered signature without reading the bucket', async () => {
+    let read = false
+    const { env } = fakeEnv({ size: 1 }, async () => new Response('x'))
+    env.MEDIA = { get: async () => { read = true; return null } }
+    const url = new URL(signed('card').url)
+    const tampered = url.pathname.replace(/^\/./, (m) => (m === '/A' ? '/B' : '/A'))
+    const res = await worker.fetch(new Request(`https://w.example${tampered}`), env)
+    expect(res.status).toBe(403)
+    expect(read).toBe(false)
+  })
+
+  it('404s a removed photo', async () => {
+    const { env } = fakeEnv(null, async () => new Response('x'))
+    expect((await worker.fetch(signed('thumb'), env)).status).toBe(404)
+  })
+
+  it('503s instead of falling back to the original when transforming fails', async () => {
+    const { env } = fakeEnv({ size: 1000 }, async () => { throw new Error('9422 limit') })
+    const res = await worker.fetch(signed('card'), env)
+    expect(res.status).toBe(503)
+    expect(await res.text()).not.toContain('img')
+  })
+
+  it('refuses writes', async () => {
+    const { env } = fakeEnv({ size: 1 }, async () => new Response('x'))
+    expect((await worker.fetch(new Request('https://w.example/x', { method: 'PUT', body: 'x' }), env)).status).toBe(405)
   })
 })

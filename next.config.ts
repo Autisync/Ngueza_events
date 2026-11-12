@@ -3,7 +3,8 @@ import { withSentryConfig } from '@sentry/nextjs/config'
 
 /** Origin only (`https://host`), or null for an unset/malformed URL —
  *  used to build connect-src/img-src without hardcoding a deployment's
- *  media host, since MEDIA_S3_PUBLIC_ENDPOINT and IMGPROXY_PUBLIC_URL vary by
+ *  media host, since MEDIA_S3_PUBLIC_ENDPOINT and IMAGES_PUBLIC_URL /
+ *  IMGPROXY_PUBLIC_URL vary by
  *  environment (§40's own self-hosted-media point). */
 function origin(url: string | undefined): string | null {
   if (!url) return null
@@ -18,7 +19,7 @@ function origin(url: string | undefined): string | null {
  * The direct-to-storage upload path (§40: PaymentProofUpload.tsx,
  * DocumentUpload.tsx both PUT straight to a presigned MinIO URL from the
  * browser) and supplier photos (SupplierCard.tsx's plain <img src>
- * pointing at imgproxy) are the two places this app talks to a
+ * pointing at the image Worker, or imgproxy locally) are the two places this app talks to a
  * same-origin-violating host on purpose. Sentry's ingest endpoint is the
  * third — without it in connect-src, the browser SDK's own error
  * reports get silently blocked by this exact policy.
@@ -29,7 +30,9 @@ function contentSecurityPolicy(): string {
   // own name for it (deploy/media), never set on the app, and reading it
   // here left connect-src without the media host in production.
   const media = origin(process.env.MEDIA_S3_PUBLIC_ENDPOINT || process.env.MINIO_PUBLIC_URL)
-  const images = origin(process.env.IMGPROXY_PUBLIC_URL)
+  // Photos come from the Cloudflare image Worker in production and from
+  // imgproxy locally (lib/media.ts photoUrlBuilder picks the same way).
+  const images = origin(process.env.IMAGES_PUBLIC_URL) ?? origin(process.env.IMGPROXY_PUBLIC_URL)
   const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN
   const sentryIngest = sentryDsn ? origin(`https://${new URL(sentryDsn).host}`) : null
   // @vercel/analytics and @vercel/speed-insights are same-origin in

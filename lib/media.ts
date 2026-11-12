@@ -16,9 +16,15 @@ import { env, optionalEnv } from '@/lib/env'
  *      so one original serves every size.
  *   3. The database stores an id and nothing heavier.
  *
- * Today that is self-hosted MinIO + imgproxy, deployed through Portainer
- * (see deploy/media/). Cloudflare Images + R2 can replace it by adding a
- * second MediaStore — no caller changes.
+ * Production: Cloudflare R2 for storage (S3-compatible, so the presigning
+ * below is unchanged) and a small Cloudflare Worker for delivery
+ * (deploy/cloudflare-images/), which reads the private bucket, resizes,
+ * converts to AVIF/WebP and drops metadata. Selected when IMAGES_PUBLIC_URL
+ * and IMAGES_KEY are set.
+ *
+ * Local development and CI: self-hosted MinIO + imgproxy (deploy/media/),
+ * used whenever the Worker is not configured. Both paths share the same
+ * object ids, so switching never touches the database.
  */
 
 export type Variant = 'thumb' | 'card' | 'hero' | 'full'
@@ -106,6 +112,63 @@ export function imgproxyUrl(opts: {
 }
 
 // ---------------------------------------------------------------------
+// Cloudflare image Worker URL signing (deploy/cloudflare-images)
+//
+// Same idea as imgproxy: the path is signed so nobody can ask the Worker
+// for sizes we did not choose (each unique size is a billed
+// transformation) or walk the bucket. URL shape:
+//
+//   {IMAGES_PUBLIC_URL}/{base64url(HMAC-SHA256(key, path))}{path}
+//   path = /{variant}/{objectId}
+//
+// The Worker re-derives the signature with WebCrypto; tests/unit/media.test.ts
+// checks the two implementations agree.
+// ---------------------------------------------------------------------
+export function signImagePath(path: string, keyHex: string): string {
+  const key = Buffer.from(keyHex, 'hex')
+  if (key.length < 32) {
+    throw new Error('IMAGES_KEY must be hex-encoded, at least 64 characters')
+  }
+  return createHmac('sha256', key).update(path).digest().toString('base64url')
+}
+
+export function imageWorkerUrl(opts: {
+  baseUrl: string
+  objectId: string
+  variant: Variant
+  keyHex: string
+}): string {
+  const path = `/${opts.variant}/${opts.objectId}`
+  return `${opts.baseUrl.replace(/\/$/, '')}/${signImagePath(path, opts.keyHex)}${path}`
+}
+
+/**
+ * Which delivery path builds photo URLs, or null when neither is
+ * configured. The Worker wins when both are, so a deployment moves to
+ * Cloudflare by setting two variables and moves back by clearing them.
+ */
+function photoUrlBuilder(): ((objectId: string, variant: Variant) => string) | null {
+  const workerUrl = optionalEnv('IMAGES_PUBLIC_URL')
+  const workerKey = optionalEnv('IMAGES_KEY')
+  if (workerUrl && workerKey) {
+    return (objectId, variant) => imageWorkerUrl({ baseUrl: workerUrl, objectId, variant, keyHex: workerKey })
+  }
+
+  // imgproxy resolves "s3://bucket/key" with its own credentials, so it
+  // needs only its address, its signing secret and the bucket name.
+  const bucket = optionalEnv('MEDIA_BUCKET') ?? 'ngueza-media'
+  const imgproxyPublicUrl = optionalEnv('IMGPROXY_PUBLIC_URL')
+  const imgproxyKey = optionalEnv('IMGPROXY_KEY')
+  const imgproxySalt = optionalEnv('IMGPROXY_SALT')
+  if (imgproxyPublicUrl && imgproxyKey && imgproxySalt) {
+    return (objectId, variant) => imgproxyUrl({
+      baseUrl: imgproxyPublicUrl, bucket, objectId, variant, keyHex: imgproxyKey, saltHex: imgproxySalt,
+    })
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------
 // S3 presigned PUT (SigV4)
 //
 // Hand-rolled rather than pulling in the AWS SDK: this is one request
@@ -185,7 +248,8 @@ function presign(opts: {
   const dateStamp = amzDate.slice(0, 8)
 
   const url = new URL(opts.endpoint)
-  // Path-style addressing: MinIO deployments rarely have wildcard DNS.
+  // Path-style addressing: MinIO deployments rarely have wildcard DNS, and
+  // R2's account endpoint accepts it too.
   const canonicalUri = `/${opts.bucket}/${opts.objectKey}`
     .split('/')
     .map((part, i) => (i === 0 ? part : encodeURIComponent(part)))
@@ -249,7 +313,7 @@ function presign(opts: {
 }
 
 // ---------------------------------------------------------------------
-class MinioImgproxyStore implements MediaStore {
+class S3MediaStore implements MediaStore {
   constructor(
     private readonly cfg: {
       s3Endpoint: string
@@ -258,10 +322,8 @@ class MinioImgproxyStore implements MediaStore {
       region: string
       accessKeyId: string
       secretAccessKey: string
-      imgproxyUrl: string
-      imgproxyKey: string
-      imgproxySalt: string
     },
+    private readonly photoUrl: (objectId: string, variant: Variant) => string,
   ) {}
 
   async presignUpload(input: { contentType: string; providerId: string; byteSize?: number }): Promise<PresignedUpload> {
@@ -315,14 +377,7 @@ class MinioImgproxyStore implements MediaStore {
   }
 
   url(objectId: string, variant: Variant): string {
-    return imgproxyUrl({
-      baseUrl: this.cfg.imgproxyUrl,
-      bucket: this.cfg.bucket,
-      objectId,
-      variant,
-      keyHex: this.cfg.imgproxyKey,
-      saltHex: this.cfg.imgproxySalt,
-    })
+    return this.photoUrl(objectId, variant)
   }
 }
 
@@ -334,56 +389,43 @@ function required(name: string): string {
 
 /** A resized photo URL for display — a search card, a profile header.
  *  Unlike mediaStore(), this never throws: a page rendering a supplier
- *  card is not the place to fail loudly over an unset IMGPROXY_KEY, the
+ *  card is not the place to fail loudly over an unset signing key, the
  *  way presignUpload() correctly does for an actual upload. No object,
- *  or media not configured, both mean "show the placeholder instead". */
+ *  or image delivery not configured, both mean "show the placeholder". */
 export function coverImageUrl(objectId: string | null, variant: Variant): string | null {
   if (!objectId) return null
-  // Only imgproxy's own address and signing secret, plus the bucket name
-  // — MEDIA_S3_* is presigned-upload configuration (what the browser
-  // talks to), irrelevant to imgproxy resolving an "s3://bucket/key"
-  // source server-side against its own AWS credentials.
-  const bucket = optionalEnv('MEDIA_BUCKET') ?? 'ngueza-media'
-  const imgproxyPublicUrl = optionalEnv('IMGPROXY_PUBLIC_URL')
-  const imgproxyKey = optionalEnv('IMGPROXY_KEY')
-  const imgproxySalt = optionalEnv('IMGPROXY_SALT')
-  if (!imgproxyPublicUrl || !imgproxyKey || !imgproxySalt) return null
-
   try {
-    return imgproxyUrl({
-      baseUrl: imgproxyPublicUrl,
-      bucket,
-      objectId,
-      variant,
-      keyHex: imgproxyKey,
-      saltHex: imgproxySalt,
-    })
+    return photoUrlBuilder()?.(objectId, variant) ?? null
   } catch {
     return null
   }
 }
 
 export function mediaStore(): MediaStore {
-  return new MinioImgproxyStore({
+  const photoUrl = photoUrlBuilder()
+  if (!photoUrl) {
+    throw new Error(
+      'Image delivery is not configured: set IMAGES_PUBLIC_URL and IMAGES_KEY (Cloudflare) ' +
+      'or IMGPROXY_PUBLIC_URL, IMGPROXY_KEY and IMGPROXY_SALT (local) — see deploy/cloudflare-images/README.md',
+    )
+  }
+  return new S3MediaStore({
     s3Endpoint: required('MEDIA_S3_ENDPOINT'),
     publicEndpoint: required('MEDIA_S3_PUBLIC_ENDPOINT'),
     bucket: env('MEDIA_BUCKET', 'ngueza-media'),
     region: env('MEDIA_REGION', 'us-east-1'),
     accessKeyId: required('MEDIA_ACCESS_KEY_ID'),
     secretAccessKey: required('MEDIA_SECRET_ACCESS_KEY'),
-    imgproxyUrl: required('IMGPROXY_PUBLIC_URL'),
-    imgproxyKey: required('IMGPROXY_KEY'),
-    imgproxySalt: required('IMGPROXY_SALT'),
-  })
+  }, photoUrl)
 }
 
 // ---------------------------------------------------------------------
 // Verification documents (§25)
 //
 // A separate store from media, pointing at a separate PRIVATE bucket.
-// Both buckets are private now (slice 27), but imgproxy is configured to
-// serve from the media bucket to anyone holding a signed URL — an identity
-// card must never end up there by a naming mistake.
+// Both buckets are private now (slice 27), but the image Worker (or
+// imgproxy) serves from the media bucket to anyone holding a signed URL —
+// an identity card must never end up there by a naming mistake.
 // ---------------------------------------------------------------------
 export interface DocumentStore {
   // keyPrefix scopes the object key — a provider for identity paperwork
@@ -397,7 +439,7 @@ export interface DocumentStore {
   deleteObject(objectId: string): Promise<boolean>
 }
 
-class MinioDocumentStore implements DocumentStore {
+class S3DocumentStore implements DocumentStore {
   constructor(
     private readonly cfg: {
       publicEndpoint: string
@@ -472,11 +514,11 @@ class MinioDocumentStore implements DocumentStore {
 export function documentStore(): DocumentStore {
   const bucket = env('DOCUMENTS_BUCKET', 'ngueza-documents')
   if (bucket === env('MEDIA_BUCKET', 'ngueza-media')) {
-    // imgproxy serves from the media bucket. Sharing it would put every
+    // The image Worker serves from the media bucket. Sharing it would put every
     // supplier's identity card one signed URL away from the public.
     throw new Error('DOCUMENTS_BUCKET must not be the same bucket as MEDIA_BUCKET')
   }
-  return new MinioDocumentStore({
+  return new S3DocumentStore({
     publicEndpoint: required('MEDIA_S3_PUBLIC_ENDPOINT'),
     s3Endpoint: env('MEDIA_S3_ENDPOINT', required('MEDIA_S3_PUBLIC_ENDPOINT')),
     bucket,

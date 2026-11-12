@@ -229,7 +229,7 @@ jobs:
       # than silently (a real file never checked).
       - name: Modules holding secrets are marked server-only
         run: |
-          pure="lib/booking-labels.ts lib/env.ts lib/event-tips.ts lib/money.ts lib/notify.ts lib/painel-labels.ts lib/payment-labels.ts lib/safe.ts"
+          pure="lib/booking-labels.ts lib/document-checklist.ts lib/env.ts lib/event-tips.ts lib/money.ts lib/notify.ts lib/painel-labels.ts lib/payment-labels.ts lib/safe.ts"
           missing=0
           for f in lib/*.ts; do
             case " $pure " in
