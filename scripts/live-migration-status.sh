@@ -14,6 +14,12 @@ if ! psql "$URL" -Atc 'select 1' >/dev/null 2>&1; then
   echo "  Confirme no painel do Supabase que o projecto está activo (não 'Paused')"
   echo "  e que MIGRATION_DATABASE_URL usa o pooler (aws-1-eu-west-1.pooler.supabase.com:5432)."
   psql "$URL" -Atc 'select 1' 2>&1 | tail -2 | sed 's/^/  /'
+  if [ -n "${DATABASE_URL:-}" ] && [ "$DATABASE_URL" != "$URL" ] && psql "$DATABASE_URL" -Atc 'select 1' >/dev/null 2>&1; then
+    echo
+    echo "  DATABASE_URL (pooler, porta 6543) responde. As migrações correm uma a uma numa"
+    echo "  única transacção, por isso podem usar essa ligação:"
+    echo '    MIGRATION_DATABASE_URL="$DATABASE_URL" ./scripts/live-migration-status.sh'
+  fi
   exit 2
 fi
 

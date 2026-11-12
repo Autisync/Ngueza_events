@@ -7,6 +7,9 @@
 #   set -a; source .env.local; set +a
 #   ./scripts/apply-migrations-from.sh 0032
 #
+# Works through either pooler port: each file is one transaction, and
+# the migrations use no session-level SET.
+#
 # A person runs this against the live project, never an agent or CI
 # (CLAUDE.md: migrations against live data are never automated).
 # =====================================================================
@@ -25,7 +28,7 @@ done
 echo "Vai aplicar ${#files[@]} migração(ões) em: $(echo "$URL" | sed -E 's#://[^@]*@#://***@#')"
 for f in "${files[@]}"; do echo "  $(basename "$f")"; done
 read -r -p "Continuar? Escreva SIM: " answer
-[ "$answer" = "SIM" ] || { echo "Cancelado."; exit 1; }
+[ "$(echo "$answer" | tr '[:lower:]' '[:upper:]' | tr -d ' ')" = "SIM" ] || { echo "Cancelado (escreveu: '$answer')."; exit 1; }
 
 for f in "${files[@]}"; do
   echo "→ $(basename "$f")"
