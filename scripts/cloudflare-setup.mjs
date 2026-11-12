@@ -83,15 +83,24 @@ const vercel = (args, opts) => run('npx', ['--yes', 'vercel@latest', ...args, '-
 // 0. Only ever deploy committed main -------------------------------------------
 if (!DRY) {
   const branch = gitOut(['rev-parse', '--abbrev-ref', 'HEAD'])
-  const dirty = gitOut(['status', '--porcelain'])
+  // `vercel link` itself adds .vercel/ and .env.local and appends them to
+  // .gitignore; none of that is deployed code, so it does not count.
+  const dirty = (gitOut(['status', '--porcelain']) ?? '')
+    .split('\n')
+    .filter((line) => line.trim() && !/\s(\.gitignore|\.vercel\/?|\.env\.local)$/.test(line))
+    .join('\n')
   if (branch !== 'main') fail(`On branch "${branch}". Run this from a clean clone of main — step 5 deploys this checkout.`)
   if (dirty) fail('This checkout has uncommitted changes. Run from a clean clone of main — step 5 deploys this checkout.')
 }
 
 // 1. Sign in --------------------------------------------------------------
 step('Cloudflare sign-in')
-if (wrangler(['whoami'], { capture: true, allowFail: true }).status !== 0 && !DRY) {
+// `wrangler whoami` exits 0 even when signed out, so read what it says.
+const who = wrangler(['whoami'], { capture: true, allowFail: true })
+if (!DRY && (who.status !== 0 || /not authenticated|wrangler login/i.test(`${who.stdout}${who.stderr ?? ''}`))) {
   wrangler(['login'])
+  const again = wrangler(['whoami'], { capture: true, allowFail: true })
+  if (/not authenticated/i.test(`${again.stdout}${again.stderr ?? ''}`)) fail('Cloudflare sign-in did not complete. Run `npx wrangler login`, then re-run this script.')
 }
 
 step('Vercel sign-in and project link')
