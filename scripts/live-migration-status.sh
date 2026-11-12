@@ -54,7 +54,7 @@ select n || '  ' || case when ok then 'aplicada' else 'EM FALTA' end from (value
   ('0025', to_regclass('public.payment_documents') is not null),
   ('0026', exists (select 1 from fn where name = 'compute_refund_pct')),
   ('0027', to_regclass('public.quote_requests') is not null),
-  ('0028', exists (select 1 from fn where name = 'enqueue_quote_request_notification')),
+  ('0028', exists (select 1 from pg_proc where proname = 'quote_request_open_and_matches' and prosrc ilike '%services sv%')),
   ('0029', exists (select 1 from fn where name = 'quote_offers_guard_transitions')),
   ('0030', to_regclass('public.quote_offers_one_accepted_per_request') is not null),
   ('0031', exists (select 1 from fn where name = 'provider_is_public')),

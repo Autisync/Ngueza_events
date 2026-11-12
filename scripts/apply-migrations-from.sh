@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Apply migrations from a given number to the latest, in order, each in
-# its own transaction, stopping at the first error (which rolls that one
-# back). Run live-migration-status.sh first to know where to start.
+# Apply migrations from a given number to the latest (or to an optional
+# last number), in order, each in its own transaction, stopping at the
+# first error (which rolls that one back). Run live-migration-status.sh
+# first to know where to start.
 #
 #   set -a; source .env.local; set +a
-#   ./scripts/apply-migrations-from.sh 0032
+#   ./scripts/apply-migrations-from.sh 0032          # 0032 to the latest
+#   ./scripts/apply-migrations-from.sh 0026 0026     # only 0026
 #
 # Works through either pooler port: each file is one transaction, and
 # the migrations use no session-level SET.
@@ -14,14 +16,15 @@
 # (CLAUDE.md: migrations against live data are never automated).
 # =====================================================================
 set -uo pipefail
-FROM="${1:?usage: apply-migrations-from.sh 0032}"
-URL="${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL must be set (session pooler, port 5432)}"
+FROM="${1:?usage: apply-migrations-from.sh FROM [TO]}"
+TO="${2:-9999}"
+URL="${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL must be set}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 files=()
 for f in "$ROOT"/supabase/migrations/*.sql; do
   n="$(basename "$f" | cut -c1-4)"
-  [[ "$n" < "$FROM" ]] || files+=("$f")
+  [[ "$n" < "$FROM" || "$n" > "$TO" ]] || files+=("$f")
 done
 [ ${#files[@]} -gt 0 ] || { echo "Nada a aplicar a partir de $FROM."; exit 0; }
 
