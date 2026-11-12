@@ -78,12 +78,6 @@ curl -s -o /dev/null -w '%{http_code}\n' https://img.ngueza.com/health
 
 ## 5. Put TLS in front
 
-**Already running Traefik?** Add `deploy/media/docker-compose.traefik.yml`
-to the stack (Portainer: *Additional paths*) and set `TRAEFIK_NETWORK`,
-`TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER`, `MEDIA_HOST` and `IMG_HOST`.
-Traefik then routes both names and issues their certificates; skip the
-rest of this section.
-
 Both containers speak plain HTTP. Terminate TLS at whatever you already
 run — Nginx Proxy Manager, Traefik, Caddy — and publish two hostnames:
 
