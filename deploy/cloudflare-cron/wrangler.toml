@@ -1,0 +1,15 @@
+# NGUEZA scheduled jobs — see deploy/cloudflare-images/README.md ("Scheduled jobs").
+name = "ngueza-cron"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false   # no public URL: it only runs on schedule
+
+[vars]
+SITE_URL = "https://www.ngueza.co.ao"
+
+# Must match SCHEDULES in src/index.ts. Free plan allows 5 cron triggers.
+[triggers]
+crons = ["*/5 * * * *", "*/2 * * * *"]
+
+# CRON_SECRET is a secret, never in this file — the same value as the app's:
+#   npx wrangler secret put CRON_SECRET

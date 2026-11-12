@@ -1,0 +1,23 @@
+# NGUEZA image delivery Worker — see README.md in this folder.
+name = "ngueza-images"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+# Served at https://ngueza-images.<your-subdomain>.workers.dev until a
+# custom domain (e.g. img.ngueza.co.ao) is added in the dashboard.
+workers_dev = true
+
+# The PRIVATE bucket holding supplier photographs. The Worker reads it
+# through this binding; the bucket itself never gets a public URL.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "ngueza-media"
+
+# Cloudflare Images — resize and re-encode. Free plan: 5,000 unique
+# transformations a month; past that, new sizes fail (503) until the
+# month resets, cached ones keep serving, and nothing is charged.
+[images]
+binding = "IMAGES"
+
+# IMAGES_KEY is a secret, never in this file:
+#   npx wrangler secret put IMAGES_KEY

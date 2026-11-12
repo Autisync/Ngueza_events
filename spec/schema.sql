@@ -5505,3 +5505,381 @@ begin
   return null;
 end $$;
 
+-- ─────────────── 0043_amenities.sql ───────────────
+-- =====================================================================
+-- 0043 — amenities per space (slice 45, review R001)
+--
+-- What Luanda clients actually filter venues on: gerador, coberto or ao
+-- ar livre, estacionamento, ar condicionado. Rows, not an enum: the list
+-- is managed by administrators at runtime, like categories and locations,
+-- because a cleaning or transport marketplace would need different ones.
+--
+-- Amenities hang on a space (resources), not on the provider: a quinta's
+-- jardim is "ao ar livre" and its salão is "coberto, ar condicionado".
+-- =====================================================================
+
+create table amenities (
+  id          uuid primary key default gen_random_uuid(),
+  slug        text not null unique check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  name        text not null check (char_length(name) between 2 and 60),   -- pt-AO
+  sort_order  integer not null default 0,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+
+create table resource_amenities (
+  resource_id uuid not null references resources(id) on delete cascade,
+  amenity_id  uuid not null references amenities(id) on delete restrict,
+  created_at  timestamptz not null default now(),
+  primary key (resource_id, amenity_id)
+);
+
+-- Search asks "which spaces have this amenity", the other way round.
+create index resource_amenities_amenity_idx on resource_amenities (amenity_id, resource_id);
+
+alter table amenities          enable row level security;
+alter table resource_amenities enable row level security;
+
+-- Anyone may read the active list (it is a filter); admins see retired ones.
+create policy amenities_public_read on amenities
+  for select using (is_active or is_admin());
+create policy amenities_admin_write on amenities
+  for all using (is_admin()) with check (is_admin());
+
+-- A space's amenities are public exactly when the space's provider is
+-- (provider_is_public, 0031), and visible to its owner and to admins.
+create policy resource_amenities_read on resource_amenities
+  for select using (
+    exists (
+      select 1 from resources r
+       where r.id = resource_amenities.resource_id
+         and (provider_is_public(r.provider_id) or owns_provider(r.provider_id) or is_admin())
+    )
+  );
+-- Only the owner (or an admin) ticks and unticks; and only active amenities
+-- can be ticked, so a retired one cannot creep back onto a listing.
+create policy resource_amenities_owner_insert on resource_amenities
+  for insert with check (
+    exists (select 1 from resources r
+             where r.id = resource_amenities.resource_id
+               and (owns_provider(r.provider_id) or is_admin()))
+    and exists (select 1 from amenities a where a.id = resource_amenities.amenity_id and a.is_active)
+  );
+create policy resource_amenities_owner_delete on resource_amenities
+  for delete using (
+    exists (select 1 from resources r
+             where r.id = resource_amenities.resource_id
+               and (owns_provider(r.provider_id) or is_admin()))
+  );
+-- Nothing to update: a row is a fact or it is absent.
+revoke update on resource_amenities from anon, authenticated;
+-- Visitors never write either table.
+revoke insert, update, delete on amenities, resource_amenities from anon;
+
+-- The starting list. Administrators add, rename, reorder and retire from
+-- /admin/comodidades; on conflict keeps a re-run harmless.
+insert into amenities (slug, name, sort_order) values
+  ('gerador',           'Gerador',                    10),
+  ('ar-condicionado',   'Ar condicionado',            20),
+  ('coberto',           'Coberto',                    30),
+  ('ao-ar-livre',       'Ao ar livre',                40),
+  ('estacionamento',    'Estacionamento',             50),
+  ('cozinha',           'Cozinha',                    60),
+  ('catering-externo',  'Catering externo permitido', 70),
+  ('som-e-luz',         'Som e luz',                  80),
+  ('acessivel',         'Acesso para cadeira de rodas', 90)
+on conflict (slug) do nothing;
+
+-- ─────────────── 0044_document_checklist.sql ───────────────
+-- =====================================================================
+-- 0044 — the verification document checklist (slice 46, review R035)
+--
+-- Before this, a supplier chose a document "type" from a fixed list and
+-- nobody — supplier or reviewer — could see what was still missing, and a
+-- supplier could be verified, and published, with no accepted paperwork
+-- at all.
+--
+-- 1. Document kinds become rows, each saying which supplier type needs
+--    it. Which papers NGUEZA asks for is policy and changes without a
+--    deploy, like categories.
+-- 2. Verifying requires at least one accepted document. A structural
+--    floor, not the decision: the decision stays with a person (§25).
+-- =====================================================================
+
+create table document_kinds (
+  slug          text primary key check (slug ~ '^[a-z0-9]+(_[a-z0-9]+)*$'),
+  name          text not null check (char_length(name) between 2 and 80),   -- pt-AO
+  hint          text check (char_length(hint) <= 300),                      -- what counts
+  -- Who must provide it: every supplier, only venues, only service
+  -- suppliers, or nobody (optional, accepted if sent).
+  required_for  text not null default 'none'
+                  check (required_for in ('all', 'venue', 'service', 'none')),
+  sort_order    integer not null default 0,
+  is_active     boolean not null default true,
+  created_at    timestamptz not null default now()
+);
+
+alter table document_kinds enable row level security;
+create policy document_kinds_read on document_kinds for select using (is_active or is_admin());
+create policy document_kinds_admin_write on document_kinds
+  for all using (is_admin()) with check (is_admin());
+revoke insert, update, delete on document_kinds from anon;
+
+-- The existing five keep their slugs (rows already reference them); two
+-- are renamed to what Angolan paperwork is actually called, and the
+-- venue-only proof of the right to use the space is new.
+insert into document_kinds (slug, name, hint, required_for, sort_order) values
+  ('identity', 'Documento de identificação do responsável',
+   'Bilhete de identidade ou passaporte, dentro da validade, com a fotografia legível.', 'all', 10),
+  ('nif', 'NIF',
+   'Cartão ou declaração com o número de identificação fiscal do negócio ou do responsável.', 'all', 20),
+  ('commercial_registration', 'Alvará ou certidão comercial',
+   'Alvará comercial ou certidão do registo comercial em nome do negócio.', 'venue', 30),
+  ('space_rights', 'Prova do direito de uso do espaço',
+   'Escritura, contrato de arrendamento ou autorização do proprietário para eventos.', 'venue', 40),
+  ('proof_of_address', 'Comprovativo de morada', null, 'none', 50),
+  ('other', 'Outro documento', null, 'none', 90)
+on conflict (slug) do nothing;
+
+alter table provider_documents drop constraint provider_documents_kind_check;
+alter table provider_documents
+  add constraint provider_documents_kind_fkey
+  foreign key (kind) references document_kinds (slug) on update cascade;
+
+-- ---------------------------------------------------------------------
+-- The verification guard, once more: everything 0031 allowed, plus a
+-- floor under 'verified'. Reinstating a suspended supplier is exempt —
+-- they were verified before, possibly before this rule existed.
+-- ---------------------------------------------------------------------
+create or replace function providers_guard_verification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.verification_status is not distinct from old.verification_status then
+    return new;
+  end if;
+
+  if new.verification_status = 'pending' then
+    new.submitted_at := now();
+  end if;
+
+  if is_admin() then
+    -- Only an administrator can verify at all; this is the floor under
+    -- that decision, so it lives on their path.
+    if new.verification_status = 'verified'
+       and old.verification_status <> 'suspended'
+       and not exists (select 1 from provider_documents d
+                        where d.provider_id = new.id and d.status = 'accepted') then
+      raise exception 'a supplier cannot be verified without an accepted document'
+        using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+
+  -- Re-queuing after a rejection is the supplier's to do; the decision
+  -- itself stays with an administrator. Suspended stays an admin matter.
+  if old.verification_status in ('unverified', 'rejected')
+     and new.verification_status = 'pending'
+     and owns_provider(new.id) then
+    return new;
+  end if;
+
+  raise exception 'verification % -> % is an administrator''s decision',
+    old.verification_status, new.verification_status
+    using errcode = 'insufficient_privilege';
+end $$;
+
+-- ─────────────── 0045_cancellation_and_refunds.sql ───────────────
+-- =====================================================================
+-- 0045 — a supplier's cancellation, and what happened to the money
+--        (slice 47, review R013)
+--
+-- NGUEZA never holds or moves money. When a supplier cancels a booking
+-- the client paid for, the refund happens between them. Until now nothing
+-- recorded either side of it: no reason for the cancellation, and the
+-- `refunds` table (0008), shaped for a platform that pays out, unused.
+--
+-- 1. bookings.cancellation_reason — said once, in the same update that
+--    cancels, never edited afterwards. Required when a supplier cancels a
+--    real booking (not when they unblock their own date).
+-- 2. refund_attestations — the supplier states "devolvi X Kz, por este
+--    meio, com esta referência"; the client answers "recebi" or "não
+--    recebi". Statements by the two parties, recorded as they made them.
+--    Who was at fault and what refund was owed are NOT decided here: that
+--    rule is NGUEZA's, with counsel.
+-- =====================================================================
+
+-- ---- 1. the reason ---------------------------------------------------
+alter table bookings add column cancellation_reason text
+  check (cancellation_reason is null or char_length(cancellation_reason) between 3 and 500);
+alter table bookings add constraint bookings_reason_only_when_cancelled
+  check (cancellation_reason is null or status in ('cancelled_client', 'cancelled_provider'));
+
+-- INVOKER, so acting_as_end_user() sees the real caller (see 0033).
+create or replace function bookings_guard_cancellation_reason()
+returns trigger language plpgsql as $$
+begin
+  if not acting_as_end_user() or is_admin() then
+    return new;
+  end if;
+  if new.cancellation_reason is distinct from old.cancellation_reason
+     and not (new.status is distinct from old.status
+              and new.status in ('cancelled_client', 'cancelled_provider')) then
+    raise exception 'a cancellation reason is given when cancelling, and not edited afterwards'
+      using errcode = 'insufficient_privilege';
+  end if;
+  if new.status = 'cancelled_provider' and old.status is distinct from 'cancelled_provider'
+     and old.status <> 'blocked'
+     and coalesce(btrim(new.cancellation_reason), '') = '' then
+    raise exception 'a supplier cancelling a booking must say why'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+
+create trigger bookings_guard_cancellation_reason
+  before update on bookings
+  for each row execute function bookings_guard_cancellation_reason();
+
+-- ---- 2. refund attestations -----------------------------------------
+create table refund_attestations (
+  id              bigint generated always as identity primary key,
+  booking_id      uuid not null references bookings(id) on delete restrict,
+  amount_minor    bigint not null check (amount_minor > 0),
+  method          text not null check (method in ('transferencia', 'multicaixa_express', 'numerario', 'outro')),
+  reference       text check (reference is null or char_length(reference) <= 120),
+  sent_by         uuid not null default auth.uid() references profiles(id) on delete set null,
+  created_at      timestamptz not null default now(),
+  -- The client's answer, once.
+  client_response text check (client_response in ('received', 'disputed')),
+  client_note     text check (client_note is null or char_length(client_note) <= 1000),
+  responded_at    timestamptz,
+  constraint refund_attestations_response_complete
+    check ((client_response is null) = (responded_at is null))
+);
+
+create index refund_attestations_booking_idx on refund_attestations (booking_id, created_at);
+
+alter table refund_attestations enable row level security;
+
+-- Both parties to the booking, and administrators.
+create policy refund_attestations_read on refund_attestations
+  for select using (
+    is_admin() or exists (
+      select 1 from bookings b
+       where b.id = refund_attestations.booking_id
+         and (b.client_id = auth.uid() or owns_provider(b.provider_id))
+    )
+  );
+-- The supplier states a refund, on a cancelled booking of theirs, as
+-- themselves, unanswered.
+create policy refund_attestations_supplier_insert on refund_attestations
+  for insert with check (
+    sent_by = auth.uid()
+    and client_response is null
+    and exists (
+      select 1 from bookings b
+       where b.id = refund_attestations.booking_id
+         and owns_provider(b.provider_id)
+         and b.status in ('cancelled_client', 'cancelled_provider')
+    )
+  );
+-- The client answers. What they may change is narrowed by the trigger.
+create policy refund_attestations_client_answer on refund_attestations
+  for update using (
+    exists (select 1 from bookings b
+             where b.id = refund_attestations.booking_id and b.client_id = auth.uid())
+  ) with check (
+    exists (select 1 from bookings b
+             where b.id = refund_attestations.booking_id and b.client_id = auth.uid())
+  );
+-- A statement is a record: nobody deletes one.
+revoke delete on refund_attestations from anon, authenticated;
+revoke insert, update on refund_attestations from anon;
+
+create or replace function refund_attestations_guard()
+returns trigger language plpgsql as $$
+begin
+  if not acting_as_end_user() or is_admin() then
+    return new;
+  end if;
+  if old.client_response is not null then
+    raise exception 'the client has already answered this refund'
+      using errcode = 'insufficient_privilege';
+  end if;
+  if new.booking_id   is distinct from old.booking_id
+     or new.amount_minor is distinct from old.amount_minor
+     or new.method       is distinct from old.method
+     or new.reference    is distinct from old.reference
+     or new.sent_by      is distinct from old.sent_by
+     or new.created_at   is distinct from old.created_at
+     or new.client_response is null then
+    raise exception 'only the client''s answer may be recorded'
+      using errcode = 'insufficient_privilege';
+  end if;
+  new.responded_at := now();
+  return new;
+end $$;
+
+create trigger refund_attestations_guard
+  before update on refund_attestations
+  for each row execute function refund_attestations_guard();
+
+-- ---- 3. telling the other side ---------------------------------------
+alter table notification_outbox drop constraint notification_outbox_kind_check;
+alter table notification_outbox add constraint notification_outbox_kind_check
+  check (kind in (
+    'booking_requested', 'booking_accepted', 'booking_awaiting_payment',
+    'booking_confirmed', 'booking_confirmed_provider', 'booking_rejected',
+    'booking_expired', 'booking_cancelled_client', 'booking_cancelled_provider',
+    'booking_completed', 'booking_no_show',
+    'provider_verified', 'provider_rejected', 'provider_suspended', 'provider_reinstated',
+    'quote_request_new', 'quote_offer_received',
+    'quote_offer_accepted', 'booking_payment_submitted', 'booking_released_provider',
+    'booking_unavailable',
+    'support_request_new',
+    'booking_requested_client',
+    -- new in 0045
+    'refund_sent', 'refund_disputed'
+  ));
+
+-- SECURITY DEFINER: reads the other party's email, which neither side
+-- can select, and writes the outbox, which only service_role can.
+create or replace function refund_attestations_notify()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_kind text;
+begin
+  if tg_op = 'INSERT' then
+    v_kind := 'refund_sent';
+  elsif new.client_response = 'disputed' and old.client_response is null then
+    v_kind := 'refund_disputed';
+  else
+    return null;
+  end if;
+
+  insert into notification_outbox (kind, to_email, recipient_id, context, source_table, source_id)
+  select v_kind, r.email, r.id,
+         jsonb_build_object(
+           'booking_id', b.id, 'provider_id', p.id, 'provider_name', p.name, 'provider_slug', p.slug,
+           'starts_at', b.starts_at, 'ends_at', b.ends_at,
+           'amount_minor', new.amount_minor, 'method', new.method, 'reference', new.reference,
+           'client_note', new.client_note),
+         'refund_attestations', new.id
+    from bookings b
+    join providers p on p.id = b.provider_id
+    join profiles r on r.id = case when v_kind = 'refund_sent' then b.client_id else p.owner_id end
+   where b.id = new.booking_id and r.email is not null
+  on conflict (source_table, source_id, kind, recipient_id) do nothing;
+  return null;
+end $$;
+
+revoke execute on function refund_attestations_notify() from public, anon, authenticated;
+
+create trigger refund_attestations_notify
+  after insert or update of client_response on refund_attestations
+  for each row execute function refund_attestations_notify();
+
