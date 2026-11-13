@@ -187,6 +187,13 @@ describe('image Worker signing — app and Worker agree', () => {
     expect(await verifySignature(parsed.signedPath, parsed.signature, KEY)).toBe(true)
   })
 
+  it('the phone-sized hero (slice 51) is a size the Worker serves', async () => {
+    const url = new URL(imageWorkerUrl({ baseUrl: 'https://w.example', objectId: OBJECT, variant: 'heroSm', keyHex: KEY }))
+    const parsed = parsePath(url.pathname)!
+    expect(parsed?.variant).toBe('heroSm')
+    expect(await verifySignature(parsed.signedPath, parsed.signature, KEY)).toBe(true)
+  })
+
   it('a URL whose variant was swapped does not verify', async () => {
     const url = new URL(imageWorkerUrl({ baseUrl: 'https://w.example', objectId: OBJECT, variant: 'thumb', keyHex: KEY }))
     const parsed = parsePath(url.pathname.replace('/thumb/', '/full/'))!

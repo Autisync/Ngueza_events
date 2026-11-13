@@ -53,6 +53,7 @@ export interface Env {
 export const VARIANTS: Record<string, Record<string, unknown>> = {
   thumb: { width: 160, height: 120, fit: 'cover', gravity: 'auto' },
   card: { width: 640, height: 427, fit: 'cover', gravity: 'auto' },
+  heroSm: { width: 828, height: 466, fit: 'cover', gravity: 'auto' },
   hero: { width: 1280, height: 720, fit: 'cover', gravity: 'auto' },
   full: { width: 2048, height: 2048, fit: 'scale-down' },
 }

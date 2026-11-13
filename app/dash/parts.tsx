@@ -284,4 +284,22 @@ export function Ranked({ data, unit }: { data: { key: string; label: string; val
   )
 }
 
+/** The shape of a dashboard page while its data loads (loading.tsx). */
+export function DashSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span className={styles.srOnly}>A carregar…</span>
+      <span className={`${styles.skel} ${styles.skelTitle}`} />
+      <span className={`${styles.skel} ${styles.skelLine}`} />
+      <div className={`${styles.grid} ${styles.stats}`}>
+        {[0, 1, 2, 3].map((i) => <div className={styles.card} key={i}><span className={`${styles.skel} ${styles.skelStat}`} /></div>)}
+      </div>
+      <div className={`${styles.grid} ${styles.wideNarrow}`}>
+        <div className={styles.card}><span className={`${styles.skel} ${styles.skelCard}`} /></div>
+        <div className={styles.card}><span className={`${styles.skel} ${styles.skelCard}`} /></div>
+      </div>
+    </div>
+  )
+}
+
 export { styles as dash }
