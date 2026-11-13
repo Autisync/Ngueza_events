@@ -50,6 +50,22 @@ transaction pooling does not support.
 
 ## Applying migrations
 
+**To an existing project** (the usual case), apply only what is missing.
+Migrations are not idempotent; re-running one that is already applied fails.
+
+```bash
+set -a; source .env.local; set +a
+./scripts/live-migration-status.sh          # read-only: which of 0032+ are there
+./scripts/apply-migrations-from.sh 0032     # first one marked EM FALTA; asks for SIM
+./scripts/live-migration-status.sh          # all "aplicada"
+./scripts/verify-remote.sh
+```
+
+Each migration runs in its own transaction; on an error that one is rolled
+back and the script stops.
+
+**To a brand-new, empty project:**
+
 ```bash
 set -a; source .env.local; set +a
 for f in supabase/migrations/*.sql; do
