@@ -246,8 +246,8 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
           </div>
         ) : (
           <div className={styles.grid}>
-            {results.hits.map((hit) => (
-              <SupplierCard hit={hit} key={hit.id} />
+            {results.hits.map((hit, i) => (
+              <SupplierCard hit={hit} key={hit.id} priority={i < 2} />
             ))}
           </div>
         )}

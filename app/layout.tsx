@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { siteUrl } from '@/lib/env'
+import { preconnect } from 'react-dom'
+import { optionalEnv, siteUrl } from '@/lib/env'
 import './globals.css'
 import { SiteFooter, SiteHeader } from './SiteHeader'
 import site from './site.module.css'
@@ -37,7 +38,19 @@ export const viewport: Viewport = {
   themeColor: '#0b4f8f',
 }
 
+/** Where photos come from (the image Worker, or imgproxy locally). */
+function photoOrigin(): string | null {
+  const url = optionalEnv('IMAGES_PUBLIC_URL') ?? optionalEnv('IMGPROXY_PUBLIC_URL')
+  try { return url ? new URL(url).origin : null } catch { return null }
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Photos live on another origin. Opening that connection while the HTML is
+  // still arriving took the supplier page's hero photo off the critical path:
+  // on a phone the DNS + TLS handshake cost more than the image itself.
+  const photos = photoOrigin()
+  if (photos) preconnect(photos)
+
   return (
     <html lang="pt-AO">
       <body>
