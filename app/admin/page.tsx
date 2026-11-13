@@ -3,6 +3,9 @@ import { adminProfile } from './guard'
 import { queueCounts, recentAudit } from '@/lib/admin'
 import { jobHealth, recentRuns } from '@/lib/jobs'
 import { switches } from '@/lib/switches'
+import { adminOverview } from '@/lib/dashboard'
+import { formatYmd } from '@/lib/event-plan-math'
+import { Card, Columns, Grid, Ranked, Stat, dash } from '@/app/dash/parts'
 import { doSetSwitch } from './actions'
 import { Chrome } from './Chrome'
 import styles from './admin.module.css'
@@ -12,10 +15,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function Admin() {
   const profile = await adminProfile()
-  const [counts, audit, health, runs] = await Promise.all([
+  const [counts, audit, health, runs, overview] = await Promise.all([
     queueCounts(profile.id), recentAudit(profile.id, 12),
-    jobHealth().catch(() => null), recentRuns(profile.id, 6),
+    jobHealth().catch(() => null), recentRuns(profile.id, 6), adminOverview(profile.id),
   ])
+  const requestsUnit = (n: number) => `${n} ${n === 1 ? 'pedido' : 'pedidos'}`
+  const suppliersUnit = (n: number) => `${n} ${n === 1 ? 'fornecedor' : 'fornecedores'}`
   const flips = await switches()
   const SWITCH_LABEL: Record<string, { title: string; effect: string }> = {
     bookings_paused: {
@@ -37,25 +42,40 @@ export default async function Admin() {
     <main>
       <Chrome title="Administração" active="inicio" counts={counts} />
       <div className={styles.wrap}>
-        <div className={styles.card}>
-          <h2>A aguardar decisão</h2>
-          <p className={styles.note}>
-            Um fornecedor só fica visível depois de verificado.
-          </p>
-          <div className={styles.row}>
-            <span>Fornecedores em análise</span><span><strong>{counts.pendingProviders}</strong></span>
-          </div>
-          <div className={styles.row}>
-            <span>Documentos por rever</span><span><strong>{counts.submittedDocuments}</strong></span>
-          </div>
-          <div className={styles.row}>
-            <span>Denúncias abertas</span><span><strong>{counts.openReports}</strong></span>
-          </div>
-          <div className={styles.actions} style={{ marginTop: 16 }}>
-            <a className={`${styles.btn} ${styles.mute}`} href="/admin/fornecedores"
-               style={{ textDecoration: 'none' }}>Rever fornecedores</a>
-          </div>
-        </div>
+        {/* ---- the dashboard (slice 50): the queues, then how the week goes ---- */}
+        <Grid kind="stats5">
+          <Stat icon="store" label="Fornecedores em análise" value={counts.pendingProviders}
+                hot={counts.pendingProviders > 0} href="/admin/fornecedores" note="Só ficam visíveis depois de verificados" />
+          <Stat icon="file" label="Documentos por rever" value={counts.submittedDocuments}
+                hot={counts.submittedDocuments > 0} href="/admin/fornecedores" note="Identidade, NIF, alvará" />
+          <Stat icon="money" label="Pagamentos por confirmar" value={counts.submittedPayments}
+                hot={counts.submittedPayments > 0} href="/admin/pagamentos" note="Comprovativos enviados" />
+          <Stat icon="help" label="Pedidos de apoio" value={counts.openSupport}
+                hot={counts.openSupport > 0} href="/admin/apoio" note="Abertos" />
+          <Stat icon="flag" label="Denúncias" value={counts.openReports}
+                hot={counts.openReports > 0} href="/admin/denuncias" note="Abertas ou em análise" />
+        </Grid>
+
+        <Grid kind="wideNarrow">
+          <Card title="Pedidos de reserva por semana" note="Novos pedidos, pela semana em que chegaram (segunda a domingo).">
+            <Columns
+              caption={`Pedidos de reserva por semana, de ${formatYmd(overview.weeks[0]!.week)} a ${formatYmd(overview.weeks[overview.weeks.length - 1]!.week)}`}
+              unit={requestsUnit}
+              data={overview.weeks.map((w, i) => ({
+                label: formatYmd(w.week, { year: false })!, long: `Semana de ${formatYmd(w.week)}`,
+                value: w.count, current: i === overview.weeks.length - 1,
+              }))}
+            />
+          </Card>
+          <Card title="Fornecedores" note="Por estado da verificação. Sem os perfis de exemplo.">
+            <Ranked data={overview.suppliers.map((x) => ({ key: x.key, label: x.label, value: x.count }))} unit={suppliersUnit} />
+            <ul className={dash.rows} style={{ marginTop: 18 }}>
+              <li className={dash.row}><span className={dash.rowMain}><span className={dash.rowTitle}>Publicados e verificados</span></span><span className={dash.rowSide}><strong>{overview.publishedSuppliers}</strong></span></li>
+              <li className={dash.row}><span className={dash.rowMain}><span className={dash.rowTitle}>Clientes activos</span></span><span className={dash.rowSide}><strong>{overview.clients}</strong></span></li>
+              <li className={dash.row}><span className={dash.rowMain}><span className={dash.rowTitle}>Pedidos de reserva este mês</span></span><span className={dash.rowSide}><strong>{overview.bookingsThisMonth}</strong></span></li>
+            </ul>
+          </Card>
+        </Grid>
 
         {/* Slice 37: stop the bleeding in seconds, not a deploy. See
             docs/runbooks.md for when to use each. */}

@@ -119,3 +119,37 @@ export function supplierSearchHref(opts: {
   if (opts.guests) q.set('pessoas', String(opts.guests))
   return `/procurar?${q.toString()}`
 }
+
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const MONTHS_LONG = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto',
+                     'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
+/** "15 dez 2031" from YYYY-MM-DD, built by hand: pt-PT's own short date is
+ *  "15/12/2031", and no timezone gets a chance to move the day. */
+export function formatYmd(ymd: string | null, opts: { year?: boolean } = {}): string | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+  const [y, m, d] = [ymd.slice(0, 4), Number(ymd.slice(5, 7)), Number(ymd.slice(8, 10))]
+  return `${d} ${MONTHS[m - 1]}${opts.year === false ? '' : ` ${y}`}`
+}
+
+/** "jun" and "Junho de 2031" for a YYYY-MM month: a chart's axis and its tooltip. */
+export function monthLabels(ym: string): { short: string; long: string } {
+  const m = Number(ym.slice(5, 7))
+  return { short: MONTHS[m - 1]!, long: `${MONTHS_LONG[m - 1]} de ${ym.slice(0, 4)}` }
+}
+
+/** A share typed as a percentage ("30", "2,5") in basis points, in
+ *  integers: no float touches it. Null when unreadable or over 100 %. */
+export function percentToBp(raw: string): number | null {
+  const m = /^(\d{1,3})(?:[.,](\d{1,2}))?$/.exec(raw.trim())
+  if (!m) return null
+  const bp = Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0'))
+  return bp <= 10_000 ? bp : null
+}
+
+/** 3000 → "30", 250 → "2,5": a share as it is typed back into a field. */
+export function bpToPercent(bp: number): string {
+  const whole = Math.floor(bp / 100)
+  const frac = bp % 100
+  return frac === 0 ? String(whole) : `${whole},${String(frac).padStart(2, '0').replace(/0$/, '')}`
+}

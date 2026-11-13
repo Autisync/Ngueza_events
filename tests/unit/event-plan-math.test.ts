@@ -112,3 +112,31 @@ describe('statuses and links', () => {
     expect(supplierSearchHref({ categorySlug: 'djs', date: '2000-01-01' })).toBe('/procurar?categoria=djs')
   })
 })
+
+describe('formatting', () => {
+  it('writes dates the Angolan way, without a timezone shift', async () => {
+    const { formatYmd, monthLabels } = await import('@/lib/event-plan-math')
+    expect(formatYmd('2031-12-15')).toBe('15 dez 2031')
+    expect(formatYmd('2031-01-01', { year: false })).toBe('1 jan')
+    expect(formatYmd(null)).toBeNull()
+    expect(monthLabels('2031-06')).toEqual({ short: 'jun', long: 'Junho de 2031' })
+  })
+})
+
+describe('shares as typed by an administrator', () => {
+  it('reads percentages into basis points without floats', async () => {
+    const { percentToBp, bpToPercent } = await import('@/lib/event-plan-math')
+    expect(percentToBp('30')).toBe(3000)
+    expect(percentToBp('2,5')).toBe(250)
+    expect(percentToBp('2.55')).toBe(255)
+    expect(percentToBp('0')).toBe(0)
+    expect(percentToBp('100')).toBe(10_000)
+    expect(percentToBp('100,01')).toBeNull()
+    expect(percentToBp('abc')).toBeNull()
+    expect(percentToBp('-5')).toBeNull()
+    expect(bpToPercent(3000)).toBe('30')
+    expect(bpToPercent(250)).toBe('2,5')
+    expect(bpToPercent(255)).toBe('2,55')
+    expect(bpToPercent(5)).toBe('0,05')
+  })
+})

@@ -1,6 +1,6 @@
 # Slice 50 — dashboards that read like dashboards, and an event planner
 
-**Status:** in progress.
+**Status:** done.
 **Asked by NGUEZA:** "for all dashboards, make it look more like this
 dashboard, for normal logged users, supplier and admin. Allow users to plan
 their events in the system as well, with costs and needs for type of event."
@@ -121,8 +121,9 @@ redirect follows them there.
   - value booked this year (sum of `total_minor`, confirmed and
     completed);
   - average rating.
-- **Charts:** bookings per month, six months back and six ahead (columns),
-  and this year's bookings by status (ranked bars).
+- **Charts:** bookings per month over twelve months (six back, this one,
+  five ahead; columns, the months still to come in a lighter step), and
+  this year's bookings by what happened to them (ranked bars).
 - **Lists:** the next bookings, and alerts (documents missing, no photos,
   reviews without a reply, quote requests waiting).
 - The existing management sections stay below, unchanged.
@@ -145,13 +146,24 @@ redirect follows them there.
 
 ## Acceptance
 
-- [ ] `event_types` / `event_type_needs` are rows; an admin can add a type, add a need with a category, share and lead time, and retire either.
-- [ ] Creating a plan with a budget copies its type's needs, with estimates = budget × share (integer cêntimos) and "reservar até" = date − lead time.
-- [ ] A plan and its lines are invisible to every other user, to visitors and to administrators (RLS, asserted per role in `tests/sql`).
-- [ ] A line cannot link to someone else's booking (23514); the caps hold.
-- [ ] The plan page shows budget / estimated / spent / to arrange, the preparation ring, per-need meters, and "acima do orçamento" when over.
-- [ ] Every need with a category links to a filtered search, and shows a market "desde" price from real suppliers only.
-- [ ] `/conta`, `/reservas`, `/painel/[id]` and `/admin` share the sidebar shell; the public header is gone there and only there.
-- [ ] Client, supplier and admin overviews show their tiles, charts and lists from live data.
-- [ ] Every chart has an accessible name and a hidden data table; no client JavaScript added.
-- [ ] Gates pass; the JS budget is unchanged.
+- [x] `event_types` / `event_type_needs` are rows; an admin can add a type, add a need with a category, share and lead time, and retire either.
+- [x] Creating a plan with a budget copies its type's needs, with estimates = budget × share (integer cêntimos) and "reservar até" = date − lead time.
+- [x] A plan and its lines are invisible to every other user, to visitors and to administrators (RLS, asserted per role in `tests/sql`).
+- [x] A line cannot link to someone else's booking (23514); the caps hold.
+- [x] The plan page shows budget / estimated / spent / to arrange, the preparation ring, per-need meters, and "acima do orçamento" when over.
+- [x] Every need with a category links to a filtered search, and shows a market "desde" price from real suppliers only.
+- [x] `/conta`, `/reservas`, `/painel/[id]` and `/admin` share the sidebar shell; the public header is gone there and only there.
+- [x] Client, supplier and admin overviews show their tiles, charts and lists from live data.
+- [x] Every chart has an accessible name and a hidden data table; no client JavaScript added.
+- [x] Gates pass; the JS budget is unchanged.
+
+## Rolling out
+
+The migration and the reference list both go to live, in this order:
+
+1. Migration `0046_event_planner.sql`
+   (`./scripts/apply-migrations-from.sh 0046`).
+2. `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f seed/reference/01_event_types.sql`
+
+Without step 2 the planner has no event types, and "Planear evento" offers
+nothing to choose.

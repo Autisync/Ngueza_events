@@ -137,31 +137,8 @@
 .confirm summary { list-style: none; display: inline-flex; align-items: center; }
 .confirm summary::-webkit-details-marker { display: none; }
 .confirm[open] summary { display: none; }
-.strip { display: flex; gap: 8px; margin: 0 0 14px; overflow-x: auto; }
-.strip img, .strip span { width: 96px; height: 64px; object-fit: cover; border-radius: 7px;
-                          flex: none; background: var(--azul-050); }
-
-/* The dashboard tiles (slice 43). A tile is one area of the business, its
-   number, and a blue state when something waits on the supplier. */
-.tiles { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
-@media (min-width: 720px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.tile { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: 14px; text-decoration: none;
-        color: var(--tinta); background: var(--branco); border: 1px solid var(--linha); box-shadow: var(--sombra);
-        min-width: 0; transition: transform 0.15s var(--ease-out), border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out); }
-.tile:hover { transform: translateY(-2px); border-color: var(--azul-300); }
-.tileIcon { width: 38px; height: 38px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
-            background: var(--azul-050); color: var(--azul-700); margin-bottom: 8px; }
-.tileTitle { font-weight: 700; font-size: 0.92rem; color: var(--tinta-2); }
-.tileNum { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; color: var(--azul-800);
-           font-variant-numeric: tabular-nums; }
-.tileNum small { font-size: 0.9rem; font-weight: 600; color: var(--tinta-3); }
-.tileSub { font-size: 0.82rem; color: var(--tinta-3); line-height: 1.4; }
-.tile .strip { margin: 10px 0 0; }
-.tile .strip img, .tile .strip span { width: 44px; height: 34px; border-radius: 6px; }
-.tileHot { background: linear-gradient(160deg, var(--azul-700), var(--azul-900)); border-color: var(--azul-700); color: var(--branco); }
-.tileHot .tileIcon { background: rgba(255,255,255,0.14); color: var(--branco); }
-.tileHot .tileTitle, .tileHot .tileSub { color: var(--azul-200); }
-.tileHot .tileNum { color: var(--branco); }
+/* The slice 43 tiles and photo strip lived here; slice 50's dashboard
+   (app/dash) replaced them. */
 .jump { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 0 18px; font-size: 0.86rem; color: var(--tinta-3); }
 .jump a { padding: 6px 11px; border-radius: 999px; background: var(--azul-050); border: 1px solid var(--linha);
           color: var(--azul-700); text-decoration: none; font-weight: 600; }
@@ -210,3 +187,17 @@
 .row .meta { display: block; font-size: 0.82rem; color: var(--tinta-3); margin-top: 2px; }
 .row span:first-child .meta { color: var(--tinta-3); }
 .row > .pill { flex: none; white-space: nowrap; align-self: center; }
+
+/* ---- inside a dashboard (slice 50) ----------------------------------
+   This module also styles two public pages (/registar-negocio,
+   /pedir-orcamento), so the dashboard look is scoped to the shell's
+   global .ngz-dash: the dark band becomes a plain title on the light
+   ground, and cards take the dashboard's radius and shadow. */
+:global(.ngz-dash) .top { background: none; color: var(--tinta); padding: 6px 0 0; margin-bottom: 22px; box-shadow: none; }
+:global(.ngz-dash) .wrap { max-width: 920px; margin: 0; padding: 0; }
+:global(.ngz-dash) .mark { color: var(--azul-600); letter-spacing: 0; text-transform: none; font-size: 0.84rem; }
+:global(.ngz-dash) .mark:hover { color: var(--azul-800); }
+:global(.ngz-dash) .title { color: var(--tinta); font-weight: 800; margin-top: 4px; }
+:global(.ngz-dash) .sub { color: var(--tinta-2); }
+:global(.ngz-dash) .sub a { color: var(--azul-700); }
+:global(.ngz-dash) .card { border-color: var(--dash-linha); border-radius: 18px; box-shadow: var(--dash-sombra); }

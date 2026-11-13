@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { adminMfaSatisfied, currentProfile } from '@/lib/auth'
+import styles from './admin.module.css'
 
 /**
  * Everything under /admin is gated here, once.
@@ -17,5 +18,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // has passed a second factor. requireProfile('admin') enforces the same
   // for every admin action.
   if (!(await adminMfaSatisfied())) redirect('/conta/seguranca?next=/admin')
-  return <>{children}</>
+  // The light-blue dashboard ground (slice 50), as under /conta and /painel.
+  return <div className={styles.ground}>{children}</div>
 }

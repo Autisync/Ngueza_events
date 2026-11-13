@@ -548,3 +548,26 @@ export async function marketPrices(categoryIds: string[]): Promise<Map<string, M
     return new Map(rows.map((r: any) => [r.category_id, { minor: BigInt(r.price_minor), unit: r.price_unit }]))
   })
 }
+
+// ---- what the forms offer ----------------------------------------------------
+
+export interface Option {
+  id: string
+  slug: string
+  name: string
+}
+
+/** Municipalities (the same list the search filters on) and the
+ *  categories a need can point at: every active one under the root. */
+export async function planningOptions(): Promise<{ municipalities: Option[]; categories: Option[] }> {
+  return asVisitor(async (c) => {
+    const locs = await c.query<Option>(
+      `select id, slug, name from locations where is_active and level = 'municipality' order by name`,
+    )
+    const cats = await c.query<Option>(
+      `select id, slug, name from categories where is_active and parent_id is not null
+        order by default_supplier_type = 'venue' desc, sort_order, name`,
+    )
+    return { municipalities: locs.rows, categories: cats.rows }
+  })
+}
