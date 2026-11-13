@@ -11,15 +11,20 @@ import { CategoryIcon } from './CategoryIcon'
 
 /** Used by /procurar's results grid and the homepage's featured-suppliers
  *  rail — one definition of what a supplier card looks like. */
-export function SupplierCard({ hit }: { hit: SearchHit }) {
+export function SupplierCard({ hit, priority = false }: { hit: SearchHit; priority?: boolean }) {
   const photoUrl = coverImageUrl(hit.coverImageId, 'card')
 
   return (
     <a className={styles.card} href={`/fornecedor/${hit.slug}`}>
       <div className={styles.thumb}>
         {photoUrl ? (
+          // The first cards are above the fold and one of them is the page's
+          // LCP: lazy-loading them held the request back until layout.
           // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise
-          <img className={styles.thumbImg} src={photoUrl} alt="" loading="lazy" decoding="async" />
+          <img className={styles.thumbImg} src={photoUrl} alt=""
+               loading={priority ? 'eager' : 'lazy'}
+               fetchPriority={priority ? 'high' : undefined}
+               decoding="async" />
         ) : (
           // No photo yet: the category's own drawing, not a stock photo that
           // would pretend to be this venue (slice 43).
