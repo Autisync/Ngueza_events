@@ -82,7 +82,7 @@ set -a; source .env.local; set +a
 for f in supabase/migrations/*.sql; do
   psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f" || break
 done
-psql "$MIGRATION_DATABASE_URL" -f seed/reference/00_taxonomy.sql
+for f in seed/reference/*.sql; do psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done   # taxonomy, then event types (slice 50)
 ```
 
 A real Supabase project already has `anon`, `authenticated` and

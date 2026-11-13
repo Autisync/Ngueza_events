@@ -2,6 +2,7 @@
 // ERROR, not a code-review question. Handles session tokens.
 import 'server-only'
 
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
 import { asSystem } from '@/lib/db'
@@ -295,7 +296,10 @@ export interface Profile {
  * and a role change must take effect immediately rather than at the next
  * token refresh.
  */
-export async function currentProfile(): Promise<Profile | null> {
+// Memoised per request (React's cache): the dashboard layout, the page and
+// the header all ask, and the answer cannot change mid-render. Outside a
+// server-component render, cache() simply calls through.
+export const currentProfile = cache(async function currentProfile(): Promise<Profile | null> {
   const user = await currentUser()
   if (!user) return null
 
@@ -322,7 +326,7 @@ export async function currentProfile(): Promise<Profile | null> {
       status: row.status,
     }
   })
-}
+})
 
 export async function requireProfile(role?: Profile['role']): Promise<Profile> {
   const profile = await currentProfile()

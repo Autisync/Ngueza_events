@@ -61,3 +61,9 @@
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem;
          font-weight: 700; background: var(--azul-100); color: var(--azul-700); }
 .badgeWarn { background: var(--erro-fundo); color: var(--erro); }
+
+/* ---- inside a dashboard (slice 50): the narrow centred column of the
+   sign-in pages sits at the top left of the content instead. */
+:global(.ngz-dash) .page { max-width: 640px; margin: 0; padding: 6px 0 0; }
+:global(.ngz-dash) .mark { color: var(--azul-600); letter-spacing: 0; text-transform: none; font-size: 0.84rem; margin-bottom: 4px; }
+:global(.ngz-dash) .card { border-color: var(--dash-linha); border-radius: 18px; box-shadow: var(--dash-sombra); }

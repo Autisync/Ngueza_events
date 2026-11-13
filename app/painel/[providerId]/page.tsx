@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { currentProfile } from '@/lib/auth'
-import { formatPrice } from '@/lib/money'
+import { formatMinor, formatPrice } from '@/lib/money'
 import { dashboardCounts, formOptions, ownedDocuments, ownedProvider, ownedResources, ownedServices } from '@/lib/painel'
 import {
   doAddResource, doAddService, doRemoveResource, doRemoveService, doSubmitForVerification,
@@ -9,14 +9,15 @@ import {
 } from '../actions'
 import { DocumentUpload } from './DocumentUpload'
 import { ServiceFields } from './ServiceFields'
-import { Icon } from '@/app/SiteHeader'
 import { verificationLabel } from '@/lib/painel-labels'
-import { coverImageUrl } from '@/lib/media'
-import { MAX_PHOTOS, ownedPhotos } from '@/lib/photos'
+import { ownedPhotos } from '@/lib/photos'
 import { activeAmenities, type Amenity } from '@/lib/amenities'
 import { documentKinds } from '@/lib/documents'
 import { checklist, outstanding } from '@/lib/document-checklist'
 import { doWithdrawDocument } from '../actions'
+import { supplierOverview } from '@/lib/dashboard'
+import { luandaToday, monthLabels } from '@/lib/event-plan-math'
+import { Card, Columns, DateTile, Empty, Grid, PageHead, Pill, Ranked, Stat, dash } from '@/app/dash/parts'
 import styles from '../painel.module.css'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
@@ -82,91 +83,145 @@ export default async function GerirNegocio({
   // the decision itself is still an administrator's.
   const canSubmit = provider.verificationStatus === 'unverified' || provider.verificationStatus === 'rejected'
 
+  const overview = await supplierOverview(profile.id, provider.id)
+  const thisMonth = luandaToday().slice(0, 7)
+  const year = thisMonth.slice(0, 4)
+  const base = `/painel/${provider.id}`
+  const v = verificationLabel(provider.verificationStatus)
+  const alerts: { tone: 'warn' | 'info' | 'bad'; text: string; href: string }[] = [
+    ...(provider.verificationStatus === 'rejected'
+      ? [{ tone: 'bad' as const, text: 'A verificação foi rejeitada: corrija e volte a submeter', href: '#verificacao' }] : []),
+    ...(canSubmit && missing.length
+      ? [{ tone: 'warn' as const, text: `Faltam documentos: ${missing.map((i) => i.kind.name).join(', ')}`, href: '#verificacao' }] : []),
+    ...(provider.verificationStatus === 'pending'
+      ? [{ tone: 'info' as const, text: 'Os seus documentos estão em análise pela NGUEZA', href: '#verificacao' }] : []),
+    ...(services.length === 0 ? [{ tone: 'warn' as const, text: 'Ainda sem serviços nem preços', href: '#servicos' }] : []),
+    ...(photos.length === 0 ? [{ tone: 'warn' as const, text: 'Sem fotografias: é a primeira coisa que um cliente procura', href: `${base}/fotos` }] : []),
+    ...(counts.pendingRequests
+      ? [{ tone: 'warn' as const, text: counts.pendingRequests === 1 ? '1 pedido de reserva por responder' : `${counts.pendingRequests} pedidos de reserva por responder`, href: `${base}/reservas` }] : []),
+    ...(counts.awaitingPayment
+      ? [{ tone: 'info' as const, text: counts.awaitingPayment === 1 ? '1 reserva à espera do pagamento' : `${counts.awaitingPayment} reservas à espera do pagamento`, href: `${base}/reservas` }] : []),
+    ...(counts.openQuotes
+      ? [{ tone: 'info' as const, text: counts.openQuotes === 1 ? '1 pedido de orçamento à espera da sua proposta' : `${counts.openQuotes} pedidos de orçamento à espera da sua proposta`, href: `${base}/pedidos` }] : []),
+    ...(counts.unansweredReviews
+      ? [{ tone: 'info' as const, text: counts.unansweredReviews === 1 ? '1 avaliação sem a sua resposta' : `${counts.unansweredReviews} avaliações sem a sua resposta`, href: `${base}/avaliacoes` }] : []),
+  ]
+  const bookingsUnit = (n: number) => `${n} ${n === 1 ? 'reserva' : 'reservas'}`
+
   return (
-    <main>
-      <section className={styles.top}>
-        <div className={styles.wrap}>
-          <a className={styles.mark} href="/painel">← Painel</a>
-          <h1 className={styles.title}>{provider.name}</h1>
-          <p className={styles.sub}>
-            {provider.supplierType === 'venue'
-              ? 'Espaço — cada reserva confirmada ocupa a data inteira.'
-              : 'Serviço — pode atender vários clientes no mesmo dia.'}
-          </p>
-        </div>
-      </section>
+    <>
+      <PageHead
+        title={provider.name}
+        sub={provider.supplierType === 'venue'
+          ? 'Espaço: cada reserva confirmada ocupa a data inteira.'
+          : 'Serviço: pode atender vários clientes no mesmo dia.'}
+        actions={
+          <>
+            <Pill tone={v.cls === 'pillOk' ? 'good' : v.cls === 'pillWait' ? 'warn' : v.cls === 'pillBad' ? 'bad' : 'neutral'}>{v.label}</Pill>
+            {provider.isPublished ? <Pill tone="good">Visível no site</Pill> : <Pill>Não visível</Pill>}
+          </>
+        }
+      />
+
+      {flags.novo ? (
+        <p className={`${dash.alert} ${dash.alertOk}`} role="status">Negócio registado. Falta adicionar preços e enviar documentos.</p>
+      ) : null}
+      {flags.guardado ? <p className={`${dash.alert} ${dash.alertOk}`} role="status">Guardado.</p> : null}
+      {flags.submetido ? (
+        <p className={`${dash.alert} ${dash.alertOk}`} role="status">Submetido. A nossa equipa analisa os documentos e avisamos por email.</p>
+      ) : null}
+      {flags.erro && !flags.editar ? (
+        <p className={dash.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
+      ) : null}
+
+      {/* ---- the dashboard (slice 50): what waits, how the year goes ---- */}
+      <Grid kind="stats">
+        <Stat icon="calendar" label="Pedidos por responder" value={counts.pendingRequests}
+              hot={counts.pendingRequests > 0} href={`${base}/reservas`}
+              note={counts.awaitingPayment ? `${counts.awaitingPayment} à espera do pagamento` : 'Responda em 48 horas'} />
+        <Stat icon="check" label="Confirmadas" value={counts.upcoming} href={`${base}/reservas`}
+              note={counts.upcoming === 1 ? 'reserva por realizar' : 'reservas por realizar'} />
+        <Stat icon="money" label={`Reservado em ${year}`} value={formatMinor(overview.bookedThisYear, { compact: true })}
+              note="Confirmadas e concluídas, pelo preço combinado" />
+        <Stat icon="star" label="Avaliação" href={`${base}/avaliacoes`} hot={counts.unansweredReviews > 0}
+              value={overview.ratingAverage !== null ? <>{overview.ratingAverage.toLocaleString('pt-PT')}<small> / 5</small></> : '—'}
+              note={counts.unansweredReviews
+                ? `${counts.unansweredReviews} sem a sua resposta`
+                : overview.ratingCount ? `${overview.ratingCount} ${overview.ratingCount === 1 ? 'avaliação' : 'avaliações'}` : 'Ainda sem avaliações'} />
+      </Grid>
+
+      <Grid kind="wideNarrow">
+        <Card title="Reservas por mês" note="Confirmadas e concluídas, pela data do evento.">
+          {overview.months.every((m) => m.count === 0) ? (
+            <Empty icon="chart">
+              <p style={{ margin: 0 }}>Ainda sem reservas confirmadas neste período. O gráfico enche-se à medida que confirma pedidos.</p>
+            </Empty>
+          ) : (
+            <Columns
+              caption={`Reservas confirmadas e concluídas por mês, de ${monthLabels(overview.months[0]!.month).long} a ${monthLabels(overview.months[overview.months.length - 1]!.month).long}`}
+              unit={bookingsUnit}
+              legend={{ solid: 'Até este mês', soft: 'Próximos meses' }}
+              data={overview.months.map((m) => ({
+                label: monthLabels(m.month).short, long: monthLabels(m.month).long, value: m.count,
+                current: m.month === thisMonth, soft: m.month > thisMonth,
+              }))}
+            />
+          )}
+        </Card>
+
+        <Card title="Alertas" count={alerts.length}>
+          {alerts.length === 0 ? (
+            <Empty icon="check"><p style={{ margin: 0 }}>Está tudo em dia.</p></Empty>
+          ) : (
+            <ul className={dash.rows}>
+              {alerts.map((a, i) => (
+                <li className={dash.row} key={i}>
+                  <span className={`${dash.dot} ${a.tone === 'warn' ? dash.dotWarn : a.tone === 'bad' ? dash.dotBad : ''}`} aria-hidden="true" />
+                  <span className={dash.rowMain}><a className={dash.rowTitle} href={a.href}>{a.text}</a></span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </Grid>
+
+      <Grid kind="halves">
+        <Card title="Próximas reservas" action={{ href: `${base}/reservas`, label: 'Ver todas' }}>
+          {overview.next.length === 0 ? (
+            <Empty icon="calendar"><p style={{ margin: 0 }}>Sem reservas marcadas.</p></Empty>
+          ) : (
+            <ul className={dash.rows}>
+              {overview.next.map((b) => (
+                <li className={dash.row} key={b.id}>
+                  <DateTile at={b.startsAt} />
+                  <span className={dash.rowMain}>
+                    <a className={dash.rowTitle} href={`${base}/reservas/${b.id}`}>{b.clientName ?? 'Cliente'}</a>
+                    <span className={dash.rowMeta}>
+                      {[b.partySize ? `${b.partySize} pessoas` : null, b.totalMinor !== null ? formatMinor(b.totalMinor, { compact: true }) : null].filter(Boolean).join(' · ') || '\u00a0'}
+                    </span>
+                  </span>
+                  <span className={dash.rowSide}>
+                    {b.status === 'requested' ? <Pill tone="warn">Por responder</Pill>
+                      : b.status === 'confirmed' ? <Pill tone="good">Confirmada</Pill>
+                      : b.status === 'awaiting_payment' ? <Pill tone="info">A aguardar pagamento</Pill>
+                      : <Pill tone="info">Aceite</Pill>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title={`Reservas em ${year}`} note="O que aconteceu a cada pedido deste ano.">
+          {overview.byStatus.every((s) => s.count === 0) ? (
+            <Empty icon="chart"><p style={{ margin: 0 }}>Ainda sem pedidos este ano.</p></Empty>
+          ) : (
+            <Ranked data={overview.byStatus.map((s) => ({ key: s.key, label: s.label, value: s.count }))} unit={bookingsUnit} />
+          )}
+        </Card>
+      </Grid>
 
       <div className={styles.wrap}>
-        {flags.novo ? (
-          <p className={`${styles.alert} ${styles.ok}`}>
-            Negócio registado. Falta adicionar preços e enviar documentos.
-          </p>
-        ) : null}
-        {flags.guardado ? <p className={`${styles.alert} ${styles.ok}`}>Guardado.</p> : null}
-        {flags.submetido ? (
-          <p className={`${styles.alert} ${styles.ok}`}>
-            Submetido. A nossa equipa analisa os documentos e avisamos por email.
-          </p>
-        ) : null}
-        {flags.erro && !flags.editar ? (
-          <p className={styles.alert} role="alert">{ERRORS[flags.erro] ?? ERRORS.dados}</p>
-        ) : null}
-
-        {/* ---- the dashboard (slice 43): one tile per area, each with the
-            number that matters and highlighted when something waits on
-            the supplier. Replaced a column of identical cards. ---- */}
-        <div className={styles.tiles}>
-          <a className={`${styles.tile} ${counts.pendingRequests > 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/reservas`}>
-            <span className={styles.tileIcon}><Icon name="calendar" size={22} /></span>
-            <span className={styles.tileTitle}>Reservas</span>
-            <span className={styles.tileNum}>{counts.pendingRequests}</span>
-            <span className={styles.tileSub}>
-              {counts.pendingRequests === 1 ? 'pedido por responder' : 'pedidos por responder'}
-              {counts.awaitingPayment ? ` · ${counts.awaitingPayment} a aguardar pagamento` : ''}
-              {counts.upcoming ? ` · ${counts.upcoming} confirmadas` : ''}
-            </span>
-          </a>
-          <a className={`${styles.tile} ${photos.length === 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/fotos`}>
-            <span className={styles.tileIcon}><Icon name="image" size={22} /></span>
-            <span className={styles.tileTitle}>Fotografias</span>
-            <span className={styles.tileNum}>{photos.length}<small> / {MAX_PHOTOS}</small></span>
-            <span className={styles.tileSub}>{photos.length === 0 ? 'Sem fotografias: é a primeira coisa que um cliente procura' : 'a primeira é a capa'}</span>
-            {photos.length > 0 ? (
-              <span className={styles.strip} aria-hidden="true">
-                {photos.slice(0, 4).map((p) => {
-                  const src = coverImageUrl(p.externalId, 'thumb')
-                  // eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL
-                  return src ? <img key={p.id} src={src} alt="" loading="lazy" /> : <span key={p.id} />
-                })}
-              </span>
-            ) : null}
-          </a>
-          <a className={`${styles.tile} ${counts.openQuotes > 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/pedidos`}>
-            <span className={styles.tileIcon}><Icon name="quote" size={22} /></span>
-            <span className={styles.tileTitle}>Pedidos de orçamento</span>
-            <span className={styles.tileNum}>{counts.openQuotes}</span>
-            <span className={styles.tileSub}>{counts.openQuotes === 1 ? 'à espera da sua proposta' : 'à espera da sua proposta'}</span>
-          </a>
-          <a className={`${styles.tile} ${counts.unansweredReviews > 0 ? styles.tileHot : ''}`} href={`/painel/${provider.id}/avaliacoes`}>
-            <span className={styles.tileIcon}><Icon name="star" size={22} /></span>
-            <span className={styles.tileTitle}>Avaliações</span>
-            <span className={styles.tileNum}>{counts.reviews}</span>
-            <span className={styles.tileSub}>{counts.unansweredReviews ? `${counts.unansweredReviews} sem a sua resposta` : 'O que os clientes dizem'}</span>
-          </a>
-          <a className={styles.tile} href={`/painel/${provider.id}/cancelamento`}>
-            <span className={styles.tileIcon}><Icon name="policy" size={22} /></span>
-            <span className={styles.tileTitle}>Cancelamento</span>
-            <span className={styles.tileSub} style={{ marginTop: 6 }}>{counts.policyName ?? 'Política padrão'}</span>
-          </a>
-          {provider.isPublished ? (
-            <a className={styles.tile} href={`/fornecedor/${provider.slug}`}>
-              <span className={styles.tileIcon}><Icon name="eye" size={22} /></span>
-              <span className={styles.tileTitle}>A sua página</span>
-              <span className={styles.tileSub} style={{ marginTop: 6 }}>Ver como os clientes a vêem</span>
-            </a>
-          ) : null}
-        </div>
-
         <nav className={styles.jump} aria-label="Nesta página">
           <span>Nesta página:</span>
           <a href="#verificacao">Estado e documentos</a>
@@ -478,7 +533,7 @@ export default async function GerirNegocio({
           </form>
         </div>
       </div>
-    </main>
+    </>
   )
 }
 

@@ -1,6 +1,7 @@
 // Server-only. Reads through the database pool as the signed-in supplier.
 import 'server-only'
 
+import { cache } from 'react'
 import { asUser, asVisitor } from '@/lib/db'
 import type { Price } from '@/lib/money'
 
@@ -44,10 +45,11 @@ export async function ownedProviders(ownerId: string): Promise<OwnedProvider[]> 
   })
 }
 
-export async function ownedProvider(ownerId: string, providerId: string): Promise<OwnedProvider | null> {
+// Memoised per request: the supplier layout (slice 50) and the page both ask.
+export const ownedProvider = cache(async function ownedProvider(ownerId: string, providerId: string): Promise<OwnedProvider | null> {
   const all = await ownedProviders(ownerId)
   return all.find((p) => p.id === providerId) ?? null
-}
+})
 
 function toOwned(p: any): OwnedProvider {
   return {
@@ -147,7 +149,7 @@ export interface DashboardCounts {
 }
 
 /** The numbers on the painel's tiles (slice 43): what is waiting, at a glance. */
-export async function dashboardCounts(ownerId: string, providerId: string): Promise<DashboardCounts> {
+export const dashboardCounts = cache(async function dashboardCounts(ownerId: string, providerId: string): Promise<DashboardCounts> {
   return asUser(ownerId, async (c) => {
     const { rows } = await c.query<any>(
       `select
@@ -170,4 +172,4 @@ export async function dashboardCounts(ownerId: string, providerId: string): Prom
       reviews: r.reviews, unansweredReviews: r.unanswered, openQuotes: r.quotes, policyName: r.policy,
     }
   })
-}
+})

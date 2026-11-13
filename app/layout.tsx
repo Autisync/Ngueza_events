@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { preconnect } from 'react-dom'
 import { optionalEnv, siteUrl } from '@/lib/env'
 import './globals.css'
-import { SiteFooter, SiteHeader } from './SiteHeader'
+import { isDashboardPath, SiteFooter, SiteHeader } from './SiteHeader'
 import site from './site.module.css'
 
 export const metadata: Metadata = {
@@ -44,20 +45,24 @@ function photoOrigin(): string | null {
   try { return url ? new URL(url).origin : null } catch { return null }
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Photos live on another origin. Opening that connection while the HTML is
   // still arriving took the supplier page's hero photo off the critical path:
   // on a phone the DNS + TLS handshake cost more than the image itself.
   const photos = photoOrigin()
   if (photos) preconnect(photos)
 
+  // In a dashboard the skip link must pass the sidebar too, so the shell's
+  // own content area takes the target (app/dash/DashShell.tsx).
+  const dashboard = isDashboardPath((await headers()).get('x-pathname') ?? '')
   return (
     <html lang="pt-AO">
       <body>
         {/* Keyboard and screen-reader users skip the header (slice 49, review R056). */}
         <a className={site.skip} href="#conteudo">Saltar para o conteúdo</a>
         <SiteHeader />
-        <div id="conteudo" tabIndex={-1} className={site.content}>{children}</div>
+        <div id={dashboard ? undefined : 'conteudo'} tabIndex={dashboard ? undefined : -1}
+             className={site.content}>{children}</div>
         <SiteFooter />
         <Analytics />
         <SpeedInsights />

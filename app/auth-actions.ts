@@ -127,5 +127,5 @@ export async function doUpdatePassword(formData: FormData): Promise<void> {
 
   const ok = await updatePassword(access, password.data)
   if (!ok) redirect('/nova-palavra-passe?erro=falhou')
-  redirect('/conta?atualizado=1')
+  redirect('/conta/perfil?atualizado=1')
 }

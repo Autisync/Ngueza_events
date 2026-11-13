@@ -116,3 +116,11 @@
 .ghost { padding: 12px 22px; font-weight: 700; border: 1px solid var(--azul-500); color: var(--azul-700);
          border-radius: 9px; background: var(--branco); }
 .ghost:hover { background: var(--azul-050); }
+
+/* ---- inside a dashboard (slice 50): a plain title on the light ground. */
+:global(.ngz-dash) .top { background: none; color: var(--tinta); padding: 6px 0 0; margin-bottom: 22px; box-shadow: none; }
+:global(.ngz-dash) .wrap { max-width: 920px; margin: 0; padding: 0; }
+:global(.ngz-dash) .mark { color: var(--azul-600); letter-spacing: 0; text-transform: none; font-size: 0.84rem; }
+:global(.ngz-dash) .mark:hover { color: var(--azul-800); }
+:global(.ngz-dash) .title { color: var(--tinta); font-weight: 800; margin-top: 4px; }
+:global(.ngz-dash) .summary { color: var(--tinta-2); }
