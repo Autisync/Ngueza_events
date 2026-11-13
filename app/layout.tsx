@@ -45,6 +45,18 @@ function photoOrigin(): string | null {
   try { return url ? new URL(url).origin : null } catch { return null }
 }
 
+// The page loader's switch (slice 51; the bar itself is in globals.css).
+// Same-origin links and form posts only; a new tab, a download, a
+// modified click or a jump within the page shows nothing. `pageshow`
+// clears it when the back button restores a page from memory.
+const LOADER = `(function(){var d=document.documentElement;function on(){d.classList.add('ngz-loading')}
+document.addEventListener('click',function(e){if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+var a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a||(a.target&&a.target!=='_self')||a.hasAttribute('download'))return;
+var u=new URL(a.href,location.href);if(u.origin!==location.origin)return;
+if(u.pathname===location.pathname&&u.search===location.search&&u.hash)return;on()});
+document.addEventListener('submit',function(e){if(!e.defaultPrevented)on()});
+addEventListener('pageshow',function(){d.classList.remove('ngz-loading')})})();`
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Photos live on another origin. Opening that connection while the HTML is
   // still arriving took the supplier page's hero photo off the critical path:
@@ -58,6 +70,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="pt-AO">
       <body>
+        {/* A constant, not user data: safe under the CSP's 'unsafe-inline'. */}
+        <script dangerouslySetInnerHTML={{ __html: LOADER }} />
         {/* Keyboard and screen-reader users skip the header (slice 49, review R056). */}
         <a className={site.skip} href="#conteudo">Saltar para o conteúdo</a>
         <SiteHeader />

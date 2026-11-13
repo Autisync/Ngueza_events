@@ -27,12 +27,16 @@ import { env, optionalEnv } from '@/lib/env'
  * object ids, so switching never touches the database.
  */
 
-export type Variant = 'thumb' | 'card' | 'hero' | 'full'
+export type Variant = 'thumb' | 'card' | 'heroSm' | 'hero' | 'full'
 
 /** Widths chosen for the layouts that exist, not round numbers. */
 const VARIANTS: Record<Variant, { width: number; height: number; fit: string }> = {
   thumb: { width: 160, height: 120, fit: 'fill' },
   card: { width: 640, height: 427, fit: 'fill' },   // 3:2 search card, 2x on a 320px column
+  // The supplier page's hero on a phone: a 412px screen at 2x is ~828px.
+  // The 1280px hero cost a phone on mobile data ~2.5x the bytes for no
+  // visible gain (Lighthouse "image delivery", slice 51).
+  heroSm: { width: 828, height: 466, fit: 'fill' },
   hero: { width: 1280, height: 720, fit: 'fill' },
   full: { width: 2048, height: 2048, fit: 'fit' },
 }
