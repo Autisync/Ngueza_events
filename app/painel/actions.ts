@@ -64,7 +64,8 @@ export async function doUpdateBusiness(formData: FormData): Promise<void> {
   if (!parsed.success) {
     redirect(`/painel/${providerId}?erro=${String(parsed.error.issues[0]?.path[0] ?? 'dados')}`)
   }
-  await updateProvider(profile.id, providerId, parsed.data)
+  const result = await updateProvider(profile.id, providerId, parsed.data)
+  if (result === 'category_mode') redirect(`/painel/${providerId}?erro=categoria_tipo#perfil`)
   redirect(`/painel/${providerId}?guardado=1`)
 }
 

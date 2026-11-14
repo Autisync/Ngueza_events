@@ -37,10 +37,15 @@ chunk_size() {
   gzip -c ".next/static/chunks/$1" 2>/dev/null | wc -c | tr -d ' '
 }
 
+# A static page that is no longer prerendered is not "nothing to check":
+# it has become dynamic, and is measured from the live server below.
+# Skipping it silently measured nothing and passed (slice 51).
+STATIC_MISSING=()
 check_html_file() {
   local label="$1" html_file="$2"
   if [ ! -f "$html_file" ]; then
-    echo "  (skip: $html_file not found)"
+    echo "  (not prerendered: $label is measured as a dynamic route below)"
+    STATIC_MISSING+=("$label")
     return
   fi
   local total=0
@@ -70,6 +75,10 @@ check_html_file "/cancelamento"  ".next/server/app/cancelamento.html"
 if [ -z "${DATABASE_URL:-}" ]; then
   echo
   echo "── dynamic routes: skipped, no DATABASE_URL ──"
+  if [ ${#STATIC_MISSING[@]} -gt 0 ]; then
+    echo "::error::not measured at all without DATABASE_URL: ${STATIC_MISSING[*]}"
+    exit 1
+  fi
   exit $FAIL
 fi
 
@@ -94,7 +103,15 @@ fi
 check_live_route() {
   local label="$1" path="$2"
   local html; html=$(mktemp)
-  curl -sS "http://localhost:$PORT$path" -o "$html"
+  # The status matters: a renamed slug or a crashing page used to be
+  # measured as the 404 or 500 page, which is small, and passed.
+  local status; status=$(curl -sS -o "$html" -w '%{http_code}' "http://localhost:$PORT$path")
+  if [ "$status" != "200" ]; then
+    echo "::error::$label — HTTP $status, expected 200. Nothing was measured."
+    FAIL=1
+    rm -f "$html"
+    return
+  fi
   local total=0
   for f in $(grep -oE '/_next/static/chunks/[a-zA-Z0-9_.-]+\.js' "$html" | sort -u | sed 's#/_next/static/chunks/##'); do
     total=$((total + $(chunk_size "$f")))
@@ -103,6 +120,9 @@ check_live_route() {
   report "$label" "$total"
 }
 
+for missing in ${STATIC_MISSING[@]+"${STATIC_MISSING[@]}"}; do
+  check_live_route "$missing" "$missing"
+done
 check_live_route "/"                                     "/"
 check_live_route "/procurar"                              "/procurar"
 check_live_route "/fornecedor/salao-horizonte-talatona"   "/fornecedor/salao-horizonte-talatona"

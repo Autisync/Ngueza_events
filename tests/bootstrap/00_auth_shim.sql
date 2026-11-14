@@ -65,6 +65,50 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- A listing of one kind, with everything it needs to exist: an owner's
+-- category and location (created once per tag), the provider, and for a
+-- venue its one space. New SQL tests build fixtures through this, so the
+-- day the venue/service switch moves from the provider to the offering
+-- (the marketplace pivot) it changes here, not in every test file.
+--
+--   select tests_provider('<owner uuid>', 'venue',   'x1');
+--   select tests_provider('<owner uuid>', 'service', 'x2', false);  -- unpublished
+--
+-- Returns the provider id. Run it as the superuser, before `set role`.
+-- ---------------------------------------------------------------------
+create or replace function tests_provider(
+  p_owner uuid, p_kind text, p_tag text, p_public boolean default true
+) returns uuid language plpgsql as $$
+declare
+  v_category uuid;
+  v_location uuid;
+  v_provider uuid;
+begin
+  insert into categories (slug, name, default_supplier_type)
+  values ('t-' || p_tag || '-' || p_kind, 'Categoria ' || p_tag || ' (' || p_kind || ')', p_kind)
+  on conflict (slug) do update set name = excluded.name
+  returning id into v_category;
+
+  select id into v_location from locations where slug = 't-' || p_tag || '-zona';
+  if v_location is null then
+    insert into locations (level, slug, name)
+    values ('province', 't-' || p_tag || '-zona', 'Zona ' || p_tag)
+    returning id into v_location;
+  end if;
+
+  insert into providers (owner_id, supplier_type, slug, name, category_id, location_id,
+                         verification_status, is_published)
+  values (p_owner, p_kind, 't-' || p_tag || '-' || p_kind, 'Fornecedor ' || p_tag, v_category, v_location,
+          case when p_public then 'verified' else 'pending' end, p_public)
+  returning id into v_provider;
+
+  if p_kind = 'venue' then
+    insert into resources (provider_id, name, capacity) values (v_provider, 'Espaço', 100);
+  end if;
+  return v_provider;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Real Supabase already grants the service role access to the auth
 -- schema. Locally the shim owns it, so grant the same thing — otherwise
 -- tests that provision identities fail with "permission denied for

@@ -47,6 +47,27 @@ export function formatMinor(minor: Minor, opts: { compact?: boolean } = {}): str
   return `${negative ? '-' : ''}${body} Kz`
 }
 
+/** `sumMinor([150000n, null, 2500n])` → 152500n. Nulls count as nothing:
+ *  a line with no amount yet does not make the total unknown. */
+export function sumMinor(amounts: Iterable<Minor | null | undefined>): Minor {
+  let total = 0n
+  for (const a of amounts) total += a ?? 0n
+  return total
+}
+
+/** A unit price times a whole quantity: `multiplyMinor(450000n, 3)` →
+ *  1350000n. Line totals and per-person prices are exactly where a
+ *  `Number(price) * qty` slips in, so the quantity must be a safe,
+ *  non-negative integer and the arithmetic stays in bigint. */
+export function multiplyMinor(unit: Minor, quantity: number | bigint): Minor {
+  if (typeof quantity === 'number' && !Number.isSafeInteger(quantity)) {
+    throw new Error(`quantity must be a whole number, got ${quantity}`)
+  }
+  const q = BigInt(quantity)
+  if (q < 0n) throw new Error(`quantity must not be negative, got ${quantity}`)
+  return unit * q
+}
+
 /**
  * The price spectrum from `services.price_mode`. Many suppliers here price
  * by negotiation; forcing one public number produces either a refusal to

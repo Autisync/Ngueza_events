@@ -1,6 +1,6 @@
 # NGUEZA — agent contract
 
-Read this file, `spec/schema.md`, `spec/states.md`, and the slice file you were
+Read this file, `spec/schema.sql`, `spec/states.md`, and the slice file you were
 given, before writing any code. The database is the source of truth for this
 system. If your code and the schema disagree, the schema is right.
 
@@ -12,6 +12,13 @@ A marketplace connecting clients to event and service suppliers in Angola.
 Launch is Luanda, venues first. The architecture must let it become a general
 services marketplace (cleaning, plumbing, tutoring, transport) without a
 rewrite — that is why categories and locations are rows, not code.
+
+**Where it is going.** In November 2026 NGUEZA's owner decided to open the
+marketplace to every kind of service and to physical products, with events as
+the first vertical rather than the whole product. The decisions, the plan and
+the slice order are in `spec/pivot/plan.md`; the map of what in this codebase
+still assumes events is `spec/pivot/inventory.md`. Read both before a slice
+numbered 51 or later.
 
 The product answers one question:
 
@@ -123,12 +130,18 @@ Fix the spec file, not the prompt.
 
 | Gate | What it protects |
 |---|---|
-| `typecheck` | Types are generated from the schema, so drift is a compile error |
+| `typecheck` | Types follow the schema; drift is a compile error |
+| `lint` | Conventions, plus the forbidden patterns above (float money, `asSystem` in a browser path) |
 | `test:unit` | State machine transitions, expiry timing, money arithmetic |
-| `test:db` | RLS policies, asserted explicitly per role |
-| `test:concurrency` | 50 simultaneous bookings for one slot → exactly one wins |
-| `test:e2e` | Slice acceptance criteria, 390px viewport, seeded database |
-| `lint` | Conventions, plus the forbidden patterns above |
+| `test:integration` | Every `lib/` module against a seeded database, as the person it runs for |
+| `db:test` | `tests/sql/*.sql`: RLS asserted per role, constraints, the catalogue rules (money is bigint, no enums, RLS on every table), then `tests/concurrency.sh`: 50 simultaneous bookings for one slot → exactly one wins |
+
+CI adds what needs a build: no secret in the client bundle, the 180KB route
+budget, the LCP budget, and `spec/schema.sql` in sync with the migrations
+(`npm run schema:dump`).
+
+There is no end-to-end browser suite yet. Until one exists, check a slice's
+screens by hand at 390px against a seeded database, and say so in the PR.
 
 ---
 

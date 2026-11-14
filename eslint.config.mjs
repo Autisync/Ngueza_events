@@ -15,6 +15,17 @@ const config = [
           selector: "NewExpression[callee.name='Number'], CallExpression[callee.name='parseFloat']",
           message: 'Money is bigint cêntimos. Use lib/money.ts, never float parsing.',
         },
+        {
+          // Number(totalMinor), Number(row.price_minor), Number(item.fee)…
+          // The name says money; a JS number loses cêntimos past 2^53 and
+          // invites `* qty` in floats. Counts read from SQL as ::int need
+          // no Number() at all.
+          selector:
+            "CallExpression[callee.name='Number'] > Identifier.arguments[name=/minor|price|amount|fee|budget|deposit|shipping/i], " +
+            "CallExpression[callee.name='Number'] > MemberExpression.arguments > Identifier.property[name=/minor|price|amount|fee|budget|deposit|shipping/i]",
+          message:
+            'This looks like money. Keep it bigint: BigInt(value), and sumMinor/multiplyMinor from lib/money.ts for arithmetic.',
+        },
       ],
       'no-restricted-imports': [
         'error',
