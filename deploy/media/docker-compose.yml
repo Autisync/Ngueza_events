@@ -56,6 +56,13 @@ services:
     volumes:
       - minio-data:/data
     ports:
+      # Portainer's own UI listens on 9000 (it holds 127.0.0.1:9000 on the
+      # production host). When this binding collides, Docker does NOT stop
+      # the container: it starts MinIO with no network and no ports at all,
+      # it still reports "healthy" (the healthcheck only talks to itself),
+      # and every neighbour fails with "lookup minio ... server
+      # misbehaving". Production sets MINIO_PORT=9010 — see
+      # stack.env.example.
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
@@ -98,9 +105,24 @@ services:
     # the default, so a later MinIO default cannot quietly open either. It
     # re-runs on every stack start, so restarting an existing deployment
     # closes a media bucket that an older version of this file opened.
+    # The alias step retries for up to a minute: a one-shot job that dies on
+    # the first DNS hiccup leaves the buckets uncreated with only a stale
+    # log line to show for it. If it still cannot reach minio after that,
+    # it says what to check instead of just repeating mc's error.
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      i=0;
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD >/dev/null 2>&1; do
+        i=$$((i+1));
+        if [ $$i -ge 30 ]; then
+          echo 'minio-init: cannot reach minio:9000 after 60s.';
+          echo 'Check that ngueza-minio is attached to the media network and that MINIO_PORT is not already taken on the host (Portainer uses 9000).';
+          mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+          exit 1;
+        fi;
+        sleep 2;
+      done &&
+      echo 'alias local ready' &&
       mc mb --ignore-existing local/$$MEDIA_BUCKET &&
       mc anonymous set none local/$$MEDIA_BUCKET &&
       mc mb --ignore-existing local/$$DOCUMENTS_BUCKET &&
