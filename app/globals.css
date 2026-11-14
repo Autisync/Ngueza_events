@@ -85,3 +85,28 @@ a { color: var(--azul-500); }
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------
+   The page loader (slice 51). Every link here is a plain <a> and every
+   form a real POST, so the browser loads a whole page: this bar is the
+   only sign that a tap was heard, on a phone, on slow data. A tiny inline
+   script (app/layout.tsx) adds .ngz-loading on click or submit; the bar
+   waits 150 ms before showing, so fast pages never flicker.
+   --------------------------------------------------------------------- */
+html.ngz-loading body::before {
+  content: ''; position: fixed; z-index: 1000; top: 0; left: 0; right: 0; height: 3px;
+  pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--azul-500) 30%, var(--azul-300) 50%, transparent 70%);
+  background-size: 50% 100%; background-repeat: no-repeat;
+  animation: ngz-load-show 0s linear 150ms forwards, ngz-load-run 1.1s ease-in-out 150ms infinite;
+}
+@keyframes ngz-load-show { to { opacity: 1; } }
+@keyframes ngz-load-run {
+  from { background-position: -50% 0; }
+  to { background-position: 150% 0; }
+}
+/* With reduced motion the bar still appears, just without travelling. */
+@media (prefers-reduced-motion: reduce) {
+  html.ngz-loading body::before { background: var(--azul-500); opacity: 1; animation: none; }
+}
+html.ngz-loading { cursor: progress; }
