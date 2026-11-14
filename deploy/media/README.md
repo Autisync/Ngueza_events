@@ -50,6 +50,13 @@ The one that catches everyone:
 > `http://minio:9000` but the browser talks to `https://media.ngueza.com`,
 > every upload fails with `SignatureDoesNotMatch` and no other clue.
 
+> **Do not use port 9000 on the server.** Portainer's own UI already listens
+> on `127.0.0.1:9000`. If `MINIO_PORT` collides, Docker still starts MinIO
+> and it even shows *healthy* — but with no network and no ports, so
+> `ngueza-minio-init` fails with `lookup minio on 127.0.0.11:53: server
+> misbehaving`, imgproxy can't read originals, and uploads fail. Production
+> uses `MINIO_PORT=9010`; point the reverse proxy at that.
+
 ## 4. Deploy, then check
 
 ```

@@ -137,6 +137,13 @@ placeholders.
 **Do:** restart the stack. `minio-init` re-runs and keeps both buckets
 private. Confirm that `GET /ngueza-media/` still answers 403.
 
+**If `ngueza-minio-init` logs `lookup minio on 127.0.0.11:53: server
+misbehaving`:** MinIO is running but detached from its network — open
+`ngueza-minio` in Portainer; if *Networks* and *Ports* are empty, its host
+port is taken (usually by Portainer on 9000). Set `MINIO_PORT` to a free
+port (production uses 9010) in the stack's environment variables and
+redeploy. A restart alone will not fix it.
+
 ## "Demasiadas tentativas" for everyone
 
 **Cause:** Supabase Auth's own per-IP limit. Every sign-in reaches it from
