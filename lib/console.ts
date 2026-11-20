@@ -2,6 +2,7 @@
 import 'server-only'
 
 import { asUser } from '@/lib/db'
+import { formatMinor } from '@/lib/money'
 
 /**
  * The support console (slice 38, review R040). One search box for whatever
@@ -84,33 +85,40 @@ export interface TimelineEntry {
 /** Everything that happened to one booking, oldest first. */
 export async function bookingTimeline(adminId: string, bookingId: string): Promise<TimelineEntry[]> {
   return asUser(adminId, async (c) => {
-    const { rows } = await c.query<{ at: string; kind: TimelineKind; title: string; detail: string | null }>(
+    // The amount crosses as text and is formatted by lib/money. It used to
+    // be `(amount_minor / 100)::text` here, which dropped the cêntimos and
+    // the pt-AO grouping: 1 800 000,50 Kz read as "1800000 Kz".
+    const { rows } = await c.query<{
+      at: string; kind: TimelineKind; title: string; detail: string | null; amount_minor: string | null
+    }>(
       `select created_at as at, 'state' as kind,
               coalesce(from_status || ' → ', '') || to_status as title,
-              (select coalesce(full_name, email::text) from profiles where id = be.actor_id) as detail
+              (select coalesce(full_name, email::text) from profiles where id = be.actor_id) as detail,
+              null::text as amount_minor
          from booking_events be where booking_id = $1
        union all
-       select created_at, 'payment',
-              'Comprovativo: ' || (amount_minor / 100)::text || ' Kz — ' || status,
-              reference
+       select created_at, 'payment', status, reference, amount_minor::text
          from payments where booking_id = $1
        union all
-       select confirmed_at, 'payment', 'Comprovativo revisto: ' || status, null
+       select confirmed_at, 'payment', 'Comprovativo revisto: ' || status, null, null
          from payments where booking_id = $1 and confirmed_at is not null
        union all
-       select created_at, 'email', kind || ' → ' || to_email::text, status || coalesce(' · ' || last_error, '')
+       select created_at, 'email', kind || ' → ' || to_email::text, status || coalesce(' · ' || last_error, ''), null
          from notification_outbox where context->>'booking_id' = $1::text
        union all
-       select created_at, 'help', 'Pedido de ajuda (' || topic || ') de ' || email::text, left(message, 300)
+       select created_at, 'help', 'Pedido de ajuda (' || topic || ') de ' || email::text, left(message, 300), null
          from support_requests where upper(booking_ref) = upper(left($1::text, 8))
        union all
-       select n.created_at, 'note', 'Nota de ' || coalesce(pr.full_name, pr.email::text, 'administrador'), n.body
+       select n.created_at, 'note', 'Nota de ' || coalesce(pr.full_name, pr.email::text, 'administrador'), n.body, null
          from admin_notes n left join profiles pr on pr.id = n.author_id
         where n.target_type = 'booking' and n.target_id = $1
        order by 1`,
       [bookingId],
     )
-    return rows
+    return rows.map((r) => ({
+      at: r.at, kind: r.kind, detail: r.detail,
+      title: r.amount_minor === null ? r.title : `Comprovativo: ${formatMinor(BigInt(r.amount_minor))} — ${r.title}`,
+    }))
   })
 }
 

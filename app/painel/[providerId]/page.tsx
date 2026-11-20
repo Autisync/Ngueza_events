@@ -38,6 +38,7 @@ const ERRORS: Record<string, string> = {
   servico_minCapacity: 'A capacidade mínima tem de estar entre 1 e 100 000.',
   servico_maxCapacity: 'A capacidade máxima tem de estar entre 1 e 100 000.',
   servico_priceMax: 'O valor máximo não pode ser inferior ao mínimo.',
+  categoria_tipo: 'Essa categoria funciona de outra forma (espaço com data exclusiva ou serviço). Escolha uma categoria do mesmo tipo, ou registe um novo negócio.',
   dados: 'Verifique os dados introduzidos.',
 }
 

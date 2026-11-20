@@ -58,3 +58,22 @@ describe('priceTransparencyScore', () => {
       .toBeGreaterThan(priceTransparencyScore({ mode: 'on_request' }))
   })
 })
+
+describe('sumMinor and multiplyMinor (slice 51)', () => {
+  it('adds amounts in bigint, treating missing ones as nothing', async () => {
+    const { sumMinor } = await import('@/lib/money')
+    expect(sumMinor([150_000n, null, 2_500n, undefined])).toBe(152_500n)
+    expect(sumMinor([])).toBe(0n)
+    // Past 2^53, where a JS number would already have lost a cêntimo.
+    expect(sumMinor([9_007_199_254_740_993n, 1n])).toBe(9_007_199_254_740_994n)
+  })
+  it('multiplies a unit price by a whole quantity only', async () => {
+    const { multiplyMinor } = await import('@/lib/money')
+    expect(multiplyMinor(450_000n, 3)).toBe(1_350_000n)
+    expect(multiplyMinor(450_000n, 0)).toBe(0n)
+    expect(multiplyMinor(5_000_00n, 180n)).toBe(900_000_00n)
+    expect(() => multiplyMinor(450_000n, 1.5)).toThrow()
+    expect(() => multiplyMinor(450_000n, -1)).toThrow()
+    expect(() => multiplyMinor(450_000n, Number.NaN)).toThrow()
+  })
+})

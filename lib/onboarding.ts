@@ -180,28 +180,41 @@ export async function createProvider(
   return { ok: false, reason: 'slug_unavailable' }
 }
 
+export type UpdateProviderResult = 'ok' | 'not_found' | 'category_mode'
+
 export async function updateProvider(
   ownerId: string,
   providerId: string,
   input: ProviderInput,
-): Promise<boolean> {
-  return asUser(ownerId, async (c) => {
-    // No `and owner_id = $1` here: providers_owner_update already scopes
-    // this, and duplicating it invites the two rules to disagree.
-    const result = await c.query(
-      `update providers
-          set name = $2, description = $3, category_id = $4, location_id = $5,
-              address_line = $6, phone = $7, whatsapp = $8, website = $9,
-              years_active_declared = $10
-        where id = $1`,
-      [
-        providerId, input.name, input.description ?? null, input.categoryId,
-        input.locationId, input.addressLine ?? null, input.phone ?? null,
-        input.whatsapp ?? null, input.website || null, input.yearsActiveDeclared ?? null,
-      ],
-    )
-    return (result.rowCount ?? 0) > 0
-  })
+): Promise<UpdateProviderResult> {
+  try {
+    return await asUser(ownerId, async (c) => {
+      // No `and owner_id = $1` here: providers_owner_update already scopes
+      // this, and duplicating it invites the two rules to disagree.
+      const result = await c.query(
+        `update providers
+            set name = $2, description = $3, category_id = $4, location_id = $5,
+                address_line = $6, phone = $7, whatsapp = $8, website = $9,
+                years_active_declared = $10
+          where id = $1`,
+        [
+          providerId, input.name, input.description ?? null, input.categoryId,
+          input.locationId, input.addressLine ?? null, input.phone ?? null,
+          input.whatsapp ?? null, input.website || null, input.yearsActiveDeclared ?? null,
+        ],
+      )
+      return (result.rowCount ?? 0) > 0 ? 'ok' : 'not_found'
+    })
+  } catch (error) {
+    // 0047: a venue cannot move into a service category (or the reverse),
+    // nor into a retired one. The category decides how bookings behave.
+    const e = error as { code?: string; constraint?: string }
+    if (e.code === '23514'
+        && (e.constraint === 'providers_category_matches_mode' || e.constraint === 'providers_category_active')) {
+      return 'category_mode'
+    }
+    throw error
+  }
 }
 
 export async function addResource(
