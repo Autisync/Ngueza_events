@@ -4,6 +4,7 @@ import { queueCounts, recentAudit } from '@/lib/admin'
 import { recentNotifications } from '@/lib/notifications'
 import { Chrome } from '../Chrome'
 import styles from '../admin.module.css'
+import { AuditChanges } from '../AuditChanges'
 
 export const metadata: Metadata = { title: 'Registo de alterações', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -82,11 +83,7 @@ export default async function Registo() {
                   {new Date(a.created_at).toLocaleString('pt-PT', { timeZone: 'Africa/Luanda' })}
                 </span>{' '}
                 <b>{a.actor_email ?? 'sistema'}</b> · {a.target_type} ·{' '}
-                {Object.keys(a.after).map((k) => (
-                  <span key={k}>
-                    {k}: {JSON.stringify(a.before[k])} → {JSON.stringify(a.after[k])}{' '}
-                  </span>
-                ))}
+                <AuditChanges before={a.before} after={a.after} />
               </div>
             ))
           )}

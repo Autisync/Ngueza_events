@@ -67,8 +67,18 @@ links as (
       ('fotografia',  'tecnologia-e-profissionais'),
       ('video',       'tecnologia-e-profissionais')
     ) as v(slug, under)
-    join new_roots r on r.slug = v.under
+    -- The vertical just added, or one an administrator had already made
+    -- by hand under the same slug (the statement cannot see its own new
+    -- rows in `categories`, hence the union).
+    join (select id, slug from new_roots
+          union all
+          select id, slug from categories) r on r.slug = v.under
     join categories c on c.slug = v.slug
+   where exists (select 1 from new_roots)
+     -- Skip a link the redundancy guard would refuse (a hand-made vertical
+     -- that already holds the category), rather than abort the seed.
+     and not exists (select 1 from category_descendants(c.id) d where d.id = r.id)
+     and not exists (select 1 from category_descendants(r.id) d where d.id = c.id)
   on conflict do nothing
   returning 1
 ),
