@@ -493,3 +493,12 @@ textarea.input { min-height: 84px; resize: vertical; }
 .check input { width: 18px; height: 18px; accent-color: var(--azul-600); }
 .sumOk { color: var(--bom); font-weight: 700; }
 .sumOff { color: var(--aviso); font-weight: 700; }
+
+/* ---- loading skeleton (slice 51): the page's shape while its data comes */
+.skel { display: block; border-radius: 10px; background: linear-gradient(90deg, var(--azul-050) 25%, var(--azul-100) 50%, var(--azul-050) 75%);
+        background-size: 200% 100%; animation: ngz-skel 1.2s ease-in-out infinite; }
+@keyframes ngz-skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.skelTitle { width: min(320px, 70%); height: 30px; margin: 10px 0 10px; }
+.skelLine { width: min(460px, 90%); height: 14px; margin-bottom: 26px; }
+.skelStat { height: 74px; }
+.skelCard { height: 220px; }

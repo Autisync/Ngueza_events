@@ -97,7 +97,9 @@ export default async function ProviderPage({
   // when media is not configured, and then the placeholder shows instead.
   const gallery = provider.photos.flatMap((photo) => {
     const url = coverImageUrl(photo.externalId, 'hero')
-    return url ? [{ ...photo, url }] : []
+    const small = coverImageUrl(photo.externalId, 'heroSm')
+    // A phone picks the 828px version, a wide screen the 1280px one.
+    return url ? [{ ...photo, url, srcSet: small ? `${small} 828w, ${url} 1280w` : undefined }] : []
   })
 
   const jsonLd = {
@@ -149,7 +151,8 @@ export default async function ProviderPage({
             {gallery.map((photo, i) => (
               <li className={styles.slide} key={photo.externalId}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a signed imgproxy URL, not a static local asset next/image can optimise */}
-                <img className={styles.heroImg} src={photo.url}
+                <img className={styles.heroImg} src={photo.url} srcSet={photo.srcSet}
+                     sizes="(max-width: 860px) 100vw, 1280px"
                      alt={photo.altText ?? `${provider.name} — fotografia ${i + 1}`}
                      loading={i === 0 ? 'eager' : 'lazy'}
                      fetchPriority={i === 0 ? 'high' : undefined}
