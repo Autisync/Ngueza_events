@@ -5,6 +5,7 @@ import { formOptions } from '@/lib/painel'
 import { doPostQuoteRequest } from '../quote-actions'
 import styles from '../painel/painel.module.css'
 import { todayInLuanda, uuidOrUndefined } from '@/lib/safe'
+import { CategoryOptions } from '@/app/CategoryOptions'
 
 export const metadata: Metadata = { title: 'Pedir orçamento', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -54,9 +55,7 @@ export default async function PedirOrcamento({
                 <select className={styles.select} name="categoryId" required
                         defaultValue={preset && categories.some((c) => c.id === preset) ? preset : ''}>
                   <option value="" disabled>Escolha…</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  <CategoryOptions options={categories} />
                 </select>
               </label>
 

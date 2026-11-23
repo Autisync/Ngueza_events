@@ -4,6 +4,8 @@ import { recordSearch, search, type Cursor, type SearchSort } from '@/lib/search
 import { majorInput, parseMajor } from '@/lib/money'
 import { amenitiesInUse } from '@/lib/amenities'
 import { isCrawler, sessionId } from '@/lib/session'
+import { categoriesWithSupply, openCategories, type CategoryOption } from '@/lib/categories'
+import { CategoryOptions } from '@/app/CategoryOptions'
 import { EmptyState } from '@/app/EmptyState'
 import { SupplierCard } from '@/app/SupplierCard'
 import styles from './search.module.css'
@@ -41,29 +43,31 @@ function budget(raw: string | undefined): bigint | undefined {
   }
 }
 
-type Category = { id: string; slug: string; name: string; type: 'venue' | 'service' }
 type Municipality = { id: string; slug: string; name: string }
 
-async function filters(): Promise<{ categories: Category[]; municipalities: Municipality[] }> {
+async function filters(): Promise<{
+  categories: CategoryOption[]
+  open: CategoryOption[]
+  municipalities: Municipality[]
+}> {
   return asVisitor(async (c) => {
-    // The same set the homepage offers: venues and services alike. The
-    // homepage linked DJs and make-up here while this list only held
-    // venue categories, so the filter silently vanished.
-    // Only categories somebody can actually be found under (slice 42,
-    // review R002): a filter that can only ever return "nada encontrado"
-    // is a dead end. Visitors see only public suppliers (RLS).
-    const cats = await c.query<Category>(
-      `select c.id, c.slug, c.name, c.default_supplier_type as type from categories c
-        where c.is_active and c.parent_id is not null
-          and (exists (select 1 from providers p where p.category_id = c.id and p.is_published)
-               or exists (select 1 from services s join providers p on p.id = s.provider_id
-                           where s.category_id = c.id and s.is_active and p.is_published))
-        order by c.default_supplier_type = 'venue' desc, c.sort_order`,
-    )
+    // The picker offers only categories somebody can actually be found
+    // under (slice 42, review R002): a filter that can only ever return
+    // "nada encontrado" is a dead end. Supply now counts across the
+    // category's scope (slice 52), so a vertical, or a category that only
+    // has suppliers cross-listed into it, is offered too. Visitors see
+    // only public suppliers (RLS).
+    const categories = await categoriesWithSupply(c)
+    // A link may name any open category, with supply or not: the
+    // planner's "procurar" links, booking emails, the rail. Resolving
+    // only against the picker used to drop the filter silently and show
+    // everything (and record the search without its category, losing
+    // the recruitment signal for an empty one).
+    const open = await openCategories(c)
     const locs = await c.query<Municipality>(
       `select id, slug, name from locations where is_active and level = 'municipality' order by name`,
     )
-    return { categories: cats.rows, municipalities: locs.rows }
+    return { categories, open, municipalities: locs.rows }
   })
 }
 
@@ -93,12 +97,12 @@ const encodeCursor = (c: Cursor) => Buffer.from(JSON.stringify(c)).toString('bas
 
 export default async function Procurar({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams
-  const [{ categories, municipalities }, amenities] = await Promise.all([filters(), amenitiesInUse()])
+  const [{ categories, open, municipalities }, amenities] = await Promise.all([filters(), amenitiesInUse()])
   // Repeated ?comodidade=gerador&comodidade=estacionamento; only known
   // slugs survive, so nothing hand-typed reaches the query.
   const askedAmenities = [params.comodidade ?? []].flat()
   const chosen = amenities.filter((a) => askedAmenities.includes(a.slug))
-  const category = resolve(params.categoria, categories)
+  const category = resolve(params.categoria, open)
   const zone = resolve(params.zona, municipalities)
   const date = calendarDate(params.data)
   const pastDate = date !== undefined && date < todayInLuanda()
@@ -116,7 +120,11 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
   }
 
   const results = await search(query)
-  const noun = category?.type === 'service' ? ['fornecedor', 'fornecedores'] : ['espaço', 'espaços']
+  const noun = !category || category.defaultSupplierType === 'venue' ? ['espaço', 'espaços'] : ['fornecedor', 'fornecedores']
+  // "Tudo em Eventos" only means something once there is a second vertical.
+  const supplied = new Set(categories.map((c) => c.id))
+  const verticals = new Set(categories.map((c) => c.rootId)).size
+  const wholeVertical = (rootId: string) => verticals > 1 && supplied.has(rootId)
 
   // Zero-result searches are the supplier recruitment list, written by
   // clients (§48). Nothing here can be backfilled later. A "Ver mais"
@@ -150,16 +158,8 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
               <span className={styles.lab}>O que procura</span>
               <select className={styles.ctl} name="categoria" defaultValue={category?.id ?? ''}>
                 <option value="">Todas as categorias</option>
-                <optgroup label="Espaços">
-                  {categories.filter((c) => c.type === 'venue').map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Serviços">
-                  {categories.filter((c) => c.type === 'service').map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </optgroup>
+                <CategoryOptions options={categories} wholeVertical={wholeVertical}
+                                 current={category} currentLabel="Sem fornecedores ainda" />
               </select>
             </label>
             <label className={styles.f}>

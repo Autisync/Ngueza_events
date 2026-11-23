@@ -19,6 +19,7 @@ import { supplierOverview } from '@/lib/dashboard'
 import { luandaToday, monthLabels } from '@/lib/event-plan-math'
 import { Card, Columns, DateTile, Empty, Grid, PageHead, Pill, Ranked, Stat, dash } from '@/app/dash/parts'
 import styles from '../painel.module.css'
+import { CategoryOptions } from '@/app/CategoryOptions'
 
 export const metadata: Metadata = { title: 'Gerir negócio', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,7 @@ const ERRORS: Record<string, string> = {
   servico_maxCapacity: 'A capacidade máxima tem de estar entre 1 e 100 000.',
   servico_priceMax: 'O valor máximo não pode ser inferior ao mínimo.',
   categoria_tipo: 'Essa categoria funciona de outra forma (espaço com data exclusiva ou serviço). Escolha uma categoria do mesmo tipo, ou registe um novo negócio.',
+  categoria_indisponivel: 'Essa categoria não está disponível. Escolha outra da lista.',
   dados: 'Verifique os dados introduzidos.',
 }
 
@@ -482,9 +484,10 @@ export default async function GerirNegocio({
               <label className={styles.field}>
                 <span className={styles.label}>Categoria</span>
                 <select className={styles.select} name="categoryId" defaultValue={provider.categoryId}>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  {/* A retired category stays selected, so saving the
+                      phone number does not quietly move the listing. */}
+                  <CategoryOptions options={categories}
+                                   current={{ id: provider.categoryId, name: 'Manter a categoria actual' }} />
                 </select>
               </label>
               <label className={styles.field}>

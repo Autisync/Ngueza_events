@@ -43,7 +43,7 @@ export async function doPostQuoteRequest(formData: FormData): Promise<void> {
   }
 
   const result = await postQuoteRequest(profile.id, parsed.data)
-  if (!result.ok) redirect('/pedir-orcamento?erro=dados')
+  if (!result.ok) redirect(`/pedir-orcamento?erro=${result.reason === 'category_unavailable' ? 'categoryId' : 'dados'}`)
   redirect('/conta/pedidos?enviado=1')
 }
 

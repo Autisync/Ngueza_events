@@ -42,7 +42,7 @@ export async function doRegisterBusiness(formData: FormData): Promise<void> {
   }
 
   const result = await createProvider(profile.id, parsed.data)
-  if (!result.ok) redirect('/registar-negocio?erro=nome')
+  if (!result.ok) redirect(`/registar-negocio?erro=${result.reason === 'category_unavailable' ? 'categoryId' : 'nome'}`)
   redirect(`/painel/${result.providerId}?novo=1`)
 }
 
@@ -66,6 +66,7 @@ export async function doUpdateBusiness(formData: FormData): Promise<void> {
   }
   const result = await updateProvider(profile.id, providerId, parsed.data)
   if (result === 'category_mode') redirect(`/painel/${providerId}?erro=categoria_tipo#perfil`)
+  if (result === 'category_unavailable') redirect(`/painel/${providerId}?erro=categoria_indisponivel#perfil`)
   redirect(`/painel/${providerId}?guardado=1`)
 }
 
@@ -90,7 +91,8 @@ export async function doAddService(formData: FormData): Promise<void> {
   if (!parsed.success) {
     redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}#servicos`)
   }
-  await addService(profile.id, providerId, parsed.data)
+  const added = await addService(profile.id, providerId, parsed.data)
+  if (added === 'category_unavailable') redirect(`/painel/${providerId}?erro=categoria_indisponivel#servicos`)
   redirect(`/painel/${providerId}?guardado=1#servicos`)
 }
 
@@ -106,6 +108,9 @@ export async function doUpdateService(formData: FormData): Promise<void> {
     redirect(`/painel/${providerId}?erro=servico_${String(parsed.error.issues[0]?.path[0] ?? 'dados')}&editar=${serviceId}#servico-${serviceId}`)
   }
   const ok = await updateService(profile.id, providerId, serviceId, parsed.data)
+  if (ok === 'category_unavailable') {
+    redirect(`/painel/${providerId}?erro=categoria_indisponivel&editar=${serviceId}#servico-${serviceId}`)
+  }
   redirect(`/painel/${providerId}?${ok ? 'guardado=1' : 'erro=dados'}#servico-${serviceId}`)
 }
 

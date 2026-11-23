@@ -42,6 +42,8 @@ export interface PublicProvider {
   categoryName: string
   /** For the hero illustration when there are no photos (slice 43). */
   categorySlug: string
+  /** Its icon key, or its nearest ancestor's (slice 52). */
+  categoryIcon: string | null
   /** Every category this provider is actually discoverable under:
    *  categoryName plus each active service's own category, deduplicated,
    *  categoryName first (slice 22). What search and quote-request
@@ -97,6 +99,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
               p.location_id, p.address_line, p.lat, p.lng, p.phone, p.whatsapp,
               p.website, p.years_active_declared, p.verified_at, p.is_demo,
               cat.name as category_name, cat.slug as category_slug,
+              category_icon(cat.id) as category_icon,
               (select array_agg(l.name order by depth desc)
                  from (
                    with recursive up as (
@@ -160,6 +163,7 @@ export async function getProvider(slug: string): Promise<PublicProvider | null> 
       supplierType: p.supplier_type,
       categoryName: p.category_name,
       categorySlug: p.category_slug,
+      categoryIcon: p.category_icon,
       categoryNames,
       locationPath: (p.location_path ?? []) as string[],
       addressLine: p.address_line,

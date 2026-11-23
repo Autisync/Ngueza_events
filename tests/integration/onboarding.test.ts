@@ -15,6 +15,7 @@ const NEWCOMER = '30000000-0000-0000-0000-0000000000aa'
 const OTHER = '30000000-0000-0000-0000-0000000000bb'
 const SALOES = '20000000-0000-0000-0000-000000000010'   // venue category
 const DJS = '20000000-0000-0000-0000-000000000020'      // service category
+const EVENTOS = '20000000-0000-0000-0000-000000000001'  // the vertical: a heading
 const TALATONA = '10000000-0000-0000-0000-000000000010'
 
 const ids = async () =>
@@ -180,6 +181,23 @@ describe('one supplier cannot touch another', () => {
       c.query(`update providers set supplier_type = 'service' where id = $1`, [mine.providerId]),
     ).then(() => 'flipped', (e: { code?: string }) => e.code)
     expect(flipped).toBe('42501')
+  })
+
+  it('names only an assignable category: never a heading such as Eventos (0049)', async () => {
+    expect(await createProvider(NEWCOMER, {
+      name: 'Tudo em Eventos', categoryId: EVENTOS, locationId: TALATONA,
+    })).toEqual({ ok: false, reason: 'category_unavailable' })
+
+    const mine = await createProvider(NEWCOMER, {
+      name: 'Salão G', categoryId: SALOES, locationId: TALATONA,
+    })
+    if (!mine.ok) throw new Error('create failed')
+    expect(await updateProvider(NEWCOMER, mine.providerId, {
+      name: 'Salão G', categoryId: EVENTOS, locationId: TALATONA,
+    })).toBe('category_unavailable')
+    expect(await addService(NEWCOMER, mine.providerId,
+      serviceInput.parse({ name: 'Tudo', categoryId: EVENTOS, priceMode: 'on_request' }),
+    )).toBe('category_unavailable')
   })
 
   it('refuses a service added to someone else\'s business', async () => {

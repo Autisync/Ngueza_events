@@ -12,6 +12,7 @@ import { formatMinor, majorInput } from '@/lib/money'
 import { Icon } from '@/app/SiteHeader'
 import { Card, Empty, Grid, Meter, PageHead, Pill, Ring, Stat, dash } from '@/app/dash/parts'
 import { doAddItem, doArchivePlan, doRemoveItem, doToggleItem, doUpdateItem, doUpdatePlan } from '../actions'
+import { CategoryOptions } from '@/app/CategoryOptions'
 
 export const metadata: Metadata = { title: 'Plano do evento', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -311,7 +312,7 @@ export default async function Plano({
                 <span className={dash.label}>Categoria na NGUEZA</span>
                 <select className={dash.input} name="categoria" defaultValue="">
                   <option value="">Nenhuma</option>
-                  {options.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <CategoryOptions options={options.categories} />
                 </select>
               </label>
               <label className={dash.field}>
