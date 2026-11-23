@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { assignableCategories, type CategoryOption } from '@/lib/categories'
+
 import { asUser, asVisitor } from '@/lib/db'
 import { isUuid } from '@/lib/safe'
 import type { Minor } from '@/lib/money'
@@ -558,16 +560,13 @@ export interface Option {
 }
 
 /** Municipalities (the same list the search filters on) and the
- *  categories a need can point at: every active one under the root. */
-export async function planningOptions(): Promise<{ municipalities: Option[]; categories: Option[] }> {
+ *  categories a need can point at: the assignable ones (0049), in
+ *  vertical order. */
+export async function planningOptions(): Promise<{ municipalities: Option[]; categories: CategoryOption[] }> {
   return asVisitor(async (c) => {
     const locs = await c.query<Option>(
       `select id, slug, name from locations where is_active and level = 'municipality' order by name`,
     )
-    const cats = await c.query<Option>(
-      `select id, slug, name from categories where is_active and parent_id is not null
-        order by default_supplier_type = 'venue' desc, sort_order, name`,
-    )
-    return { municipalities: locs.rows, categories: cats.rows }
+    return { municipalities: locs.rows, categories: await assignableCategories(c) }
   })
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
+import { assignableCategories, groupByRoot, type CategoryGroup } from '@/lib/categories'
 import { CONSENT_TEXT } from '@/lib/newsletter'
 import { joinWaitlist } from '../actions'
 import { SubmitButton } from './SubmitButton'
@@ -26,19 +27,19 @@ export const metadata: Metadata = {
 
 type Option = { id: string; name: string }
 
-async function options(): Promise<{ categories: Option[]; municipalities: Option[] }> {
+async function options(): Promise<{ groups: CategoryGroup[]; municipalities: Option[] }> {
   return asVisitor(async (c) => {
-    const categories = await c.query<Option>(
-      `select id, name from categories
-        where is_active and parent_id is not null and default_supplier_type = 'venue'
-        order by sort_order`,
-    )
+    // Every open category, services as well as spaces (slice 52): the
+    // waitlist collects demand for a DJ or a canalizador as much as for a
+    // salão. Verticals not yet open are invisible to visitors, so they
+    // are not offered here either; "+ Outro" catches those.
+    const groups = groupByRoot(await assignableCategories(c))
     const municipalities = await c.query<Option>(
       `select id, name from locations
         where is_active and level = 'municipality'
         order by name`,
     )
-    return { categories: categories.rows, municipalities: municipalities.rows }
+    return { groups, municipalities: municipalities.rows }
   })
 }
 
@@ -53,7 +54,7 @@ export default async function Waitlist({
 }: {
   searchParams: Promise<{ erro?: string }>
 }) {
-  const [{ categories, municipalities }, params] = await Promise.all([options(), searchParams])
+  const [{ groups, municipalities }, params] = await Promise.all([options(), searchParams])
   const erro = params.erro ? ERRORS[params.erro] : undefined
 
   return (
@@ -106,14 +107,19 @@ export default async function Waitlist({
               <legend className={styles.label}>
                 O que procura? <span className={styles.hint}>(opcional)</span>
               </legend>
-              <div className={styles.chips}>
-                {categories.map((c) => (
-                  <label key={c.id} className={styles.chip}>
-                    <input type="checkbox" name="categories" value={c.id} />
-                    <span>{c.name}</span>
-                  </label>
-                ))}
-              </div>
+              {groups.map((g) => (
+                <div key={g.rootId}>
+                  {groups.length > 1 ? <p className={styles.chipGroup}>{g.rootName}</p> : null}
+                  <div className={styles.chips}>
+                    {g.options.map((c) => (
+                      <label key={c.id} className={styles.chip}>
+                        <input type="checkbox" name="categories" value={c.id} />
+                        <span>{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
               <input type="checkbox" id="cat-other" className={styles.otherCheckbox} />
               <label htmlFor="cat-other" className={styles.otherLabel}>+ Outro</label>
               <div className={styles.otherReveal}>

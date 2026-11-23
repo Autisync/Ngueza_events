@@ -3,7 +3,7 @@
 import 'server-only'
 
 import { z } from 'zod'
-import { asUser, isAlreadyExists } from '@/lib/db'
+import { asUser, isAlreadyExists, isConstraint } from '@/lib/db'
 import { parseMajor } from '@/lib/money'
 import { normalizePhone } from '@/lib/safe'
 
@@ -113,7 +113,7 @@ function slugSeed(name: string): string {
 
 export type CreateProviderResult =
   | { ok: true; providerId: string; slug: string }
-  | { ok: false; reason: 'slug_unavailable' }
+  | { ok: false; reason: 'slug_unavailable' | 'category_unavailable' }
 
 /**
  * Register a business.
@@ -142,8 +142,8 @@ export async function createProvider(
            select $1,
                   case cat.default_supplier_type when 'venue' then 'venue' else 'service' end,
                   $2, $3, $4, cat.id, $5, $6, $7, $8, $9, $10
-             from categories cat
-            where cat.id = $11 and cat.is_active
+             from assignable_categories cat
+            where cat.id = $11
            returning id`,
           [
             ownerId, slug, input.name, input.description ?? null, input.locationId,
@@ -151,8 +151,11 @@ export async function createProvider(
             input.website || null, input.yearsActiveDeclared ?? null, input.categoryId,
           ],
         )
+        // Not assignable (0049): unknown, retired, under a vertical that
+        // is not open, or a heading such as Eventos. The form offers none
+        // of these; a hand-made POST lands here.
         const row = rows[0]
-        if (!row) throw new Error('unknown or inactive category')
+        if (!row) return null
 
         // A venue cannot take a booking without somewhere to book, so give
         // it one. The supplier renames it or adds more later.
@@ -171,6 +174,7 @@ export async function createProvider(
         )
         return row
       })
+      if (!created) return { ok: false, reason: 'category_unavailable' }
       return { ok: true, providerId: created.id, slug }
     } catch (error) {
       if (isAlreadyExists(error)) continue
@@ -180,7 +184,7 @@ export async function createProvider(
   return { ok: false, reason: 'slug_unavailable' }
 }
 
-export type UpdateProviderResult = 'ok' | 'not_found' | 'category_mode'
+export type UpdateProviderResult = 'ok' | 'not_found' | 'category_mode' | 'category_unavailable'
 
 export async function updateProvider(
   ownerId: string,
@@ -206,13 +210,11 @@ export async function updateProvider(
       return (result.rowCount ?? 0) > 0 ? 'ok' : 'not_found'
     })
   } catch (error) {
-    // 0047: a venue cannot move into a service category (or the reverse),
-    // nor into a retired one. The category decides how bookings behave.
-    const e = error as { code?: string; constraint?: string }
-    if (e.code === '23514'
-        && (e.constraint === 'providers_category_matches_mode' || e.constraint === 'providers_category_active')) {
-      return 'category_mode'
-    }
+    // 0047: a venue cannot move into a service category (or the reverse).
+    // 0049: nor into a category that is not assignable (retired, closed
+    // vertical, a heading). The category decides how bookings behave.
+    if (isConstraint(error, 'providers_category_matches_mode')) return 'category_mode'
+    if (isConstraint(error, 'providers_category_active')) return 'category_unavailable'
     throw error
   }
 }
@@ -266,11 +268,26 @@ export async function removeResource(
   })
 }
 
+/**
+ * 'category_unavailable': services_guard_category (0049) refused the
+ * category. The form offers only assignable ones; a hand-made POST, or a
+ * vertical closed between loading the form and saving it, lands here.
+ */
 export async function addService(
   ownerId: string,
   providerId: string,
   input: ServiceInput,
-): Promise<void> {
+): Promise<'ok' | 'category_unavailable'> {
+  try {
+    await addServiceRow(ownerId, providerId, input)
+    return 'ok'
+  } catch (error) {
+    if (isConstraint(error, 'services_category_active')) return 'category_unavailable'
+    throw error
+  }
+}
+
+async function addServiceRow(ownerId: string, providerId: string, input: ServiceInput): Promise<void> {
   await asUser(ownerId, (c) =>
     c.query(
       `insert into services
@@ -300,6 +317,17 @@ export async function updateService(
   providerId: string,
   serviceId: string,
   input: ServiceInput,
+): Promise<boolean | 'category_unavailable'> {
+  try {
+    return await updateServiceRow(ownerId, providerId, serviceId, input)
+  } catch (error) {
+    if (isConstraint(error, 'services_category_active')) return 'category_unavailable'
+    throw error
+  }
+}
+
+async function updateServiceRow(
+  ownerId: string, providerId: string, serviceId: string, input: ServiceInput,
 ): Promise<boolean> {
   return asUser(ownerId, async (c) => {
     const { rowCount } = await c.query(

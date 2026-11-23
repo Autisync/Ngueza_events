@@ -7,6 +7,7 @@ import { Card, Grid, Pill, dash } from '@/app/dash/parts'
 import { Chrome } from '../Chrome'
 import { doSaveEventType, doSaveEventTypeNeed } from '../event-type-actions'
 import styles from '../admin.module.css'
+import { CategoryOptions } from '@/app/CategoryOptions'
 
 export const metadata: Metadata = { title: 'Tipos de evento', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -87,7 +88,8 @@ export default async function TiposDeEvento({
                       <span className={dash.label}>Categoria na NGUEZA</span>
                       <select className={dash.input} name="categoria" defaultValue={n.categoryId ?? ''}>
                         <option value="">Nenhuma</option>
-                        {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        <CategoryOptions options={categories}
+                                         current={n.categoryId ? { id: n.categoryId, name: n.categoryName ?? 'Manter a categoria actual' } : null} />
                       </select>
                     </label>
                     <label className={dash.field}>
@@ -117,7 +119,7 @@ export default async function TiposDeEvento({
                     <span className={dash.label}>Categoria na NGUEZA</span>
                     <select className={dash.input} name="categoria" defaultValue="">
                       <option value="">Nenhuma</option>
-                      {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <CategoryOptions options={categories} />
                     </select>
                   </label>
                   <label className={dash.field}>

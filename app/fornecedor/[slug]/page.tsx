@@ -167,7 +167,7 @@ export default async function ProviderPage({
         ) : (
           // No photos yet: the category's own drawing (slice 43), as on its card.
           <span className={cardStyles.thumbArt} aria-hidden="true">
-            <CategoryIcon slug={provider.categorySlug} size={64} />
+            <CategoryIcon slug={provider.categorySlug} icon={provider.categoryIcon} size={64} />
             <span className={cardStyles.thumbArtLabel}>{provider.categoryName}</span>
           </span>
         )}

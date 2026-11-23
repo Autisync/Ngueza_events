@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { asVisitor } from '@/lib/db'
 import { search } from '@/lib/search'
+import { assignableCategories, type CategoryOption } from '@/lib/categories'
 import { CategoryThumb } from './CategoryIcon'
+import { CategoryOptions } from './CategoryOptions'
 import { EmptyState } from './EmptyState'
 import { SupplierCard } from './SupplierCard'
 import styles from './page.module.css'
@@ -28,11 +30,11 @@ export const metadata: Metadata = {
 
 async function filters() {
   return asVisitor(async (c) => {
-    const categories = await c.query<{ id: string; slug: string; name: string }>(
-      `select id, slug, name from categories
-        where is_active and parent_id is not null
-        order by sort_order limit 8`,
-    )
+    // Every open category for the search box; the first eight, in
+    // vertical order, for the rail. One query: the rail is on the LCP
+    // path and the page is rendered per request.
+    const categories: CategoryOption[] = await assignableCategories(c)
+    const rail = categories.slice(0, 8)
     const municipalities = await c.query<{ id: string; name: string }>(
       `select id, name from locations where is_active and level = 'municipality' order by name`,
     )
@@ -42,7 +44,7 @@ async function filters() {
     // backs it. distinct on picks the newest verified listing per
     // category; RLS (media_public_read) already scopes this to
     // published + verified providers for an anonymous visitor.
-    const categoryIds = categories.rows.map((cat) => cat.id)
+    const categoryIds = rail.map((cat) => cat.id)
     const photos = categoryIds.length
       ? await c.query<{ category_id: string; cover_image_id: string }>(
           `select distinct on (p.category_id) p.category_id, m.external_id as cover_image_id
@@ -55,12 +57,12 @@ async function filters() {
         )
       : { rows: [] as { category_id: string; cover_image_id: string }[] }
     const categoryPhoto = new Map(photos.rows.map((row) => [row.category_id, row.cover_image_id]))
-    return { categories: categories.rows, municipalities: municipalities.rows, categoryPhoto }
+    return { categories, rail, municipalities: municipalities.rows, categoryPhoto }
   })
 }
 
 export default async function Home() {
-  const [{ categories, municipalities, categoryPhoto }, featured] = await Promise.all([
+  const [{ categories, rail, municipalities, categoryPhoto }, featured] = await Promise.all([
     filters(),
     search({ limit: 6 }),
   ])
@@ -84,9 +86,7 @@ export default async function Home() {
               <span className={styles.lab}>O que procura</span>
               <select className={styles.ctl} name="categoria" defaultValue="">
                 <option value="">Todas as categorias</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
+                <CategoryOptions options={categories} />
               </select>
             </label>
             <label className={styles.f}>
@@ -111,10 +111,10 @@ export default async function Home() {
         <section className={styles.rail}>
           <h2 className={styles.railTitle}>Categorias populares</h2>
           <div className={styles.railScroll}>
-            {categories.map((c) => (
+            {rail.map((c) => (
               <a className={styles.railItem} key={c.id} href={`/procurar?categoria=${c.id}`}>
                 <span className={styles.railIcon}>
-                  <CategoryThumb slug={c.slug} coverImageId={categoryPhoto.get(c.id) ?? null} />
+                  <CategoryThumb slug={c.slug} icon={c.icon} coverImageId={categoryPhoto.get(c.id) ?? null} />
                 </span>
                 <span className={styles.railLabel}>{c.name}</span>
               </a>

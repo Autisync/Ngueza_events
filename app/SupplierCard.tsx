@@ -29,7 +29,7 @@ export function SupplierCard({ hit, priority = false }: { hit: SearchHit; priori
           // No photo yet: the category's own drawing, not a stock photo that
           // would pretend to be this venue (slice 43).
           <span className={styles.thumbArt} aria-hidden="true">
-            <CategoryIcon slug={hit.categorySlug} size={46} />
+            <CategoryIcon slug={hit.categorySlug} icon={hit.categoryIcon} size={46} />
             <span className={styles.thumbArtLabel}>{hit.categoryName}</span>
           </span>
         )}

@@ -73,7 +73,11 @@ select n || '  ' || case when ok then 'aplicada' else 'EM FALTA' end from (value
   ('0044', to_regclass('public.document_kinds') is not null),
   ('0045', exists (select 1 from col where t = 'bookings' and c = 'cancellation_reason')),
   ('0046', to_regclass('public.event_plans') is not null),
-  ('0047', exists (select 1 from fn where name = 'providers_guard_behaviour'))
+  ('0047', exists (select 1 from fn where name = 'providers_guard_behaviour')),
+  ('0048', exists (select 1 from pg_class v join pg_namespace vn on vn.oid = v.relnamespace
+                    where vn.nspname = 'public' and v.relname = 'newsletter_sendable'
+                      and 'security_invoker=true' = any (v.reloptions))),
+  ('0049', to_regclass('public.category_links') is not null)
 ) as m(n, ok) order by n;
 SQL
 )" || exit 2

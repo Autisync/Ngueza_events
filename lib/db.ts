@@ -82,3 +82,8 @@ export const isSlotTaken = (error: unknown) => hasCode(error, SLOT_TAKEN)
 export const isAlreadyExists = (error: unknown) => hasCode(error, ALREADY_EXISTS)
 export const isCheckViolation = (error: unknown) => hasCode(error, CHECK_VIOLATION)
 export const isInsufficientPrivilege = (error: unknown) => hasCode(error, INSUFFICIENT_PRIVILEGE)
+
+/** A check violation raised under a named constraint, by a CHECK or by a
+ *  guard trigger that names one (`raise ... using constraint = '...'`). */
+export const isConstraint = (error: unknown, name: string) =>
+  hasCode(error, CHECK_VIOLATION) && (error as { constraint?: string }).constraint === name

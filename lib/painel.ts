@@ -1,6 +1,8 @@
 // Server-only. Reads through the database pool as the signed-in supplier.
 import 'server-only'
 
+import { assignableCategories, type CategoryOption } from '@/lib/categories'
+
 import { cache } from 'react'
 import { asUser, asVisitor } from '@/lib/db'
 import type { Price } from '@/lib/money'
@@ -122,17 +124,22 @@ export async function ownedDocuments(ownerId: string, providerId: string) {
   })
 }
 
-/** Categories and municípios for the registration form. */
-export async function formOptions() {
+/**
+ * Categories and municípios for the forms that name a category: the
+ * registration form, a request for quotes, a listing's profile and its
+ * services. Categories are the assignable ones (0049), grouped by vertical
+ * in the select (app/CategoryOptions.tsx).
+ */
+export async function formOptions(): Promise<{
+  categories: CategoryOption[]
+  locations: { id: string; name: string }[]
+}> {
   return asVisitor(async (c) => {
-    const categories = await c.query<{ id: string; name: string; default_supplier_type: string }>(
-      `select id, name, default_supplier_type from categories
-        where is_active and parent_id is not null order by sort_order`,
-    )
+    const categories = await assignableCategories(c)
     const locations = await c.query<{ id: string; name: string }>(
       `select id, name from locations where is_active and level = 'municipality' order by name`,
     )
-    return { categories: categories.rows, locations: locations.rows }
+    return { categories, locations: locations.rows }
   })
 }
 

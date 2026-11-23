@@ -82,8 +82,15 @@ set -a; source .env.local; set +a
 for f in supabase/migrations/*.sql; do
   psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f" || break
 done
-for f in seed/reference/*.sql; do psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done   # taxonomy, then event types (slice 50)
 ```
+
+**Do not run `seed/reference/` before a restore.** The dump already holds
+the reference rows as they were on the day: categories an administrator
+opened, renamed or re-iconed, cross-listings, event types. Seeding first
+puts the defaults in place (since slice 52, every vertical other than
+Eventos closed). The dump's rows for the same ids then fail to load, and
+listings in an opened vertical vanish from search. The seed files are for a
+new, empty project only (`docs/supabase.md`).
 
 A real Supabase project already has `anon`, `authenticated` and
 `service_role` provisioned, and `citext`/`btree_gist`/`pgcrypto` etc.

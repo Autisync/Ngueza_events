@@ -52,6 +52,8 @@ export interface SearchHit {
   categoryName: string
   /** For the card's illustration when there is no photo yet (slice 43). */
   categorySlug: string
+  /** Its icon key, or its nearest ancestor's (slice 52). */
+  categoryIcon: string | null
   /** categoryName plus every active service's own category, deduplicated
    *  (slice 22) — what this provider actually matched the search through,
    *  not only what it registered as. */
@@ -82,6 +84,7 @@ interface Row {
   supplier_type: 'venue' | 'service'
   category_name: string
   category_slug: string
+  category_icon: string | null
   extra_category_names: string[] | null
   location_name: string
   capacity: number | null
@@ -133,6 +136,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       with candidate as (
         select
           p.id, p.slug, p.name, p.description, p.supplier_type, p.is_demo,
+          p.category_id,
           cat.name  as category_name,
           cat.slug  as category_slug,
           loc.name  as location_name,
@@ -169,12 +173,16 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
           -- registered as. services.category_id has always been settable
           -- independently per service (see the add-service form); this is
           -- the search side finally reading it.
+          --
+          -- category_scope (0049) is the category's active subtree plus
+          -- whatever is cross-listed under it (category_links): a
+          -- make-up artist registered under Eventos is found under Beleza.
           and ($1::uuid is null or
-               p.category_id in (select id from category_descendants($1))
+               p.category_id in (select id from category_scope($1))
                or exists (
                  select 1 from services sv
                   where sv.provider_id = p.id and sv.is_active
-                    and sv.category_id in (select id from category_descendants($1))
+                    and sv.category_id in (select id from category_scope($1))
                ))
           and ($2::uuid is null or p.location_id in (select id from location_descendants($2)))
           -- A venue space with no stated capacity no longer matches every
@@ -208,7 +216,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       ),
       ranked as (
         select distinct on (id)
-          id, slug, name, description, supplier_type, category_name, category_slug, extra_category_names,
+          id, slug, name, description, supplier_type, category_id, category_name, category_slug, extra_category_names,
           location_name, capacity, cover_image_id, is_demo, price_mode, price_minor, price_max_minor,
           price_unit, rating_average, review_count,
           (price_mode is not null and price_mode <> 'on_request') as has_price
@@ -229,7 +237,8 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
           end as sort_num
         from ranked
       )
-      select * from keyed
+      -- The icon is resolved for the page only, never per candidate.
+      select keyed.*, category_icon(keyed.category_id) as category_icon from keyed
        -- Real suppliers always before examples (0041): is_demo leads.
        where ($7::boolean is null
               or (is_demo, grp, sort_num, name, id) > ($11::boolean, $7::boolean, $13::numeric, $8::text, $9::uuid))
@@ -269,6 +278,7 @@ export async function search(query: SearchQuery): Promise<SearchResult> {
       supplierType: row.supplier_type,
       categoryName: row.category_name,
       categorySlug: row.category_slug,
+      categoryIcon: row.category_icon,
       categoryNames: [row.category_name, ...(row.extra_category_names ?? [])]
         .filter((name, i, all) => all.indexOf(name) === i),
       locationName: row.location_name,

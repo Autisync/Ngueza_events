@@ -4,6 +4,7 @@ import { currentProfile } from '@/lib/auth'
 import { formOptions } from '@/lib/painel'
 import { doRegisterBusiness } from '../painel/actions'
 import styles from '../painel/painel.module.css'
+import { CategoryOptions } from '@/app/CategoryOptions'
 
 export const metadata: Metadata = { title: 'Registar o meu negócio', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -59,9 +60,7 @@ export default async function Registar({
                 <span className={styles.label}>Categoria</span>
                 <select className={styles.select} name="categoryId" required defaultValue="">
                   <option value="" disabled>Escolha…</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  <CategoryOptions options={categories} />
                 </select>
                 <span className={styles.hint}>
                   Define como funciona a sua agenda: um espaço fica reservado o dia todo, um

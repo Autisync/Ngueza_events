@@ -3,7 +3,7 @@
 // and the offers on them.
 import 'server-only'
 
-import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege } from '@/lib/db'
+import { asSystem, asUser, isCheckViolation, isInsufficientPrivilege, isConstraint } from '@/lib/db'
 import type { Minor } from '@/lib/money'
 import { isUuid } from '@/lib/safe'
 
@@ -87,7 +87,9 @@ const REQUEST_SELECT = `
     join locations  loc on loc.id = qr.location_id
 `
 
-export type PostQuoteRequestOutcome = { ok: true; id: string } | { ok: false; reason: 'invalid' }
+export type PostQuoteRequestOutcome =
+  | { ok: true; id: string }
+  | { ok: false; reason: 'invalid' | 'category_unavailable' }
 
 export async function postQuoteRequest(
   clientId: string,
@@ -114,6 +116,8 @@ export async function postQuoteRequest(
     })
     return { ok: true, id }
   } catch (error) {
+    // 0049: a request may not name a retired category or a closed vertical.
+    if (isConstraint(error, 'quote_requests_category_active')) return { ok: false, reason: 'category_unavailable' }
     if (isCheckViolation(error)) return { ok: false, reason: 'invalid' }
     throw error
   }

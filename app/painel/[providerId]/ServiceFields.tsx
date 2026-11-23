@@ -1,6 +1,8 @@
 import type { OwnedService } from '@/lib/painel'
 import { majorInput } from '@/lib/money'
 import styles from '../painel.module.css'
+import { CategoryOptions } from '@/app/CategoryOptions'
+import type { CategoryOption } from '@/lib/categories'
 
 /**
  * The fields of a service, shared by "Adicionar serviço" and each
@@ -13,7 +15,7 @@ const amount = (minor: bigint | undefined) => (minor === undefined ? '' : majorI
 export function ServiceFields({
   categories, defaultCategoryId, service, idPrefix,
 }: {
-  categories: Array<{ id: string; name: string }>
+  categories: CategoryOption[]
   defaultCategoryId: string
   service?: OwnedService
   /** Unique per form, so labels and ids never collide across many forms on one page. */
@@ -35,9 +37,8 @@ export function ServiceFields({
           <span className={styles.label}>Categoria</span>
           <select className={styles.select} name="categoryId" required
                   defaultValue={service?.categoryId ?? defaultCategoryId}>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            <CategoryOptions options={categories}
+                             current={service ? { id: service.categoryId, name: 'Manter a categoria actual' } : null} />
           </select>
         </label>
       </div>
