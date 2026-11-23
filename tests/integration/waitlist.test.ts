@@ -1,6 +1,6 @@
 import { readFile, rm } from 'node:fs/promises'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { asSystem } from '@/lib/db'
+import { asSystem, asVisitor } from '@/lib/db'
 import { confirm, subscribe, unsubscribe } from '@/lib/newsletter'
 
 /**
@@ -272,6 +272,22 @@ describe('waitlist', () => {
       return rows.length
     })
     expect(after).toBe(1)
+  })
+
+  it('8b. visitors cannot read the sendable audience (0048)', async () => {
+    await subscribe({ ...base, email: 'j@teste.ao' }, {})
+    await confirm(linkFrom((await outbox())[0]!.text, 'confirmar'))
+    // The sender (service role) sees the confirmed address...
+    const forSender = await asSystem(async (c) => {
+      const { rows } = await c.query(`select 1 from newsletter_sendable where email = $1`, ['j@teste.ao'])
+      return rows.length
+    })
+    expect(forSender).toBe(1)
+    // ...and a visitor holding the public key is refused outright. Before
+    // 0048 the view ran with its owner's rights and returned every row.
+    await expect(
+      asVisitor((c) => c.query(`select email from newsletter_sendable`)),
+    ).rejects.toMatchObject({ code: '42501' })
   })
 
   it('9. an unknown token fails safely rather than throwing', async () => {
