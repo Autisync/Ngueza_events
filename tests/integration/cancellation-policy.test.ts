@@ -144,13 +144,30 @@ describe('the supplier policy setting', () => {
 })
 
 describe('refund entitlement', () => {
+  /**
+   * Books Horizonte's salão about `daysOut` days from now. The demo seed
+   * holds real dates on this salão (15 Dec 2026, for one), so a fixed
+   * offset collides on the day the calendar lines up and the test fails
+   * for a reason it is not testing. Move up to two days later on a taken
+   * slot only: every case below sits well inside its refund tier, so the
+   * extra days never change which tier applies.
+   */
+  async function bookDaysOut(daysOut: number): Promise<{ bookingId: string; starts: Date }> {
+    for (let shift = 0; shift <= 2; shift++) {
+      const starts = new Date(Date.now() + (daysOut + shift) * 86400_000)
+      const created = await requestBooking(ANA, {
+        providerId: HORIZONTE, resourceId: SALAO, startsAt: starts,
+        endsAt: new Date(starts.getTime() + 12 * 3600_000),
+      })
+      if (created.ok) return { bookingId: created.bookingId, starts }
+      if (created.reason !== 'slot_taken') throw new Error(`setup failed: ${created.reason}`)
+    }
+    throw new Error('setup failed: no free day near the requested offset')
+  }
+
   it('previews live against today, before any cancellation', async () => {
-    const starts = new Date(Date.now() + 40 * 86400_000) // 40 days out
-    const created = await requestBooking(ANA, {
-      providerId: HORIZONTE, resourceId: SALAO, startsAt: starts,
-      endsAt: new Date(starts.getTime() + 12 * 3600_000),
-    })
-    if (!created.ok) throw new Error('setup failed')
+    const { bookingId, starts } = await bookDaysOut(40) // 40 days out
+    const created = { bookingId }
 
     const entitlement = await refundEntitlement(ANA, created.bookingId)
     expect(entitlement?.isFinal).toBe(false)
@@ -159,22 +176,14 @@ describe('refund entitlement', () => {
   })
 
   it('is 0% once inside every tier\'s window', async () => {
-    const starts = new Date(Date.now() + 2 * 86400_000) // 2 days out
-    const created = await requestBooking(ANA, {
-      providerId: HORIZONTE, resourceId: SALAO, startsAt: starts,
-      endsAt: new Date(starts.getTime() + 12 * 3600_000),
-    })
-    if (!created.ok) throw new Error('setup failed')
+    const { bookingId, starts } = await bookDaysOut(2) // 2 days out
+    const created = { bookingId }
     expect((await refundEntitlement(ANA, created.bookingId))?.refundPct).toBe(0)
   })
 
   it('freezes at the moment actually cancelled, not at whenever it is looked up', async () => {
-    const starts = new Date(Date.now() + 20 * 86400_000) // 20 days out at booking time
-    const created = await requestBooking(ANA, {
-      providerId: HORIZONTE, resourceId: SALAO, startsAt: starts,
-      endsAt: new Date(starts.getTime() + 12 * 3600_000),
-    })
-    if (!created.ok) throw new Error('setup failed')
+    const { bookingId, starts } = await bookDaysOut(20) // 20 days out at booking time
+    const created = { bookingId }
 
     expect(await transition(ANA, created.bookingId, 'cancelled_client')).toEqual({ ok: true })
 
@@ -197,12 +206,8 @@ describe('refund entitlement', () => {
   })
 
   it('uses the booking\'s own frozen snapshot, unaffected by a policy changed afterward', async () => {
-    const starts = new Date(Date.now() + 22 * 86400_000)
-    const created = await requestBooking(ANA, {
-      providerId: HORIZONTE, resourceId: SALAO, startsAt: starts,
-      endsAt: new Date(starts.getTime() + 12 * 3600_000),
-    })
-    if (!created.ok) throw new Error('setup failed')
+    const { bookingId, starts } = await bookDaysOut(22)
+    const created = { bookingId }
     // 20 days out against the platform default (30/14/7) clears only the
     // 14-day tier: 50%.
     expect((await refundEntitlement(ANA, created.bookingId))?.refundPct).toBe(50)
@@ -215,12 +220,8 @@ describe('refund entitlement', () => {
   })
 
   it('hides a stranger\'s booking entirely — not found, not a permission error', async () => {
-    const starts = new Date(Date.now() + 24 * 86400_000)
-    const created = await requestBooking(ANA, {
-      providerId: HORIZONTE, resourceId: SALAO, startsAt: starts,
-      endsAt: new Date(starts.getTime() + 12 * 3600_000),
-    })
-    if (!created.ok) throw new Error('setup failed')
+    const { bookingId, starts } = await bookDaysOut(24)
+    const created = { bookingId }
     // OTHER_OWNER is neither the client nor Horizonte's owner.
     expect(await refundEntitlement(OTHER_OWNER, created.bookingId)).toBeNull()
   })

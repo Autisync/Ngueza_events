@@ -76,3 +76,29 @@ begin
   end if;
   raise notice 'PASS: every table has policies, or is deliberately service-role only';
 end $$;
+
+-- ---- 5. no view hands visitors rows that RLS would hide ------------------
+-- A plain view runs with its owner's rights and skips RLS on the tables
+-- it reads; default privileges then grant it to anon and authenticated.
+-- That is how newsletter_sendable exposed subscriber emails (0048) and
+-- provider_health exposed supplier metrics (0024). A view readable by
+-- either role must apply the caller's RLS, or be named here as public on
+-- purpose.
+do $$
+declare v_bad text;
+begin
+  select string_agg(c.relname, ', ' order by c.relname) into v_bad
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind in ('v', 'm')
+     and (has_table_privilege('anon', c.oid, 'select')
+          or has_table_privilege('authenticated', c.oid, 'select'))
+     and not coalesce('security_invoker=true' = any (c.reloptions)
+                      or 'security_invoker=on' = any (c.reloptions), false)
+     and c.relname not in (
+       'legal_current'   -- the published legal texts, public by design (0042)
+     );
+  if v_bad is not null then
+    raise exception 'FAIL: views readable by anon/authenticated that bypass RLS (set security_invoker, or revoke): %', v_bad;
+  end if;
+  raise notice 'PASS: every view readable by visitors applies their RLS, or is public on purpose';
+end $$;
