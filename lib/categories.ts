@@ -79,15 +79,17 @@ export async function openCategories(c: PoolClient): Promise<CategoryOption[]> {
  * visitor may see.
  */
 export async function categoriesWithSupply(c: PoolClient): Promise<CategoryOption[]> {
+  // One indexed probe per category in scope, stopping at the first
+  // visible listing (providers_category_idx, services_category_idx). A
+  // set of every supplied category would read every published listing
+  // on each search page view.
   const { rows } = await c.query(
-    `with supplied as (
-       select p.category_id from providers p where p.is_published
-       union
-       select s.category_id from services s join providers p on p.id = s.provider_id
-        where s.is_active and p.is_published
-     )
-     ${SELECT} cp
-      where exists (select 1 from category_scope(cp.id) sc join supplied on supplied.category_id = sc.id)
+    `${SELECT} cp
+      where exists (
+        select 1 from category_scope(cp.id) sc
+         where exists (select 1 from providers p where p.category_id = sc.id and p.is_published)
+            or exists (select 1 from services s join providers p on p.id = s.provider_id
+                        where s.category_id = sc.id and s.is_active and p.is_published))
      ${ORDER}`,
   )
   return rows.map(toOption)

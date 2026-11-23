@@ -19,7 +19,7 @@ database checked services or quote requests at all. Now:
 
 | Object | What it is |
 |---|---|
-| `categories.is_assignable` | False for a heading that only groups others. A root becomes a heading by itself when it gets its first child (`categories_root_heading`); an administrator can change it on the edit form. |
+| `categories.is_assignable` | False for a heading that only groups others. A root becomes a heading by itself when it gets its first child (`categories_root_heading`, which fires only on a real change of parent); an administrator can change it on the edit form. |
 | `category_paths` (view) | Every category whose **whole ancestry** is active, with its root (vertical), depth, sort path and resolved icon. RLS alone looks only at a row's own flag, so it would show an active leaf under a closed vertical. |
 | `assignable_categories` (view) | `category_paths` where `is_assignable`. Every picker and every guard reads it. |
 
@@ -108,8 +108,17 @@ so they cost HTML bytes and no route JS.
   return 404. Switching a category or a vertical off is now refused while
   any listing, active service or open request uses it, and the page says
   how many. Switching a leaf on under a closed parent is refused too.
-- **Audit:** every change to a category's `is_active`, `is_assignable`,
-  parent, type, slug or name is recorded (`categories_audit`).
+- **New verticals start closed.** A category created at the top level
+  starts closed, and opens only through "Abrir vertical". A category
+  created under an existing parent is visible exactly when its vertical is.
+- **Audit:** recorded in the audit log:
+  - creating a category;
+  - every change to its `is_active`, `is_assignable`, parent, type, slug
+    or name;
+  - adding or removing a link.
+- **Concurrency:** switching off locks providers, services and requests
+  for the moment of the check, so a listing created at the same instant
+  cannot land in a category that is closing.
 - **Error routing:** errors on the edit page return to that page, which
   makes its own messages reachable. They used to be dead code.
 
@@ -132,8 +141,15 @@ so they cost HTML bytes and no route JS.
 
 **Rules it follows:**
 - re-runnable with `on conflict do nothing`;
+- the links and the icon backfill run only on the run that adds the
+  verticals, so a re-run never restores a link an administrator removed,
+  and never fails because one was moved;
 - parents found by slug;
 - event slugs untouched.
+
+**Not before a restore.** `docs/backup-restore.md` no longer seeds before
+a data restore. The dump carries the reference rows as they were, and
+seeding first would close every vertical that had been opened.
 
 **Products are not seeded.** `default_supplier_type` has no `product` value
 until slice 56. A seller under a `service` category would get a bookable
@@ -152,6 +168,22 @@ and is listed for the owner.
    ```
 3. `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f seed/reference/02_verticals.sql`
 4. Nothing changes for visitors until an administrator opens a vertical.
+
+## Review
+
+An adversarial review (three reviewers, each finding checked by a
+skeptic) confirmed 10 findings. All are fixed in this slice:
+
+1. The heading trigger fired on edits that did not move a child.
+2. Created categories were not audited, and nor were links.
+3. A pickable root with children was never rendered in pickers.
+4. `?categoria=<vertical>` filtered while the select read "Todas".
+5. There was a race between the in-use check and closing.
+6. The search page's supply query read every listing on each view.
+7. Re-running the seed after an admin move aborted.
+8. Re-running the seed restored removed links.
+9. Re-running the seed reset icons set to "inherit".
+10. The restore procedure seeded before loading data.
 
 ## Not in this slice
 

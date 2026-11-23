@@ -6263,9 +6263,18 @@ begin
   return null;
 end $$;
 
+-- Only when the parent really changes. `update of parent_id` alone fires
+-- whenever the column is in the SET list, and the admin edit form always
+-- sends it: renaming a child would quietly undo an administrator who made
+-- its root pickable on purpose.
 create trigger categories_root_heading
-  after insert or update of parent_id on categories
+  after insert on categories
   for each row execute function categories_root_heading();
+
+create trigger categories_root_heading_moved
+  after update of parent_id on categories
+  for each row when (old.parent_id is distinct from new.parent_id)
+  execute function categories_root_heading();
 
 -- Icon keys name a drawing in app/CategoryIcon.tsx. Lower-case words and
 -- hyphens only, so a key can never carry markup into the page.
@@ -6602,4 +6611,43 @@ create trigger categories_audit
   after update on categories
   for each row execute function audit_changes('category', 'is_active', 'is_assignable', 'parent_id',
                                               'default_supplier_type', 'slug', 'name');
+
+-- A category created active is opened at the moment it is created, and a
+-- link changes what a vertical covers. audit_changes() compares OLD with
+-- NEW, so creation and links need their own rows.
+create or replace function audit_category_created()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into audit_log (actor_id, target_type, target_id, before, after)
+  values (auth.uid(), 'category', new.id, '{}'::jsonb,
+          jsonb_build_object('created', true, 'is_active', new.is_active, 'is_assignable', new.is_assignable,
+                             'parent_id', new.parent_id, 'slug', new.slug, 'name', new.name));
+  return null;
+end $$;
+
+create trigger categories_audit_created
+  after insert on categories
+  for each row execute function audit_category_created();
+
+create or replace function audit_category_link()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into audit_log (actor_id, target_type, target_id, before, after)
+    values (auth.uid(), 'category', new.category_id, '{}'::jsonb,
+            jsonb_build_object('also_under_id', new.also_under_id));
+  else
+    insert into audit_log (actor_id, target_type, target_id, before, after)
+    values (auth.uid(), 'category', old.category_id,
+            jsonb_build_object('also_under_id', old.also_under_id), '{}'::jsonb);
+  end if;
+  return null;
+end $$;
+
+create trigger category_links_audit
+  after insert or delete on category_links
+  for each row execute function audit_category_link();
+
+-- Trigger functions only; nobody calls them directly.
+revoke execute on function audit_category_created(), audit_category_link() from public, anon, authenticated;
 

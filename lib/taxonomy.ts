@@ -110,13 +110,19 @@ export type WriteResult =
   | { ok: true; id: string }
   | { ok: false; reason: 'slug_taken' | 'cycle' }
 
+/**
+ * A new top-level category is a new vertical, and it starts closed: it
+ * opens through setVerticalActive, the deliberate (and audited) step,
+ * once it has its categories. A category under an existing parent starts
+ * active and is visible exactly when its vertical is.
+ */
 export async function createCategory(adminId: string, input: CategoryInput): Promise<WriteResult> {
   try {
     const id = await asUser(adminId, async (c) => {
       const { rows } = await c.query<{ id: string }>(
         `insert into categories (parent_id, slug, name, description, icon,
-                                 default_supplier_type, sort_order, is_assignable)
-         values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+                                 default_supplier_type, sort_order, is_assignable, is_active)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $1::uuid is not null) returning id`,
         [input.parentId, input.slug, input.name, input.description ?? null,
          input.icon, input.defaultSupplierType, input.sortOrder, input.isAssignable],
       )
@@ -172,6 +178,12 @@ export type ToggleResult =
  * switched off; move its listings first.
  */
 async function inUse(c: PoolClient, rootId: string): Promise<number> {
+  // Held until this transaction ends: a listing, service or request
+  // created between the count and the update would otherwise land in a
+  // category that is about to close, and vanish. Writers wait a moment
+  // (this is a rare administrator action), then their guard trigger sees
+  // the category closed and refuses.
+  await c.query(`lock table providers, services, quote_requests in share mode`)
   const { rows } = await c.query<{ n: number }>(
     `with sub as (select id from category_descendants($1))
      select ((select count(*) from (

@@ -121,10 +121,12 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
 
   const results = await search(query)
   const noun = !category || category.defaultSupplierType === 'venue' ? ['espaço', 'espaços'] : ['fornecedor', 'fornecedores']
-  // "Tudo em Eventos" only means something once there is a second vertical.
-  const supplied = new Set(categories.map((c) => c.id))
+  // A vertical is offered as "Tudo em Eventos" once there is a second one
+  // to tell it from, or when the link that brought the visitor named it:
+  // the select must show what the page is filtering by.
   const verticals = new Set(categories.map((c) => c.rootId)).size
-  const wholeVertical = (rootId: string) => verticals > 1 && supplied.has(rootId)
+  const wholeVertical = (rootId: string) => verticals > 1 || rootId === category?.id
+  const pickable = categories.filter((c) => c.id !== c.rootId || c.isAssignable || wholeVertical(c.id))
 
   // Zero-result searches are the supplier recruitment list, written by
   // clients (§48). Nothing here can be backfilled later. A "Ver mais"
@@ -158,7 +160,7 @@ export default async function Procurar({ searchParams }: { searchParams: Promise
               <span className={styles.lab}>O que procura</span>
               <select className={styles.ctl} name="categoria" defaultValue={category?.id ?? ''}>
                 <option value="">Todas as categorias</option>
-                <CategoryOptions options={categories} wholeVertical={wholeVertical}
+                <CategoryOptions options={pickable} wholeVertical={wholeVertical}
                                  current={category} currentLabel="Sem fornecedores ainda" />
               </select>
             </label>

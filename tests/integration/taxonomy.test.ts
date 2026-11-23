@@ -142,31 +142,35 @@ describe('categories', () => {
     if (!leaf.ok) throw new Error('setup failed')
     created.categories.push(leaf.id)
 
-    // The first child made the root a heading (categories_root_heading).
+    // A new vertical starts closed, and its first child made it a heading
+    // (categories_root_heading).
     const tree = await categoryTree(ADMIN)
-    expect(tree.find((c) => c.id === root.id)?.isAssignable).toBe(false)
-
-    expect(await setVerticalActive(ADMIN, leaf.id, false)).toEqual({ ok: false, reason: 'not_root' })
-    expect(await setVerticalActive(ADMIN, root.id, false)).toEqual({ ok: true })
-    const closed = await categoryTree(ADMIN)
-    expect(closed.filter((c) => c.id === root.id || c.id === leaf.id).every((c) => !c.isActive)).toBe(true)
+    expect(tree.find((c) => c.id === root.id)).toMatchObject({ isActive: false, isAssignable: false })
+    const hidden = await asVisitor(async (c) => (await openCategories(c)).some((o) => o.id === leaf.id))
+    expect(hidden).toBe(false)
 
     // A leaf cannot be opened on its own under a closed vertical.
     expect(await setCategoryActive(ADMIN, leaf.id, true)).toEqual({ ok: false, reason: 'parent_inactive' })
+    expect(await setVerticalActive(ADMIN, leaf.id, true)).toEqual({ ok: false, reason: 'not_root' })
 
     expect(await setVerticalActive(ADMIN, root.id, true)).toEqual({ ok: true })
     const picked = await asVisitor(async (c) => (await assignableCategories(c)).map((o) => o.id))
     expect(picked).toContain(leaf.id)
     expect(picked).not.toContain(root.id)
 
+    expect(await setVerticalActive(ADMIN, root.id, false)).toEqual({ ok: true })
+    const closed = await categoryTree(ADMIN)
+    expect(closed.filter((c) => c.id === root.id || c.id === leaf.id).every((c) => !c.isActive)).toBe(true)
+
+    // Created (closed), opened, closed: three records, each under the admin.
     const audited = await asSystem(async (c) => {
-      const { rows } = await c.query(
-        `select count(*)::int as n from audit_log
+      const { rows } = await c.query<{ after: Record<string, unknown> }>(
+        `select after from audit_log
           where target_type = 'category' and target_id = $1 and actor_id = $2
-            and after ? 'is_active'`, [root.id, ADMIN])
-      return rows[0].n
+            and after ? 'is_active' order by created_at, id`, [root.id, ADMIN])
+      return rows.map((r) => [r.after.created ?? false, r.after.is_active])
     })
-    expect(audited).toBe(2)
+    expect(audited).toEqual([[true, false], [false, true], [false, false]])
   })
 
   it('lists a category under a second vertical, and search follows it', async () => {
@@ -176,6 +180,7 @@ describe('categories', () => {
     const holder = await createCategory(ADMIN, cat({ parentId: root.id, slug: `link-leaf-${Date.now()}`, name: 'Folha' }))
     if (!holder.ok) throw new Error('setup failed')
     created.categories.push(holder.id)
+    expect(await setVerticalActive(ADMIN, root.id, true)).toEqual({ ok: true })
 
     expect(await linkCategory(ADMIN, SALOES, SALOES)).toEqual({ ok: false, reason: 'self' })
     expect(await linkCategory(ADMIN, SALOES, EVENTOS)).toEqual({ ok: false, reason: 'redundant' })

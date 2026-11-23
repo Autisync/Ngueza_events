@@ -57,6 +57,21 @@ begin
   raise notice 'PASS: a root that gets a child becomes a heading; leaves stay assignable';
 end $$;
 
+-- An administrator may make a root with children pickable on purpose.
+-- Saving a child without moving it must not undo that: the admin form
+-- always sends parent_id.
+update categories set is_assignable = true where id = '92520000-0000-0000-0000-000000000001';
+update categories c set parent_id = c.parent_id, name = c.name
+ where id = '92520000-0000-0000-0000-000000000011';
+do $$
+begin
+  if not (select is_assignable from categories where id = '92520000-0000-0000-0000-000000000001') then
+    raise exception 'FAIL: saving a child without moving it turned its root back into a heading';
+  end if;
+  raise notice 'PASS: only a real change of parent makes a root a heading';
+end $$;
+update categories set is_assignable = false where id = '92520000-0000-0000-0000-000000000001';
+
 -- ---- 2. the views: whole ancestry active, caller's RLS ----------------
 do $$
 declare v_bad text;
@@ -329,6 +344,14 @@ end $$;
 do $$
 declare v_n int;
 begin
+  select count(*) into v_n from audit_log
+   where target_type = 'category' and target_id = '92520000-0000-0000-0000-000000000012'
+     and after ->> 'also_under_id' = '92520000-0000-0000-0000-000000000002';
+  if v_n <> 1 then raise exception 'FAIL: a cross-listing left % audit rows, expected 1', v_n; end if;
+  select count(*) into v_n from audit_log
+   where target_type = 'category' and target_id = '92520000-0000-0000-0000-000000000002'
+     and after ->> 'created' = 'true' and after ->> 'is_active' = 'false';
+  if v_n <> 1 then raise exception 'FAIL: creating a vertical left % audit rows, expected 1', v_n; end if;
   select count(*) into v_n from audit_log
    where target_type = 'category' and target_id = '92520000-0000-0000-0000-000000000002'
      and after ->> 'is_active' = 'true';

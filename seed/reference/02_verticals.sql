@@ -9,7 +9,10 @@
 -- Rules for this file (spec/pivot/inventory.md §2.6):
 --   * Re-runnable. `on conflict do nothing` everywhere, so running it
 --     again never re-closes a vertical an administrator has opened, and
---     never undoes an admin's rename.
+--     never undoes an admin's rename. The cross-listings and the icon
+--     backfill happen only on the run that adds the verticals, so a
+--     re-run never restores a link an admin removed or an icon they set
+--     back to "inherit".
 --   * Parents are found by slug, not by id: if an administrator already
 --     created "limpeza" by hand on live, the seed skips that row and the
 --     rest still attach. A person checks live slugs before running it.
@@ -32,9 +35,19 @@
 -- exist (slice 54); verification decisions stay human.
 -- =====================================================================
 
--- ---- the verticals ------------------------------------------------------
-insert into categories (id, parent_id, slug, name, icon, default_supplier_type, sort_order, is_active, is_assignable)
-values
+-- ---- the verticals, and what comes only with their first arrival --------
+-- One statement, so the cross-listings and the icon backfill run only on
+-- the run that actually adds the verticals. A later run, after an
+-- administrator removed a link, moved maquilhagem under Beleza, or set
+-- an icon back to "inherit", changes none of that (and cannot trip the
+-- category_links redundancy guard).
+--
+-- Moving maquilhagem, buffet, fotografia or vídeo out of Eventos would
+-- drop them from every Eventos search and quote request; a link keeps
+-- both (category_scope, 0049).
+with new_roots as (
+  insert into categories (id, parent_id, slug, name, icon, default_supplier_type, sort_order, is_active, is_assignable)
+  values
   ('21000002-0000-0000-0000-000000000001', null, 'casa-e-reparacoes',          'Casa e Reparações',          'house',    'either', 2, false, false),
   ('21000003-0000-0000-0000-000000000001', null, 'beleza-e-bem-estar',         'Beleza e Bem-estar',         'scissors', 'either', 3, false, false),
   ('21000004-0000-0000-0000-000000000001', null, 'aulas-e-explicacoes',        'Aulas e Explicações',        'book',     'either', 4, false, false),
@@ -42,9 +55,54 @@ values
   ('21000006-0000-0000-0000-000000000001', null, 'auto',                       'Auto',                       'car',      'either', 6, false, false),
   ('21000007-0000-0000-0000-000000000001', null, 'comida-e-catering',          'Comida e Catering',          'utensils', 'either', 7, false, false),
   ('21000008-0000-0000-0000-000000000001', null, 'tecnologia-e-profissionais', 'Tecnologia e Profissionais', 'laptop',   'either', 8, false, false)
-on conflict do nothing;
+  on conflict do nothing
+  returning id, slug
+),
+links as (
+  insert into category_links (category_id, also_under_id)
+  select c.id, r.id
+    from (values
+      ('maquilhagem', 'beleza-e-bem-estar'),
+      ('buffet',      'comida-e-catering'),
+      ('fotografia',  'tecnologia-e-profissionais'),
+      ('video',       'tecnologia-e-profissionais')
+    ) as v(slug, under)
+    join new_roots r on r.slug = v.under
+    join categories c on c.slug = v.slug
+  on conflict do nothing
+  returning 1
+),
+-- Icons for the categories that predate them, where none is set. (app/
+-- CategoryIcon.tsx draws these 14 by slug even without this.)
+icons as (
+  update categories c
+     set icon = v.icon
+    from (values
+      ('eventos', 'party'),
+      ('saloes-de-festas', 'hall'),
+      ('casas-de-festas', 'party-house'),
+      ('casas-de-praia', 'beach'),
+      ('salas-de-conferencia', 'presentation'),
+      ('salas-de-workshop', 'wrench'),
+      ('djs', 'headphones'),
+      ('maquilhagem', 'makeup'),
+      ('decoracao', 'balloon'),
+      ('buffet', 'utensils'),
+      ('fotografia', 'camera'),
+      ('video', 'video'),
+      ('som', 'speaker'),
+      ('iluminacao', 'bulb'),
+      ('material-para-festas', 'gift')
+    ) as v(slug, icon)
+   where c.slug = v.slug and c.icon is null
+     and exists (select 1 from new_roots)
+  returning 1
+)
+select (select count(*) from new_roots) as verticals_added,
+       (select count(*) from links)     as links_added,
+       (select count(*) from icons)     as icons_set;
 
--- ---- their first categories -----------------------------------------------
+-- ---- their first categories (after the verticals, which they join by slug)
 insert into categories (id, parent_id, slug, name, icon, default_supplier_type, sort_order, is_active)
 select v.id::uuid, r.id, v.slug, v.name, v.icon, 'service', v.ord, false
   from (values
@@ -94,41 +152,3 @@ select v.id::uuid, r.id, v.slug, v.name, v.icon, 'service', v.ord, false
   join categories r on r.slug = v.root_slug
 on conflict do nothing;
 
--- ---- cross-listings: one category, a second vertical -------------------
--- Moving these out of Eventos would drop them from every Eventos search
--- and quote request; a link keeps both (category_scope, 0049).
-insert into category_links (category_id, also_under_id)
-select c.id, u.id
-  from (values
-    ('maquilhagem', 'beleza-e-bem-estar'),
-    ('buffet',      'comida-e-catering'),
-    ('fotografia',  'tecnologia-e-profissionais'),
-    ('video',       'tecnologia-e-profissionais')
-  ) as v(slug, under)
-  join categories c on c.slug = v.slug
-  join categories u on u.slug = v.under
-on conflict do nothing;
-
--- ---- icons for the categories that predate them ---------------------------
--- Only where none is set, so an administrator's choice on live survives.
--- (app/CategoryIcon.tsx draws these 14 by slug even without this.)
-update categories c
-   set icon = v.icon
-  from (values
-    ('eventos', 'party'),
-    ('saloes-de-festas', 'hall'),
-    ('casas-de-festas', 'party-house'),
-    ('casas-de-praia', 'beach'),
-    ('salas-de-conferencia', 'presentation'),
-    ('salas-de-workshop', 'wrench'),
-    ('djs', 'headphones'),
-    ('maquilhagem', 'makeup'),
-    ('decoracao', 'balloon'),
-    ('buffet', 'utensils'),
-    ('fotografia', 'camera'),
-    ('video', 'video'),
-    ('som', 'speaker'),
-    ('iluminacao', 'bulb'),
-    ('material-para-festas', 'gift')
-  ) as v(slug, icon)
- where c.slug = v.slug and c.icon is null;

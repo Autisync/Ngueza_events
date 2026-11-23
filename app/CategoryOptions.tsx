@@ -5,13 +5,14 @@ import { groupByRoot } from '@/lib/categories'
  * The `<option>`s of a category `<select>`, one `<optgroup>` per vertical
  * (slice 52). A server component: no JavaScript reaches the browser.
  *
- * `current` keeps a value that is no longer offered (its category was
+ * Every option passed is rendered. A root in `options` (a vertical that is
+ * itself pickable, or a heading a search page offers) is the first option
+ * of its group, labelled "Tudo em <vertical>" when `wholeVertical` says so.
+ *
+ * `current` keeps a value that is not among the options (its category was
  * retired, or is a heading) selectable and selected. Without it the
  * browser silently selects the first option, and saving an unrelated
  * field would move the listing or service to another category.
- *
- * `wholeVertical` adds a "Tudo em <vertical>" option whose value is the
- * root, for searches and requests that may name a whole vertical.
  */
 export function CategoryOptions({
   options,
@@ -25,8 +26,7 @@ export function CategoryOptions({
   wholeVertical?: (rootId: string) => boolean
 }) {
   const groups = groupByRoot(options)
-  const offered = new Set(options.map((o) => o.id))
-  const stale = current && !offered.has(current.id) && !groups.some((g) => g.rootId === current.id && wholeVertical?.(g.rootId))
+  const stale = current && !options.some((o) => o.id === current.id)
   return (
     <>
       {stale ? (
@@ -36,16 +36,13 @@ export function CategoryOptions({
       ) : null}
       {groups.map((g) => (
         <optgroup key={g.rootId} label={g.rootName}>
-          {wholeVertical?.(g.rootId) ? (
-            <option value={g.rootId}>Tudo em {g.rootName}</option>
-          ) : null}
-          {g.options.filter((o) => o.id !== g.rootId).map((o) => (
-            <option key={o.id} value={o.id}>{o.depth > 1 ? ` ${o.name}` : o.name}</option>
+          {g.options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.id === g.rootId
+                ? (wholeVertical?.(g.rootId) ? `Tudo em ${g.rootName}` : g.rootName)
+                : o.depth > 1 ? ` ${o.name}` : o.name}
+            </option>
           ))}
-          {/* A root with no children is itself the only thing to pick. */}
-          {g.options.length === 1 && g.options[0]!.id === g.rootId && !wholeVertical?.(g.rootId) ? (
-            <option value={g.rootId}>{g.rootName}</option>
-          ) : null}
         </optgroup>
       ))}
     </>
