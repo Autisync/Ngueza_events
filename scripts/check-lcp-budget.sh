@@ -133,6 +133,15 @@ check_page() {
   local url="http://localhost:$PORT$path"
   local samples=() run out ms
 
+  # Lighthouse measures whatever comes back, including a 404 page, which
+  # paints fast and passes. Check the page exists first (slice 51).
+  local status; status=$(curl -sS -o /dev/null -w '%{http_code}' "$url")
+  if [ "$status" != "200" ]; then
+    echo "::error::$label — HTTP $status, expected 200. Nothing was measured."
+    FAIL=1
+    return
+  fi
+
   for run in $(seq 1 "$RUNS_PER_PAGE"); do
     out=$(mktemp)
     if ! npx --yes lighthouse "$url" \

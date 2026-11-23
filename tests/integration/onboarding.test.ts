@@ -152,13 +152,34 @@ describe('one supplier cannot touch another', () => {
     const changed = await updateProvider(OTHER, mine.providerId, {
       name: 'Roubado', categoryId: SALOES, locationId: TALATONA,
     })
-    expect(changed).toBe(false)
+    expect(changed).toBe('not_found')
 
     const name = await asSystem(async (c) => {
       const { rows } = await c.query(`select name from providers where id = $1`, [mine.providerId])
       return rows[0]?.name
     })
     expect(name).toBe('Meu Salão')
+  })
+
+  it('keeps a listing in a category of its own mode (0047)', async () => {
+    const mine = await createProvider(NEWCOMER, {
+      name: 'Salão Fixo', categoryId: SALOES, locationId: TALATONA,
+    })
+    if (!mine.ok) throw new Error('create failed')
+
+    // A venue moved into "DJs" would keep venue behaviour under a service label.
+    expect(await updateProvider(NEWCOMER, mine.providerId, {
+      name: 'Salão Fixo', categoryId: DJS, locationId: TALATONA,
+    })).toBe('category_mode')
+    expect(await updateProvider(NEWCOMER, mine.providerId, {
+      name: 'Salão Fixo, renomeado', categoryId: SALOES, locationId: TALATONA,
+    })).toBe('ok')
+
+    // And the owner cannot flip the switch itself, whatever the app sends.
+    const flipped = await asUser(NEWCOMER, (c) =>
+      c.query(`update providers set supplier_type = 'service' where id = $1`, [mine.providerId]),
+    ).then(() => 'flipped', (e: { code?: string }) => e.code)
+    expect(flipped).toBe('42501')
   })
 
   it('refuses a service added to someone else\'s business', async () => {

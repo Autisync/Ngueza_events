@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { formatMinor } from '@/lib/money'
 import { asSystem, asUser } from '@/lib/db'
 import { requestBooking, transition } from '@/lib/booking'
 import { addNote, bookingTimeline, consoleSearch, notesFor } from '@/lib/console'
@@ -63,6 +64,18 @@ describe('the timeline and notes', () => {
     expect(t.find((e) => e.kind === 'note')?.detail).toBe('Liguei ao cliente; vai pagar amanhã.')
     const times = t.map((e) => new Date(e.at).getTime())
     expect([...times].sort((a, b) => a - b)).toEqual(times)
+  })
+
+  it('shows a payment with its cêntimos and pt-AO grouping (slice 51)', async () => {
+    // 1 800 000,50 Kz. The SQL used to print "1800000 Kz".
+    await asSystem((c) => c.query(
+      `insert into payments (booking_id, amount_minor, status, reference) values ($1, 180000050, 'submitted', 'REF-51')`,
+      [bookingId]))
+    const t = await bookingTimeline(ADMIN, bookingId)
+    const pay = t.find((e) => e.kind === 'payment' && e.detail === 'REF-51')
+    // formatMinor groups with non-breaking spaces, so compare through it.
+    expect(pay?.title).toBe(`Comprovativo: ${formatMinor(180_000_050n)} — submitted`)
+    expect(pay?.title).toMatch(/,50\sKz/)
   })
 
   it('keeps notes to administrators, and append-only', async () => {

@@ -72,7 +72,8 @@ select n || '  ' || case when ok then 'aplicada' else 'EM FALTA' end from (value
   ('0043', to_regclass('public.amenities') is not null),
   ('0044', to_regclass('public.document_kinds') is not null),
   ('0045', exists (select 1 from col where t = 'bookings' and c = 'cancellation_reason')),
-  ('0046', to_regclass('public.event_plans') is not null)
+  ('0046', to_regclass('public.event_plans') is not null),
+  ('0047', exists (select 1 from fn where name = 'providers_guard_behaviour'))
 ) as m(n, ok) order by n;
 SQL
 )" || exit 2

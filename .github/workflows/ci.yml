@@ -75,9 +75,9 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
-      # The waitlist acceptance criteria, against a real database and a
-      # real outbox — double opt-in, idempotent confirmation, one-click
-      # unsubscribe, and no enumeration of the list.
+      # Every lib/ module against a real, seeded database, as the person
+      # it runs for: bookings, payments, quotes, reviews, search, the
+      # planner, admin, the outbox. RLS is exercised, not mocked.
       - name: Integration tests
         run: npm run test:integration
         env:
@@ -195,12 +195,27 @@ jobs:
             echo "::error::Money is bigint minor units. No floats, ever."; exit 1
           fi
 
+      # lib/ and app/ are where queries are actually written; this used to
+      # look only at supabase/ and scripts/ (slice 51).
       - name: No OFFSET pagination
         run: |
           if grep -rniE "\boffset +[0-9$:]" --include=*.ts --include=*.tsx --include=*.sql \
-               supabase/ scripts/ 2>/dev/null; then
+               supabase/ scripts/ lib/ app/ 2>/dev/null; then
             echo "::error::Use keyset pagination, not OFFSET."; exit 1
           fi
+
+      # The TypeScript half of "rows, not enums": a z.enum or a union of
+      # slugs for categories, locations or event types is the same shortcut
+      # as a database enum. (tests/sql/10_catalog_rules.sql covers the
+      # database half against the built schema.)
+      - name: No category or location enums in TypeScript
+        run: |
+          if grep -rnE "z\.enum\(.*(saloes|casas-de|djs|buffet|talatona|kilamba|casamento|alambamento)" \
+               --include='*.ts' --include='*.tsx' app lib 2>/dev/null; then
+            echo "::error::Categories, locations and event types are rows an administrator manages, never a z.enum."
+            exit 1
+          fi
+          echo "no taxonomy enums in TypeScript"
 
       # The old version of this check matched path names, which is a guess.
       # A module holding a secret is now marked `server-only`, so importing
